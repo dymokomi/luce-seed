@@ -183,3 +183,59 @@ TEST(agree_remainder) {
 TEST(agree_zero_var) {
     CHECK(agrees("pub func answer() -> i64:\n    var n: i64\n    return n\n"));
 }
+
+TEST(agree_u8_wrap) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x +% 10)\n"));
+}
+
+TEST(agree_u8_overflow_traps) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x + 10)\n"));
+}
+
+TEST(agree_u8_saturating) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x +| 10)\n"));
+}
+
+TEST(agree_c_cast_truncates) {
+    CHECK(agrees("pub func answer() -> i64:\n    return i64((u8)300)\n"));
+}
+
+TEST(agree_checked_conv_traps) {
+    CHECK(agrees("pub func answer() -> i64:\n    let n: i64 = 300\n    return i64(u8(n))\n"));
+}
+
+TEST(agree_widen) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n"));
+}
+
+TEST(agree_sizeof_i64) {
+    CHECK(agrees("pub func answer() -> i64:\n    return i64(sizeof(i64))\n"));
+}
+
+TEST(agree_sizeof_usize) {
+    CHECK(agrees("pub func answer() -> i64:\n    return i64(sizeof(usize))\n"));
+}
+
+TEST(agree_shift) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(x << 3)\n"));
+}
+
+TEST(agree_shift_too_wide_traps) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(x << 8)\n"));
+}
+
+TEST(agree_wrapping_neg) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(-%x)\n"));
+}
+
+TEST(agree_bits) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 0b1100\n    return i64(x & 0b1010)\n"));
+}
+
+TEST(agree_i64_min) {
+    CHECK(agrees("pub func answer() -> i64:\n    return -9223372036854775808\n"));
+}
+
+TEST(agree_f64_to_i64) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: f64 = 40.9\n    return i64(x)\n"));
+}

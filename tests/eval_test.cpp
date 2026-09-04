@@ -149,3 +149,76 @@ TEST(eval_zero_var) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 0);
 }
+
+TEST(eval_u8_wrap) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x +% 10)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_u8_overflow_traps) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x + 10)\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("overflow") != std::string::npos);
+}
+
+TEST(eval_u8_saturating) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 250\n    return i64(x +| 10)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 255);
+}
+
+TEST(eval_c_cast_truncates) {
+    EvalResult r = run("pub func answer() -> i64:\n    return i64((u8)300)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 44);
+}
+
+TEST(eval_checked_conv_traps) {
+    EvalResult r =
+        run("pub func answer() -> i64:\n    let n: i64 = 300\n    return i64(u8(n))\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("conversion") != std::string::npos);
+}
+
+TEST(eval_widen) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40);
+}
+
+TEST(eval_sizeof_i64) {
+    EvalResult r = run("pub func answer() -> i64:\n    return i64(sizeof(i64))\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 8);
+}
+
+TEST(eval_sizeof_usize) {
+    EvalResult r = run("pub func answer() -> i64:\n    return i64(sizeof(usize))\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, static_cast<int64_t>(sizeof(void*)));
+}
+
+TEST(eval_shift) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(x << 3)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 8);
+}
+
+TEST(eval_shift_too_wide_traps) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(x << 8)\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("shift") != std::string::npos);
+}
+
+TEST(eval_wrapping_neg) {
+    EvalResult r = run("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(-%x)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 255);
+}
+
+TEST(eval_i64_min) {
+    EvalResult r = run("pub func answer() -> i64:\n    return -9223372036854775808\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, static_cast<int64_t>(INT64_MIN));
+}

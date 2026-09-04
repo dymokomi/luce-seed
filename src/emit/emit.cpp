@@ -31,24 +31,30 @@ string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
     }
-    switch (t->kind) {
-    case TypeKind::Bool:
-        return "bool";
-    case TypeKind::I64:
-        return "int64_t";
-    case TypeKind::Str:
-        return "const char*";
-    case TypeKind::Struct:
+    if (t->kind == TypeKind::Struct) {
         if (t->decl != nullptr) {
             return struct_ident(t->decl);
         }
         return ident("lb_", t->name);
-    case TypeKind::Unit:
-    case TypeKind::Never:
-    case TypeKind::Error:
-        return "void";
     }
-    return "void";
+    return c_type_name(t);
+}
+
+string word_cast(Type* t, const string& e) {
+    if (t != nullptr && is_unsigned_int(t)) {
+        return "(uint64_t)(" + e + ")";
+    }
+    return "(int64_t)(" + e + ")";
+}
+
+string bits_lit(Type* t) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", int_bits(t));
+    return buf;
+}
+
+string down_cast(Type* t, const string& e) {
+    return "(" + string(c_type_name(t)) + ")(" + e + ")";
 }
 
 string c_escape(string_view s) {
@@ -135,6 +141,8 @@ struct Emitter {
         case NodeKind::Conditional:
             return "(" + emit_expr(n->type) + " ? " + emit_expr(n->left) + " : " +
                    emit_expr(n->right) + ")";
+        case NodeKind::Cast:
+            return emit_conv(n->left, n->ty, false);
         default:
             return "/* unsupported expr */ 0";
         }
@@ -150,10 +158,30 @@ struct Emitter {
         if (n->op == TokenKind::StringLit) {
             return c_escape(decode_lit(n->text));
         }
-        int64_t value = 0;
-        parse_i64_literal(n->text, &value);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%" PRId64 "LL", value);
+        if (n->op == TokenKind::CharLit) {
+            uint32_t cp = 0;
+            parse_char_literal(n->text, &cp);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%uu", cp);
+            return buf;
+        }
+        if (n->op == TokenKind::FloatLit) {
+            ParsedFloat p = parse_float_literal(n->text);
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.17g", p.value);
+            if (n->ty != nullptr && n->ty->kind == TypeKind::F32) {
+                return string(buf) + "f";
+            }
+            return buf;
+        }
+        ParsedInt p = parse_int_literal(n->text);
+        Type* t = n->ty;
+        char buf[48];
+        if (t != nullptr && is_unsigned_int(t)) {
+            snprintf(buf, sizeof(buf), "%" PRIu64 "ULL", p.value);
+        } else {
+            snprintf(buf, sizeof(buf), "%" PRId64 "LL", static_cast<int64_t>(p.value));
+        }
         return buf;
     }
 
@@ -164,10 +192,48 @@ struct Emitter {
         if (n->op == TokenKind::Plus) {
             return emit_expr(n->left);
         }
+        Type* t = n->ty;
+        string x = emit_expr(n->left);
+        if (n->op == TokenKind::Tilde) {
+            if (t != nullptr && is_unsigned_int(t)) {
+                return down_cast(t, "lb_not_u(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
+            }
+            return down_cast(t, "~(" + x + ")");
+        }
+        if (is_float(t)) {
+            return "(-(" + x + "))";
+        }
+        if (n->op == TokenKind::MinusPercent) {
+            const char* h = is_signed_int(t) ? "lb_negw_s" : "lb_negw_u";
+            return down_cast(t, string(h) + "(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
+        }
         if (n->op == TokenKind::Minus) {
-            return "lb_neg_i64(" + emit_expr(n->left) + ")";
+            if (n->left != nullptr && n->left->kind == NodeKind::Literal &&
+                n->left->op == TokenKind::IntLit) {
+                ParsedInt p = parse_int_literal(n->left->text);
+                if (p.ok && t != nullptr &&
+                    p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "(int64_t)(1ULL << %d)", int_bits(t) - 1);
+                    return down_cast(t, buf);
+                }
+            }
+            return down_cast(t, "lb_neg_s(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
         }
         return "0";
+    }
+
+    string emit_helper(const char* name, Type* t, const string& L, const string& R) {
+        string h = "lb_";
+        h += name;
+        h += is_signed_int(t) ? "_s(" : "_u(";
+        h += word_cast(t, L);
+        h += ", ";
+        h += word_cast(t, R);
+        h += ", ";
+        h += bits_lit(t);
+        h += ")";
+        return down_cast(t, h);
     }
 
     string emit_binary(Node* n) {
@@ -180,40 +246,112 @@ struct Emitter {
         if (op == TokenKind::KwOr) {
             return "(" + L + " || " + R + ")";
         }
+        Type* t = n->ty;
+        Type* ct = n->left != nullptr && n->left->ty != nullptr ? n->left->ty : t;
         if (op == TokenKind::EqEq) {
             return "(" + L + " == " + R + ")";
         }
         if (op == TokenKind::NotEq) {
             return "(" + L + " != " + R + ")";
         }
-        if (op == TokenKind::Lt) {
-            return "(" + L + " < " + R + ")";
+        if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
+            op == TokenKind::GtEq) {
+            string cty = ct != nullptr ? c_type(ct) : "int64_t";
+            string a = "((" + cty + ")(" + L + "))";
+            string b = "((" + cty + ")(" + R + "))";
+            const char* cop = op == TokenKind::Lt    ? "<"
+                              : op == TokenKind::LtEq ? "<="
+                              : op == TokenKind::Gt   ? ">"
+                                                      : ">=";
+            return "(" + a + " " + cop + " " + b + ")";
         }
-        if (op == TokenKind::LtEq) {
-            return "(" + L + " <= " + R + ")";
+        if (is_float(t)) {
+            const char* cop = op == TokenKind::Plus    ? "+"
+                              : op == TokenKind::Minus ? "-"
+                              : op == TokenKind::Star  ? "*"
+                                                       : "/";
+            return "(" + L + " " + cop + " " + R + ")";
         }
-        if (op == TokenKind::Gt) {
-            return "(" + L + " > " + R + ")";
-        }
-        if (op == TokenKind::GtEq) {
-            return "(" + L + " >= " + R + ")";
+        if (op == TokenKind::Amp || op == TokenKind::Pipe || op == TokenKind::Caret) {
+            const char* cop = op == TokenKind::Amp ? "&" : op == TokenKind::Pipe ? "|" : "^";
+            return down_cast(t, "(" + L + " " + cop + " " + R + ")");
         }
         const char* helper = nullptr;
         if (op == TokenKind::Plus) {
-            helper = "lb_add_i64";
+            helper = "add";
         } else if (op == TokenKind::Minus) {
-            helper = "lb_sub_i64";
+            helper = "sub";
         } else if (op == TokenKind::Star) {
-            helper = "lb_mul_i64";
+            helper = "mul";
         } else if (op == TokenKind::SlashSlash) {
-            helper = "lb_div_i64";
+            helper = "div";
         } else if (op == TokenKind::Percent) {
-            helper = "lb_mod_i64";
+            helper = "mod";
+        } else if (op == TokenKind::PlusPercent) {
+            helper = "addw";
+        } else if (op == TokenKind::MinusPercent) {
+            helper = "subw";
+        } else if (op == TokenKind::StarPercent) {
+            helper = "mulw";
+        } else if (op == TokenKind::PlusPipe) {
+            helper = "adds";
+        } else if (op == TokenKind::MinusPipe) {
+            helper = "subs";
+        } else if (op == TokenKind::StarPipe) {
+            helper = "muls";
+        } else if (op == TokenKind::LtLt) {
+            helper = "shl";
+        } else if (op == TokenKind::GtGt) {
+            helper = "shr";
         }
         if (helper != nullptr) {
-            return string(helper) + "(" + L + ", " + R + ")";
+            return emit_helper(helper, t, L, R);
         }
         return "0";
+    }
+
+    string emit_conv(Node* src, Type* dest, bool checked) {
+        string e = emit_expr(src);
+        Type* st = src != nullptr ? src->ty : nullptr;
+        if (dest == nullptr) {
+            return e;
+        }
+        int mode = checked ? 0 : 1;
+        if (is_float(st) && is_int(dest)) {
+            const char* h = is_signed_int(dest) ? "lb_f_to_s" : "lb_f_to_u";
+            char buf[256];
+            snprintf(buf, sizeof(buf), "%s((double)(%s), %d, %d)", h, e.c_str(), int_bits(dest),
+                     mode);
+            return down_cast(dest, buf);
+        }
+        if (is_int(st) && is_float(dest)) {
+            string w = is_signed_int(st) ? "(int64_t)(" + e + ")" : "(uint64_t)(" + e + ")";
+            string call = "lb_to_f(" + w + ", " + (is_signed_int(st) ? "1" : "0") + ")";
+            if (dest->kind == TypeKind::F32) {
+                return "(float)" + call;
+            }
+            return call;
+        }
+        if (is_float(st) && is_float(dest)) {
+            return "(" + string(c_type_name(dest)) + ")(" + e + ")";
+        }
+        if ((is_int(st) || (st != nullptr && st->kind == TypeKind::Char)) &&
+            (is_int(dest) || dest->kind == TypeKind::Char)) {
+            Type* from = st;
+            int fb = from->kind == TypeKind::Char ? 32 : int_bits(from);
+            int tb = dest->kind == TypeKind::Char ? 32 : int_bits(dest);
+            int fs = from->kind == TypeKind::Char ? 0 : (is_signed_int(from) ? 1 : 0);
+            int ts = dest->kind == TypeKind::Char ? 0 : (is_signed_int(dest) ? 1 : 0);
+            const char* h = fs ? "lb_conv_s" : "lb_conv_u";
+            char buf[256];
+            snprintf(buf, sizeof(buf), "%s(%s, %d, %d, %d, %d, %d)", h, word_cast(from, e).c_str(),
+                     fb, fs, tb, ts, mode);
+            if (dest->kind == TypeKind::Char) {
+                return "(uint32_t)(" + string(buf) + ")";
+            }
+            return down_cast(dest, buf);
+        }
+        return "(" + c_type(dest) + ")(" + e + ")";
     }
 
     string emit_member(Node* n) {
@@ -264,11 +402,32 @@ struct Emitter {
             if (t != nullptr && t->kind == TypeKind::Str) {
                 return "lb_print_str(" + e + ")";
             }
-            return "lb_print_i64(" + e + ")";
+            if (is_float(t)) {
+                return "lb_print_f64((double)(" + e + "))";
+            }
+            if (t != nullptr && is_unsigned_int(t)) {
+                return "lb_print_u64((uint64_t)(" + e + "))";
+            }
+            return "lb_print_i64((int64_t)(" + e + "))";
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
             return "lb_trap(" + emit_expr(arg) + ")";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name &&
+            (callee->text == "sizeof" || callee->text == "alignof")) {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            Type* t = arg != nullptr ? arg->ty : nullptr;
+            string ty = c_type(t);
+            if (callee->text == "sizeof") {
+                return "((size_t)sizeof(" + ty + "))";
+            }
+            return "((size_t)_Alignof(" + ty + "))";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && n->resolved == nullptr &&
+            n->body != nullptr && n->ty != nullptr &&
+            (is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char)) {
+            return emit_conv(n->body->left, n->ty, true);
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
             return emit_ctor(n, n->resolved);
@@ -360,17 +519,52 @@ struct Emitter {
                 line(dst + " = " + src + ";");
                 break;
             }
-            const char* helper = "lb_add_i64";
+            TokenKind op = TokenKind::Plus;
             if (n->op == TokenKind::MinusEq) {
-                helper = "lb_sub_i64";
+                op = TokenKind::Minus;
             } else if (n->op == TokenKind::StarEq) {
-                helper = "lb_mul_i64";
+                op = TokenKind::Star;
             } else if (n->op == TokenKind::SlashSlashEq) {
-                helper = "lb_div_i64";
+                op = TokenKind::SlashSlash;
             } else if (n->op == TokenKind::PercentEq) {
-                helper = "lb_mod_i64";
+                op = TokenKind::Percent;
+            } else if (n->op == TokenKind::PlusPercentEq) {
+                op = TokenKind::PlusPercent;
+            } else if (n->op == TokenKind::MinusPercentEq) {
+                op = TokenKind::MinusPercent;
+            } else if (n->op == TokenKind::StarPercentEq) {
+                op = TokenKind::StarPercent;
+            } else if (n->op == TokenKind::PlusPipeEq) {
+                op = TokenKind::PlusPipe;
+            } else if (n->op == TokenKind::MinusPipeEq) {
+                op = TokenKind::MinusPipe;
+            } else if (n->op == TokenKind::StarPipeEq) {
+                op = TokenKind::StarPipe;
             }
-            line(dst + " = " + string(helper) + "(" + dst + ", " + src + ");");
+            Type* t = n->left != nullptr ? n->left->ty : nullptr;
+            const char* helper = "add";
+            if (op == TokenKind::Minus) {
+                helper = "sub";
+            } else if (op == TokenKind::Star) {
+                helper = "mul";
+            } else if (op == TokenKind::SlashSlash) {
+                helper = "div";
+            } else if (op == TokenKind::Percent) {
+                helper = "mod";
+            } else if (op == TokenKind::PlusPercent) {
+                helper = "addw";
+            } else if (op == TokenKind::MinusPercent) {
+                helper = "subw";
+            } else if (op == TokenKind::StarPercent) {
+                helper = "mulw";
+            } else if (op == TokenKind::PlusPipe) {
+                helper = "adds";
+            } else if (op == TokenKind::MinusPipe) {
+                helper = "subs";
+            } else if (op == TokenKind::StarPipe) {
+                helper = "muls";
+            }
+            line(dst + " = " + emit_helper(helper, t, dst, src) + ";");
             break;
         }
         case NodeKind::If:

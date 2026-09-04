@@ -1,4 +1,4 @@
-// Name resolution and type checking for the M3 scalar core.
+// Name resolution and type checking for the scalar language.
 // Annotates Node::ty and Node::resolved. base.md §§5–10 (subset).
 
 #pragma once

@@ -49,8 +49,8 @@ bool is_digit_for_base(char c, char base) {
 }
 
 bool is_integer_suffix(std::string_view s) {
-    return s == "u8" || s == "u16" || s == "u32" || s == "u64" || s == "i8" || s == "i16" ||
-           s == "i32" || s == "i64";
+    return s == "u8" || s == "u16" || s == "u32" || s == "u64" || s == "usize" || s == "i8" ||
+           s == "i16" || s == "i32" || s == "i64" || s == "isize";
 }
 
 bool is_float_suffix(std::string_view s) {

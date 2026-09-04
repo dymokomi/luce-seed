@@ -11,9 +11,22 @@ enum class TypeKind : uint8_t {
     Never,
     Unit,
     Bool,
+    I8,
+    I16,
+    I32,
     I64,
+    Isize,
+    U8,
+    U16,
+    U32,
+    U64,
+    Usize,
+    F32,
+    F64,
+    Char,
     Str,
     Struct,
+    UntypedInt,
 };
 
 struct Type {
@@ -22,18 +35,40 @@ struct Type {
     Node* decl = nullptr; // struct declaration
 };
 
-string type_name(const Type* t);
+inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }
 
+string type_name(const Type* t);
 bool type_eq(const Type* a, const Type* b);
 bool is_zeroable(const Type* t);
+
+bool is_int(const Type* t);
+bool is_signed_int(const Type* t);
+bool is_unsigned_int(const Type* t);
+bool is_float(const Type* t);
+bool is_numeric(const Type* t);
+int int_bits(const Type* t);
+int float_bits(const Type* t);
+uint64_t int_mask(int bits);
+int64_t int_min(const Type* t);
+int64_t int_max_signed(int bits);
+uint64_t int_max_unsigned(int bits);
+bool can_widen(const Type* from, const Type* to);
+int type_size(const Type* t);
+int type_align(const Type* t);
+
+const char* c_type_name(const Type* t);
 
 struct TypeSet {
     Type error;
     Type never;
     Type unit;
     Type boolean;
-    Type i64;
+    Type i8, i16, i32, i64, isize;
+    Type u8, u16, u32, u64, usize;
+    Type f32, f64;
+    Type character;
     Type str;
+    Type untyped_int;
     vector<Type*> structs;
 
     TypeSet();

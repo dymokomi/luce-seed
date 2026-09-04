@@ -10,20 +10,19 @@ namespace lucb {
 namespace {
 
 const int k_max_frames = 10'000;
-const int64_t k_i64_min = static_cast<int64_t>(INT64_MIN);
 
 struct Value {
     TypeKind kind = TypeKind::Unit;
-    bool b = false;
-    int64_t i = 0;
-    string_view str;
     Type* type = nullptr;
+    bool b = false;
+    uint64_t u = 0;
+    double f = 0;
+    string_view str;
     vector<Value> fields;
 };
 
 Value v_unit() {
     Value v;
-    v.kind = TypeKind::Unit;
     return v;
 }
 
@@ -34,10 +33,30 @@ Value v_bool(bool b) {
     return v;
 }
 
+Value v_int(Type* t, uint64_t u) {
+    Value v;
+    v.type = t;
+    v.kind = t != nullptr ? t->kind : TypeKind::I64;
+    if (t != nullptr && is_int(t)) {
+        v.u = u & int_mask(int_bits(t));
+    } else {
+        v.u = u;
+    }
+    return v;
+}
+
 Value v_i64(int64_t i) {
     Value v;
     v.kind = TypeKind::I64;
-    v.i = i;
+    v.u = static_cast<uint64_t>(i);
+    return v;
+}
+
+Value v_float(Type* t, double f) {
+    Value v;
+    v.type = t;
+    v.kind = t != nullptr ? t->kind : TypeKind::F64;
+    v.f = t != nullptr && t->kind == TypeKind::F32 ? static_cast<double>(static_cast<float>(f)) : f;
     return v;
 }
 
@@ -53,8 +72,8 @@ Value v_zero(Type* t) {
     if (t == nullptr) {
         return v;
     }
-    v.kind = t->kind;
     v.type = t;
+    v.kind = t->kind;
     if (t->kind == TypeKind::Struct && t->decl != nullptr) {
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
@@ -63,6 +82,27 @@ Value v_zero(Type* t) {
         }
     }
     return v;
+}
+
+int bits_of(const Value& v, Type* t) {
+    int bits = int_bits(t != nullptr ? t : v.type);
+    if (bits == 0) {
+        return 64;
+    }
+    return bits;
+}
+
+int64_t as_s(const Value& v, Type* t) {
+    int bits = bits_of(v, t);
+    uint64_t u = v.u & int_mask(bits);
+    if (bits < 64 && (u & (uint64_t{1} << (bits - 1))) != 0) {
+        return static_cast<int64_t>(u | ~int_mask(bits));
+    }
+    return static_cast<int64_t>(u);
+}
+
+uint64_t as_u(const Value& v, Type* t) {
+    return v.u & int_mask(bits_of(v, t));
 }
 
 int field_index(Node* st, string_view name) {
@@ -174,15 +214,24 @@ struct Interp {
         if (v.kind == TypeKind::Bool) {
             return v.b ? "true" : "false";
         }
-        if (v.kind == TypeKind::I64) {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v.i));
-            return buf;
-        }
         if (v.kind == TypeKind::Str) {
             return decode_string(v.str);
         }
-        return "";
+        if (is_float(v.type) || v.kind == TypeKind::F32 || v.kind == TypeKind::F64) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", v.f);
+            return buf;
+        }
+        if (is_unsigned_int(v.type) || v.kind == TypeKind::U8 || v.kind == TypeKind::U16 ||
+            v.kind == TypeKind::U32 || v.kind == TypeKind::U64 || v.kind == TypeKind::Usize ||
+            v.kind == TypeKind::Char) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(as_u(v, v.type)));
+            return buf;
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(as_s(v, v.type)));
+        return buf;
     }
 
     Value eval(Node* n) {
@@ -201,9 +250,28 @@ struct Interp {
                 return v_str(n->text);
             }
             if (n->op == TokenKind::IntLit) {
-                int64_t i = 0;
-                parse_i64_literal(n->text, &i);
-                return v_i64(i);
+                ParsedInt p = parse_int_literal(n->text);
+                Type* t = n->ty;
+                if (t == nullptr || !is_int(t)) {
+                    return v_i64(static_cast<int64_t>(p.value));
+                }
+                return v_int(t, p.value);
+            }
+            if (n->op == TokenKind::FloatLit) {
+                ParsedFloat p = parse_float_literal(n->text);
+                return v_float(n->ty, p.value);
+            }
+            if (n->op == TokenKind::CharLit) {
+                uint32_t cp = 0;
+                parse_char_literal(n->text, &cp);
+                if (n->ty != nullptr && n->ty->kind == TypeKind::U8) {
+                    return v_int(n->ty, cp);
+                }
+                Value v;
+                v.kind = TypeKind::Char;
+                v.type = n->ty;
+                v.u = cp;
+                return v;
             }
             return v_unit();
         case NodeKind::Name:
@@ -231,6 +299,8 @@ struct Interp {
             }
             return *p;
         }
+        case NodeKind::Cast:
+            return eval_conv(n->left, n->ty, false);
         case NodeKind::Conditional: {
             Value c = eval(n->type);
             if (c.b) {
@@ -255,14 +325,245 @@ struct Interp {
         if (n->op == TokenKind::Plus) {
             return x;
         }
+        Type* t = n->ty != nullptr ? n->ty : x.type;
+        if (n->op == TokenKind::Tilde) {
+            return v_int(t, ~as_u(x, t));
+        }
+        if (is_float(t)) {
+            if (n->op == TokenKind::Minus) {
+                return v_float(t, -x.f);
+            }
+        }
+        int bits = int_bits(t);
+        if (n->op == TokenKind::MinusPercent) {
+            if (is_signed_int(t)) {
+                uint64_t r = 0u - static_cast<uint64_t>(as_s(x, t));
+                return v_int(t, r);
+            }
+            return v_int(t, 0u - as_u(x, t));
+        }
         if (n->op == TokenKind::Minus) {
-            if (x.i == k_i64_min) {
+            if (n->left != nullptr && n->left->kind == NodeKind::Literal &&
+                n->left->op == TokenKind::IntLit) {
+                ParsedInt p = parse_int_literal(n->left->text);
+                if (p.ok &&
+                    p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
+                    return v_int(t, static_cast<uint64_t>(int_min(t)));
+                }
+            }
+            int64_t a = as_s(x, t);
+            if (a == int_min(t)) {
                 fail("integer overflow");
                 return v_unit();
             }
-            return v_i64(-x.i);
+            return v_int(t, static_cast<uint64_t>(-a));
         }
+        (void)bits;
         fail("unsupported unary operator");
+        return v_unit();
+    }
+
+    bool cmp_num(const Value& L, const Value& R, Type* t, TokenKind op) {
+        if (is_float(t) || L.kind == TypeKind::F32 || L.kind == TypeKind::F64) {
+            if (op == TokenKind::Lt) {
+                return L.f < R.f;
+            }
+            if (op == TokenKind::LtEq) {
+                return L.f <= R.f;
+            }
+            if (op == TokenKind::Gt) {
+                return L.f > R.f;
+            }
+            return L.f >= R.f;
+        }
+        if (is_unsigned_int(t) || is_unsigned_int(L.type)) {
+            uint64_t a = as_u(L, t != nullptr ? t : L.type);
+            uint64_t b = as_u(R, t != nullptr ? t : R.type);
+            if (op == TokenKind::Lt) {
+                return a < b;
+            }
+            if (op == TokenKind::LtEq) {
+                return a <= b;
+            }
+            if (op == TokenKind::Gt) {
+                return a > b;
+            }
+            return a >= b;
+        }
+        int64_t a = as_s(L, t != nullptr ? t : L.type);
+        int64_t b = as_s(R, t != nullptr ? t : R.type);
+        if (op == TokenKind::Lt) {
+            return a < b;
+        }
+        if (op == TokenKind::LtEq) {
+            return a <= b;
+        }
+        if (op == TokenKind::Gt) {
+            return a > b;
+        }
+        return a >= b;
+    }
+
+    Value arith(Type* t, const Value& L, const Value& R, TokenKind op) {
+        if (is_float(t)) {
+            double a = L.f;
+            double b = R.f;
+            if (op == TokenKind::Plus) {
+                return v_float(t, a + b);
+            }
+            if (op == TokenKind::Minus) {
+                return v_float(t, a - b);
+            }
+            if (op == TokenKind::Star) {
+                return v_float(t, a * b);
+            }
+            if (op == TokenKind::Slash) {
+                return v_float(t, a / b);
+            }
+            fail("unsupported float operator");
+            return v_unit();
+        }
+        int bits = int_bits(t);
+        bool sig = is_signed_int(t);
+        if (op == TokenKind::Amp) {
+            return v_int(t, as_u(L, t) & as_u(R, t));
+        }
+        if (op == TokenKind::Pipe) {
+            return v_int(t, as_u(L, t) | as_u(R, t));
+        }
+        if (op == TokenKind::Caret) {
+            return v_int(t, as_u(L, t) ^ as_u(R, t));
+        }
+        if (op == TokenKind::LtLt || op == TokenKind::GtGt) {
+            uint64_t n = as_u(R, R.type != nullptr ? R.type : t);
+            if (n >= static_cast<uint64_t>(bits)) {
+                fail("shift count out of range");
+                return v_unit();
+            }
+            if (op == TokenKind::LtLt) {
+                return v_int(t, as_u(L, t) << n);
+            }
+            if (sig) {
+                return v_int(t, static_cast<uint64_t>(as_s(L, t) >> n));
+            }
+            return v_int(t, as_u(L, t) >> n);
+        }
+        if (sig) {
+            int64_t a = as_s(L, t);
+            int64_t b = as_s(R, t);
+            int64_t r = 0;
+            if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
+                bool ov = false;
+                if (op == TokenKind::Plus) {
+                    ov = __builtin_add_overflow(a, b, &r);
+                } else if (op == TokenKind::Minus) {
+                    ov = __builtin_sub_overflow(a, b, &r);
+                } else {
+                    ov = __builtin_mul_overflow(a, b, &r);
+                }
+                if (ov || r < int_min(t) || r > int_max_signed(bits)) {
+                    fail("integer overflow");
+                    return v_unit();
+                }
+                return v_int(t, static_cast<uint64_t>(r));
+            }
+            if (op == TokenKind::PlusPercent) {
+                return v_int(t, static_cast<uint64_t>(a) + static_cast<uint64_t>(b));
+            }
+            if (op == TokenKind::MinusPercent) {
+                return v_int(t, static_cast<uint64_t>(a) - static_cast<uint64_t>(b));
+            }
+            if (op == TokenKind::StarPercent) {
+                return v_int(t, static_cast<uint64_t>(a) * static_cast<uint64_t>(b));
+            }
+            if (op == TokenKind::PlusPipe) {
+                if (__builtin_add_overflow(a, b, &r) || r < int_min(t) || r > int_max_signed(bits)) {
+                    r = a < 0 ? int_min(t) : int_max_signed(bits);
+                }
+                return v_int(t, static_cast<uint64_t>(r));
+            }
+            if (op == TokenKind::MinusPipe) {
+                if (__builtin_sub_overflow(a, b, &r) || r < int_min(t) || r > int_max_signed(bits)) {
+                    r = a < 0 ? int_min(t) : int_max_signed(bits);
+                }
+                return v_int(t, static_cast<uint64_t>(r));
+            }
+            if (op == TokenKind::StarPipe) {
+                if (__builtin_mul_overflow(a, b, &r) || r < int_min(t) || r > int_max_signed(bits)) {
+                    r = ((a < 0) != (b < 0)) ? int_min(t) : int_max_signed(bits);
+                }
+                return v_int(t, static_cast<uint64_t>(r));
+            }
+            if (op == TokenKind::SlashSlash || op == TokenKind::Percent) {
+                if (b == 0) {
+                    fail("division by zero");
+                    return v_unit();
+                }
+                if (a == int_min(t) && b == -1) {
+                    fail("integer overflow");
+                    return v_unit();
+                }
+                r = op == TokenKind::SlashSlash ? a / b : a % b;
+                return v_int(t, static_cast<uint64_t>(r));
+            }
+        } else {
+            uint64_t a = as_u(L, t);
+            uint64_t b = as_u(R, t);
+            uint64_t maxv = int_max_unsigned(bits);
+            if (op == TokenKind::Plus) {
+                if (bits >= 64 ? a > UINT64_MAX - b : a + b > maxv) {
+                    fail("integer overflow");
+                    return v_unit();
+                }
+                return v_int(t, a + b);
+            }
+            if (op == TokenKind::Minus) {
+                if (a < b) {
+                    fail("integer overflow");
+                    return v_unit();
+                }
+                return v_int(t, a - b);
+            }
+            if (op == TokenKind::Star) {
+                if (b != 0 && a > maxv / b) {
+                    fail("integer overflow");
+                    return v_unit();
+                }
+                return v_int(t, a * b);
+            }
+            if (op == TokenKind::PlusPercent) {
+                return v_int(t, a + b);
+            }
+            if (op == TokenKind::MinusPercent) {
+                return v_int(t, a - b);
+            }
+            if (op == TokenKind::StarPercent) {
+                return v_int(t, a * b);
+            }
+            if (op == TokenKind::PlusPipe) {
+                if (bits >= 64 ? a > UINT64_MAX - b : a + b > maxv) {
+                    return v_int(t, maxv);
+                }
+                return v_int(t, a + b);
+            }
+            if (op == TokenKind::MinusPipe) {
+                return v_int(t, a < b ? 0 : a - b);
+            }
+            if (op == TokenKind::StarPipe) {
+                if (b != 0 && a > maxv / b) {
+                    return v_int(t, maxv);
+                }
+                return v_int(t, a * b);
+            }
+            if (op == TokenKind::SlashSlash || op == TokenKind::Percent) {
+                if (b == 0) {
+                    fail("division by zero");
+                    return v_unit();
+                }
+                return v_int(t, op == TokenKind::SlashSlash ? a / b : a % b);
+            }
+        }
+        fail("unsupported binary operator");
         return v_unit();
     }
 
@@ -287,69 +588,112 @@ struct Interp {
             return v_unit();
         }
         TokenKind op = n->op;
-        if (op == TokenKind::EqEq) {
+        Type* t = n->ty;
+        if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+            bool eq = false;
             if (L.kind == TypeKind::Bool) {
-                return v_bool(L.b == R.b);
+                eq = L.b == R.b;
+            } else if (L.kind == TypeKind::Str) {
+                eq = show(L) == show(R);
+            } else if (is_float(L.type)) {
+                eq = L.f == R.f;
+            } else {
+                eq = as_u(L, L.type) == as_u(R, R.type);
             }
-            return v_bool(L.i == R.i);
+            return v_bool(op == TokenKind::EqEq ? eq : !eq);
         }
-        if (op == TokenKind::NotEq) {
-            if (L.kind == TypeKind::Bool) {
-                return v_bool(L.b != R.b);
-            }
-            return v_bool(L.i != R.i);
+        if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
+            op == TokenKind::GtEq) {
+            Type* ct = L.type != nullptr ? L.type : R.type;
+            return v_bool(cmp_num(L, R, ct, op));
         }
-        if (op == TokenKind::Lt) {
-            return v_bool(L.i < R.i);
-        }
-        if (op == TokenKind::LtEq) {
-            return v_bool(L.i <= R.i);
-        }
-        if (op == TokenKind::Gt) {
-            return v_bool(L.i > R.i);
-        }
-        if (op == TokenKind::GtEq) {
-            return v_bool(L.i >= R.i);
-        }
+        return arith(t != nullptr ? t : L.type, L, R, op);
+    }
 
-        int64_t r = 0;
-        if (op == TokenKind::Plus) {
-            if (__builtin_add_overflow(L.i, R.i, &r)) {
-                fail("integer overflow");
-                return v_unit();
-            }
-            return v_i64(r);
+    Value eval_conv(Node* srcn, Type* dest, bool checked) {
+        Value x = eval(srcn);
+        if (trapped || dest == nullptr) {
+            return x;
         }
-        if (op == TokenKind::Minus) {
-            if (__builtin_sub_overflow(L.i, R.i, &r)) {
-                fail("integer overflow");
-                return v_unit();
+        Type* src = srcn != nullptr ? srcn->ty : x.type;
+        if (is_float(src) && is_int(dest)) {
+            double a = x.f;
+            int bits = int_bits(dest);
+            if (checked) {
+                if (a != a || a < static_cast<double>(int_min(dest)) ||
+                    (is_signed_int(dest)
+                         ? a > static_cast<double>(int_max_signed(bits))
+                         : a < 0 || a > static_cast<double>(int_max_unsigned(bits)))) {
+                    fail("integer conversion out of range");
+                    return v_unit();
+                }
+                if (is_signed_int(dest)) {
+                    return v_int(dest, static_cast<uint64_t>(static_cast<int64_t>(a)));
+                }
+                return v_int(dest, static_cast<uint64_t>(a));
             }
-            return v_i64(r);
+            if (a != a) {
+                return v_int(dest, 0);
+            }
+            if (is_signed_int(dest)) {
+                if (a <= static_cast<double>(int_min(dest))) {
+                    return v_int(dest, static_cast<uint64_t>(int_min(dest)));
+                }
+                if (a >= static_cast<double>(int_max_signed(bits))) {
+                    return v_int(dest, static_cast<uint64_t>(int_max_signed(bits)));
+                }
+                return v_int(dest, static_cast<uint64_t>(static_cast<int64_t>(a)));
+            }
+            if (a < 0) {
+                return v_int(dest, 0);
+            }
+            if (a >= static_cast<double>(int_max_unsigned(bits))) {
+                return v_int(dest, int_max_unsigned(bits));
+            }
+            return v_int(dest, static_cast<uint64_t>(a));
         }
-        if (op == TokenKind::Star) {
-            if (__builtin_mul_overflow(L.i, R.i, &r)) {
-                fail("integer overflow");
-                return v_unit();
-            }
-            return v_i64(r);
+        if (is_int(src) && is_float(dest)) {
+            double a = is_signed_int(src) ? static_cast<double>(as_s(x, src))
+                                          : static_cast<double>(as_u(x, src));
+            return v_float(dest, a);
         }
-        if (op == TokenKind::SlashSlash || op == TokenKind::Percent) {
-            if (R.i == 0) {
-                fail("division by zero");
-                return v_unit();
-            }
-            if (L.i == k_i64_min && R.i == -1) {
-                fail("integer overflow");
-                return v_unit();
-            }
-            if (op == TokenKind::SlashSlash) {
-                return v_i64(L.i / R.i);
-            }
-            return v_i64(L.i % R.i);
+        if (is_float(src) && is_float(dest)) {
+            return v_float(dest, x.f);
         }
-        fail("unsupported binary operator");
-        return v_unit();
+        if (is_int(src) && is_int(dest)) {
+            int64_t s = is_signed_int(src) ? as_s(x, src) : static_cast<int64_t>(as_u(x, src));
+            int to_bits = int_bits(dest);
+            if (checked) {
+                if (is_signed_int(dest)) {
+                    if (s < int_min(dest) || s > int_max_signed(to_bits)) {
+                        fail("integer conversion out of range");
+                        return v_unit();
+                    }
+                    return v_int(dest, static_cast<uint64_t>(s));
+                }
+                if (s < 0 || static_cast<uint64_t>(s) > int_max_unsigned(to_bits)) {
+                    fail("integer conversion out of range");
+                    return v_unit();
+                }
+                return v_int(dest, static_cast<uint64_t>(s));
+            }
+            return v_int(dest, static_cast<uint64_t>(s));
+        }
+        if ((src != nullptr && src->kind == TypeKind::Char) && is_int(dest)) {
+            if (checked && is_signed_int(dest) &&
+                x.u > static_cast<uint64_t>(int_max_signed(int_bits(dest)))) {
+                fail("integer conversion out of range");
+                return v_unit();
+            }
+            if (checked && is_unsigned_int(dest) && x.u > int_max_unsigned(int_bits(dest))) {
+                fail("integer conversion out of range");
+                return v_unit();
+            }
+            return v_int(dest, x.u);
+        }
+        x.type = dest;
+        x.kind = dest->kind;
+        return x;
     }
 
     Node* find_func(string_view name) {
@@ -379,6 +723,10 @@ struct Interp {
             Slot s;
             s.name = p->text;
             s.value = eval(a->left);
+            if (p->ty != nullptr) {
+                s.value.type = p->ty;
+                s.value.kind = p->ty->kind;
+            }
             if (trapped) {
                 return v_unit();
             }
@@ -422,6 +770,21 @@ struct Interp {
             Value a = eval(n->body != nullptr ? n->body->left : nullptr);
             fail(show(a));
             return v_unit();
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name &&
+            (callee->text == "sizeof" || callee->text == "alignof")) {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            Type* t = arg != nullptr ? arg->ty : nullptr;
+            uint64_t v = callee->text == "sizeof" ? static_cast<uint64_t>(type_size(t))
+                                                  : static_cast<uint64_t>(type_align(t));
+            return v_int(n->ty, v);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && n->ty != nullptr &&
+            n->resolved == nullptr && n->body != nullptr) {
+            Type* dest = n->ty;
+            if (is_int(dest) || is_float(dest) || dest->kind == TypeKind::Char) {
+                return eval_conv(n->body->left, dest, true);
+            }
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
             return eval_ctor(n, n->resolved);
@@ -489,6 +852,10 @@ struct Interp {
             } else {
                 s.value = v_zero(n->ty);
             }
+            if (n->ty != nullptr) {
+                s.value.type = n->ty;
+                s.value.kind = n->ty->kind;
+            }
             if (!frames.empty()) {
                 frames.back().slots.push_back(s);
             }
@@ -501,50 +868,56 @@ struct Interp {
                 return;
             }
             if (n->op == TokenKind::Eq) {
+                Type* dt = n->left != nullptr ? n->left->ty : dst->type;
+                src.kind = dst->kind;
+                src.type = dt != nullptr ? dt : dst->type;
+                if (dt != nullptr) {
+                    src.kind = dt->kind;
+                }
                 *dst = src;
                 break;
             }
-            int64_t r = 0;
+            TokenKind op = TokenKind::Plus;
             if (n->op == TokenKind::PlusEq) {
-                if (__builtin_add_overflow(dst->i, src.i, &r)) {
-                    fail("integer overflow");
-                    return;
-                }
+                op = TokenKind::Plus;
             } else if (n->op == TokenKind::MinusEq) {
-                if (__builtin_sub_overflow(dst->i, src.i, &r)) {
-                    fail("integer overflow");
-                    return;
-                }
+                op = TokenKind::Minus;
             } else if (n->op == TokenKind::StarEq) {
-                if (__builtin_mul_overflow(dst->i, src.i, &r)) {
-                    fail("integer overflow");
-                    return;
-                }
+                op = TokenKind::Star;
             } else if (n->op == TokenKind::SlashSlashEq) {
-                if (src.i == 0) {
-                    fail("division by zero");
-                    return;
-                }
-                if (dst->i == k_i64_min && src.i == -1) {
-                    fail("integer overflow");
-                    return;
-                }
-                r = dst->i / src.i;
+                op = TokenKind::SlashSlash;
             } else if (n->op == TokenKind::PercentEq) {
-                if (src.i == 0) {
-                    fail("division by zero");
-                    return;
-                }
-                if (dst->i == k_i64_min && src.i == -1) {
-                    fail("integer overflow");
-                    return;
-                }
-                r = dst->i % src.i;
+                op = TokenKind::Percent;
+            } else if (n->op == TokenKind::PlusPercentEq) {
+                op = TokenKind::PlusPercent;
+            } else if (n->op == TokenKind::MinusPercentEq) {
+                op = TokenKind::MinusPercent;
+            } else if (n->op == TokenKind::StarPercentEq) {
+                op = TokenKind::StarPercent;
+            } else if (n->op == TokenKind::PlusPipeEq) {
+                op = TokenKind::PlusPipe;
+            } else if (n->op == TokenKind::MinusPipeEq) {
+                op = TokenKind::MinusPipe;
+            } else if (n->op == TokenKind::StarPipeEq) {
+                op = TokenKind::StarPipe;
+            } else if (n->op == TokenKind::AmpEq) {
+                op = TokenKind::Amp;
+            } else if (n->op == TokenKind::PipeEq) {
+                op = TokenKind::Pipe;
+            } else if (n->op == TokenKind::CaretEq) {
+                op = TokenKind::Caret;
+            } else if (n->op == TokenKind::LtLtEq) {
+                op = TokenKind::LtLt;
+            } else if (n->op == TokenKind::GtGtEq) {
+                op = TokenKind::GtGt;
             } else {
                 fail("unsupported assignment");
                 return;
             }
-            dst->i = r;
+            Value r = arith(n->left->ty, *dst, src, op);
+            if (!trapped) {
+                *dst = r;
+            }
             break;
         }
         case NodeKind::If: {
@@ -607,9 +980,9 @@ EvalResult eval_module(Node* module) {
         return result;
     }
     result.ok = true;
-    if (v.kind == TypeKind::I64) {
+    if (v.kind == TypeKind::I64 || (v.type != nullptr && v.type->kind == TypeKind::I64)) {
         result.has_answer = true;
-        result.answer = v.i;
+        result.answer = as_s(v, v.type);
     }
     return result;
 }

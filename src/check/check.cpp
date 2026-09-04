@@ -26,8 +26,21 @@ struct Checker {
     Type* ty_never = nullptr;
     Type* ty_unit = nullptr;
     Type* ty_bool = nullptr;
+    Type* ty_i8 = nullptr;
+    Type* ty_i16 = nullptr;
+    Type* ty_i32 = nullptr;
     Type* ty_i64 = nullptr;
+    Type* ty_isize = nullptr;
+    Type* ty_u8 = nullptr;
+    Type* ty_u16 = nullptr;
+    Type* ty_u32 = nullptr;
+    Type* ty_u64 = nullptr;
+    Type* ty_usize = nullptr;
+    Type* ty_f32 = nullptr;
+    Type* ty_f64 = nullptr;
+    Type* ty_char = nullptr;
     Type* ty_str = nullptr;
+    Type* ty_untyped = nullptr;
     vector<Binding> scope;
     int depth = 0;
     Node* current_fn = nullptr;
@@ -40,6 +53,63 @@ struct Checker {
     Type* t_bool() { return ty_bool; }
     Type* t_i64() { return ty_i64; }
     Type* t_str() { return ty_str; }
+    Type* t_usize() { return ty_usize; }
+    Type* t_untyped() { return ty_untyped; }
+
+    Type* named_scalar(string_view name) {
+        if (name == "i8") {
+            return ty_i8;
+        }
+        if (name == "i16") {
+            return ty_i16;
+        }
+        if (name == "i32") {
+            return ty_i32;
+        }
+        if (name == "i64") {
+            return ty_i64;
+        }
+        if (name == "isize") {
+            return ty_isize;
+        }
+        if (name == "u8") {
+            return ty_u8;
+        }
+        if (name == "u16") {
+            return ty_u16;
+        }
+        if (name == "u32") {
+            return ty_u32;
+        }
+        if (name == "u64") {
+            return ty_u64;
+        }
+        if (name == "usize") {
+            return ty_usize;
+        }
+        if (name == "f32") {
+            return ty_f32;
+        }
+        if (name == "f64") {
+            return ty_f64;
+        }
+        if (name == "char") {
+            return ty_char;
+        }
+        if (name == "bool") {
+            return ty_bool;
+        }
+        if (name == "unit") {
+            return ty_unit;
+        }
+        if (name == "never") {
+            return ty_never;
+        }
+        if (name == "str") {
+            return ty_str;
+        }
+        return nullptr;
+    }
 
     Type* make_type(TypeKind kind, string_view name) {
         Type* t = arena->make<Type>();
@@ -93,7 +163,7 @@ struct Checker {
         return name == "print" || name == "assert" || name == "discard" || name == "error" ||
                name == "trap" || name == "hash" || name == "format" || name == "location" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
-               name == "i64" || name == "bool" || name == "unit" || name == "str";
+               named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt";
     }
 
     Type* resolve_type(Node* n) {
@@ -112,20 +182,14 @@ struct Checker {
             n->ty = resolve_type(n->left);
             return n->ty;
         }
-        if (n->text == "i64") {
-            n->ty = t_i64();
+        if (n->text == "f16") {
+            fail_n(n, "lucb.check.unsupported", "`f16` is not in this slice");
+            n->ty = t_error();
             return n->ty;
         }
-        if (n->text == "bool") {
-            n->ty = t_bool();
-            return n->ty;
-        }
-        if (n->text == "unit") {
-            n->ty = t_unit();
-            return n->ty;
-        }
-        if (n->text == "str") {
-            n->ty = t_str();
+        Type* named = named_scalar(n->text);
+        if (named != nullptr) {
+            n->ty = named;
             return n->ty;
         }
         Binding* b = lookup(n->text);
@@ -151,18 +215,14 @@ struct Checker {
         return nullptr;
     }
 
-    Type* check_expr(Node* n) {
+    Type* check_expr(Node* n, Type* expected = nullptr) {
         if (n == nullptr) {
             return t_error();
-        }
-        if (n->ty != nullptr && n->kind != NodeKind::Name && n->kind != NodeKind::Call &&
-            n->kind != NodeKind::Member) {
-            return n->ty;
         }
         Type* t = t_error();
         switch (n->kind) {
         case NodeKind::Literal:
-            t = check_literal(n);
+            t = check_literal(n, expected);
             break;
         case NodeKind::Name:
             t = check_name(n);
@@ -171,27 +231,30 @@ struct Checker {
             t = check_self(n);
             break;
         case NodeKind::Unary:
-            t = check_unary(n);
+            t = check_unary(n, expected);
             break;
         case NodeKind::Binary:
-            t = check_binary(n);
+            t = check_binary(n, expected);
             break;
         case NodeKind::Call:
-            t = check_call(n);
+            t = check_call(n, expected);
             break;
         case NodeKind::Member:
             t = check_member(n, false);
             break;
         case NodeKind::Group:
-            t = check_expr(n->left);
+            t = check_expr(n->left, expected);
             break;
         case NodeKind::Unit:
             t = t_unit();
             break;
+        case NodeKind::Cast:
+            t = check_cast(n, false);
+            break;
         case NodeKind::Conditional: {
-            Type* tv = check_expr(n->left);
-            Type* tc = check_expr(n->type);
-            Type* ta = check_expr(n->right);
+            Type* tc = check_expr(n->type, t_bool());
+            Type* tv = check_expr(n->left, expected);
+            Type* ta = check_expr(n->right, expected);
             if (!type_eq(tc, t_bool())) {
                 fail_n(n, "lucb.check.type", "a condition must be `bool`");
             }
@@ -206,41 +269,158 @@ struct Checker {
             t = t_error();
             break;
         }
+        t = coerce(n, t, expected);
         n->ty = t;
         return t;
     }
 
-    Type* check_literal(Node* n) {
+    bool int_fits(uint64_t mag, bool neg, Type* dest) {
+        if (dest == nullptr || !is_int(dest)) {
+            return false;
+        }
+        int bits = int_bits(dest);
+        if (is_unsigned_int(dest)) {
+            if (neg) {
+                return mag == 0;
+            }
+            return mag <= int_max_unsigned(bits);
+        }
+        if (!neg) {
+            return mag <= static_cast<uint64_t>(int_max_signed(bits));
+        }
+        uint64_t limit = static_cast<uint64_t>(int_max_signed(bits)) + 1;
+        return mag <= limit;
+    }
+
+    Type* coerce(Node* n, Type* got, Type* expected) {
+        if (got == nullptr) {
+            return t_error();
+        }
+        if (got->kind == TypeKind::UntypedInt) {
+            if (expected == nullptr) {
+                return t_untyped();
+            }
+            Type* dest = is_int(expected) ? expected : t_i64();
+            ParsedInt p = parse_int_literal(n->text);
+            if (!p.ok) {
+                fail_n(n, "lucb.check.number", "invalid integer literal");
+                return t_error();
+            }
+            if (is_int(expected) && !int_fits(p.value, false, dest)) {
+                fail_n(n, "lucb.check.number",
+                       "integer literal does not fit in `" + type_name(dest) + "`");
+                return t_error();
+            }
+            if (!is_int(expected)) {
+                fail_n(n, "lucb.check.type",
+                       "expected `" + type_name(expected) + "`, got an integer literal");
+                return t_error();
+            }
+            return dest;
+        }
+        if (expected == nullptr) {
+            return got;
+        }
+        if (type_eq(got, expected) || can_widen(got, expected)) {
+            return expected;
+        }
+        if (got->kind == TypeKind::Char && expected->kind == TypeKind::U8 &&
+            n->kind == NodeKind::Literal) {
+            uint32_t cp = 0;
+            if (parse_char_literal(n->text, &cp) && cp <= 127) {
+                return expected;
+            }
+        }
+        fail_n(n, "lucb.check.type",
+               "expected `" + type_name(expected) + "`, got `" + type_name(got) + "`");
+        return t_error();
+    }
+
+    Type* unify_int(Type* a, Type* b) {
+        if (a == nullptr || b == nullptr) {
+            return t_error();
+        }
+        if (a->kind == TypeKind::UntypedInt) {
+            return b->kind == TypeKind::UntypedInt ? t_i64() : b;
+        }
+        if (b->kind == TypeKind::UntypedInt) {
+            return a;
+        }
+        if (type_eq(a, b)) {
+            return a;
+        }
+        if (can_widen(a, b)) {
+            return b;
+        }
+        if (can_widen(b, a)) {
+            return a;
+        }
+        return nullptr;
+    }
+
+    Type* check_literal(Node* n, Type* expected) {
         if (n->op == TokenKind::KwTrue || n->op == TokenKind::KwFalse) {
             return t_bool();
         }
         if (n->op == TokenKind::StringLit) {
             return t_str();
         }
+        if (n->op == TokenKind::CharLit) {
+            uint32_t cp = 0;
+            if (!parse_char_literal(n->text, &cp)) {
+                fail_n(n, "lucb.check.number", "invalid character literal");
+                return t_error();
+            }
+            if (expected != nullptr && expected->kind == TypeKind::U8 && cp <= 127) {
+                return ty_u8;
+            }
+            return ty_char;
+        }
         if (n->op == TokenKind::IntLit) {
-            int64_t value = 0;
-            if (!parse_i64_literal(n->text, &value)) {
-                fail_n(n, "lucb.check.number", "integer literal does not fit in `i64`");
+            ParsedInt p = parse_int_literal(n->text);
+            if (!p.ok) {
+                fail_n(n, "lucb.check.number", "invalid integer literal");
+                return t_error();
             }
-            if (n->text.size() >= 2) {
-                char last = n->text[n->text.size() - 1];
-                if (last >= 'a' && last <= 'z' && n->text.find("i64") == string_view::npos &&
-                    n->text.find("u64") == string_view::npos) {
-                    // allow unsuffixed; reject u8/i32 for M3
-                    size_t k = n->text.size();
-                    while (k > 0 && n->text[k - 1] >= 'a' && n->text[k - 1] <= 'z') {
-                        k--;
-                    }
-                    while (k > 0 && n->text[k - 1] >= '0' && n->text[k - 1] <= '9') {
-                        k--;
-                    }
-                    if (k < n->text.size() && n->text.substr(k) != "i64") {
-                        fail_n(n, "lucb.check.unsupported",
-                               "only unsuffixed and `i64` integer literals are in the scalar core");
-                    }
+            if (!p.suffix.empty()) {
+                Type* dest = named_scalar(p.suffix);
+                if (dest == nullptr || !is_int(dest)) {
+                    fail_n(n, "lucb.check.number", "unknown integer suffix");
+                    return t_error();
                 }
+                if (!int_fits(p.value, false, dest)) {
+                    fail_n(n, "lucb.check.number",
+                           "integer literal does not fit in `" + type_name(dest) + "`");
+                    return t_error();
+                }
+                return dest;
             }
-            return t_i64();
+            if (expected != nullptr && is_int(expected)) {
+                return t_untyped();
+            }
+            return t_untyped();
+        }
+        if (n->op == TokenKind::FloatLit) {
+            ParsedFloat p = parse_float_literal(n->text);
+            if (!p.ok) {
+                fail_n(n, "lucb.check.number", "invalid float literal");
+                return t_error();
+            }
+            if (p.suffix == "f16") {
+                fail_n(n, "lucb.check.unsupported", "`f16` is not in this slice");
+                return t_error();
+            }
+            if (p.suffix == "f32") {
+                return ty_f32;
+            }
+            if (p.suffix == "f64" || p.suffix.empty()) {
+                if (expected != nullptr && expected->kind == TypeKind::F32 && p.suffix.empty()) {
+                    return ty_f32;
+                }
+                return ty_f64;
+            }
+            fail_n(n, "lucb.check.number", "unknown float suffix");
+            return t_error();
         }
         fail_n(n, "lucb.check.unsupported", "this literal is not in the scalar core yet");
         return t_error();
@@ -266,35 +446,123 @@ struct Checker {
         return b->type;
     }
 
-    Type* check_unary(Node* n) {
-        Type* inner = check_expr(n->left);
+    Type* check_unary(Node* n, Type* expected) {
         if (n->op == TokenKind::KwNot) {
+            Type* inner = check_expr(n->left, t_bool());
             if (!type_eq(inner, t_bool())) {
                 fail_n(n, "lucb.check.type", "`not` requires `bool`");
             }
             return t_bool();
         }
-        if (n->op == TokenKind::Minus || n->op == TokenKind::Plus) {
-            if (!type_eq(inner, t_i64())) {
-                fail_n(n, "lucb.check.type", "unary `+`/`-` requires `i64`");
+        if (n->op == TokenKind::Tilde) {
+            Type* inner = check_expr(n->left, expected);
+            if (!is_int(inner)) {
+                fail_n(n, "lucb.check.type", "`~` requires an integer");
+                return t_error();
             }
-            return t_i64();
+            return inner;
+        }
+        if (n->op == TokenKind::MinusPercent) {
+            Type* inner = check_expr(n->left, expected);
+            if (!is_int(inner)) {
+                fail_n(n, "lucb.check.type", "wrapping negate requires an integer");
+                return t_error();
+            }
+            return inner;
+        }
+        if (n->op == TokenKind::Plus) {
+            Type* inner = check_expr(n->left, expected);
+            if (!is_numeric(inner) && inner->kind != TypeKind::UntypedInt) {
+                fail_n(n, "lucb.check.type", "unary `+` requires a number");
+                return t_error();
+            }
+            return inner;
+        }
+        if (n->op == TokenKind::Minus) {
+            Type* dest = expected;
+            if (dest == nullptr || (!is_signed_int(dest) && !is_float(dest))) {
+                dest = t_i64();
+            }
+            Type* inner = check_expr(n->left, nullptr);
+            if (inner->kind == TypeKind::UntypedInt && n->left != nullptr &&
+                n->left->kind == NodeKind::Literal) {
+                ParsedInt p = parse_int_literal(n->left->text);
+                Type* want = is_signed_int(dest) ? dest : t_i64();
+                if (p.ok && p.suffix.empty() &&
+                    p.value == static_cast<uint64_t>(int_max_signed(int_bits(want))) + 1) {
+                    n->left->ty = want;
+                    return want;
+                }
+                inner = coerce(n->left, inner, want);
+                n->left->ty = inner;
+            }
+            if (is_unsigned_int(inner)) {
+                fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
+                return t_error();
+            }
+            if (!is_signed_int(inner) && !is_float(inner)) {
+                fail_n(n, "lucb.check.type", "unary `-` requires a signed number");
+                return t_error();
+            }
+            return inner;
+        }
+        if (n->op == TokenKind::Star || n->op == TokenKind::Amp) {
+            fail_n(n, "lucb.check.unsupported", "pointers are not in this slice");
+            return t_error();
         }
         fail_n(n, "lucb.check.unsupported", "this operator is not in the scalar core yet");
         return t_error();
     }
 
-    Type* check_binary(Node* n) {
-        Type* L = check_expr(n->left);
-        Type* R = check_expr(n->right);
+    bool is_arith(TokenKind op) {
+        return op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star ||
+               op == TokenKind::SlashSlash || op == TokenKind::Percent ||
+               op == TokenKind::PlusPercent || op == TokenKind::MinusPercent ||
+               op == TokenKind::StarPercent || op == TokenKind::PlusPipe ||
+               op == TokenKind::MinusPipe || op == TokenKind::StarPipe ||
+               op == TokenKind::Slash;
+    }
+
+    bool is_bit(TokenKind op) {
+        return op == TokenKind::Amp || op == TokenKind::Pipe || op == TokenKind::Caret ||
+               op == TokenKind::LtLt || op == TokenKind::GtGt;
+    }
+
+    Type* check_binary(Node* n, Type* expected) {
         TokenKind op = n->op;
+        if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+            op == TokenKind::StarQuestion) {
+            fail_n(n, "lucb.check.unsupported", "`+?` needs optionals, which are not in this slice");
+            return t_error();
+        }
         if (op == TokenKind::KwAnd || op == TokenKind::KwOr) {
+            Type* L = check_expr(n->left, t_bool());
+            Type* R = check_expr(n->right, t_bool());
             if (!type_eq(L, t_bool()) || !type_eq(R, t_bool())) {
                 fail_n(n, "lucb.check.type", "`and`/`or` require `bool`");
             }
             return t_bool();
         }
+        Type* L = check_expr(n->left, nullptr);
+        Type* R = check_expr(n->right, nullptr);
+        if (L->kind == TypeKind::UntypedInt && R->kind == TypeKind::UntypedInt &&
+            expected != nullptr && is_int(expected)) {
+            L = coerce(n->left, L, expected);
+            n->left->ty = L;
+            R = coerce(n->right, R, expected);
+            n->right->ty = R;
+        }
         if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+            Type* u = unify_int(L, R);
+            if (u != nullptr && is_int(u)) {
+                if (L->kind == TypeKind::UntypedInt) {
+                    n->left->ty = coerce(n->left, L, u);
+                }
+                if (R->kind == TypeKind::UntypedInt) {
+                    n->right->ty = coerce(n->right, R, u);
+                }
+                return t_bool();
+            }
             if (!type_eq(L, R)) {
                 fail_n(n, "lucb.check.type", "operands of `==` must have the same type");
             }
@@ -302,17 +570,52 @@ struct Checker {
         }
         if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
             op == TokenKind::GtEq) {
-            if (!type_eq(L, t_i64()) || !type_eq(R, t_i64())) {
-                fail_n(n, "lucb.check.type", "ordered comparison requires `i64`");
+            Type* u = unify_int(L, R);
+            if (u == nullptr || (!is_int(u) && !is_float(u))) {
+                if (is_float(L) && is_float(R)) {
+                    return t_bool();
+                }
+                fail_n(n, "lucb.check.type", "ordered comparison requires a number");
+                return t_bool();
+            }
+            if (L->kind == TypeKind::UntypedInt) {
+                n->left->ty = coerce(n->left, L, u);
+            }
+            if (R->kind == TypeKind::UntypedInt) {
+                n->right->ty = coerce(n->right, R, u);
             }
             return t_bool();
         }
-        if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star ||
-            op == TokenKind::SlashSlash || op == TokenKind::Percent) {
-            if (!type_eq(L, t_i64()) || !type_eq(R, t_i64())) {
-                fail_n(n, "lucb.check.type", "arithmetic requires `i64`");
+        if (op == TokenKind::Slash) {
+            if (!is_float(L) || !is_float(R)) {
+                fail_n(n, "lucb.check.type", "`/` requires float operands");
+                return t_error();
             }
-            return t_i64();
+            return float_bits(L) >= float_bits(R) ? L : R;
+        }
+        if (is_arith(op) || is_bit(op)) {
+            Type* u = unify_int(L, R);
+            if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
+                if (is_float(L) && is_float(R)) {
+                    return float_bits(L) >= float_bits(R) ? L : R;
+                }
+            }
+            if (u == nullptr || !is_int(u)) {
+                fail_n(n, "lucb.check.type", "arithmetic requires integers of one signedness");
+                return t_error();
+            }
+            if (L->kind == TypeKind::UntypedInt) {
+                n->left->ty = coerce(n->left, L, u);
+            }
+            if (R->kind == TypeKind::UntypedInt) {
+                n->right->ty = coerce(n->right, R, u);
+            }
+            if ((op == TokenKind::LtLt || op == TokenKind::GtGt) && is_int(R)) {
+                // shift count may be any integer; result is the left type
+                return n->left->ty != nullptr ? n->left->ty : u;
+            }
+            (void)expected;
+            return u;
         }
         fail_n(n, "lucb.check.unsupported", "this operator is not in the scalar core yet");
         return t_error();
@@ -326,7 +629,8 @@ struct Checker {
         return n;
     }
 
-    Type* check_call(Node* n) {
+    Type* check_call(Node* n, Type* expected) {
+        (void)expected;
         Node* callee = n->left;
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             return check_print(n);
@@ -334,10 +638,24 @@ struct Checker {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             return check_trap(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "sizeof") {
+            return check_sizeof(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "alignof") {
+            return check_alignof(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+            fail_n(n, "lucb.check.unsupported", "`offsetof` is not in this slice");
+            return t_error();
+        }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             return check_method_call(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name) {
+            Type* conv = named_scalar(callee->text);
+            if (conv != nullptr && lookup(callee->text) == nullptr) {
+                return check_checked_conv(n, conv);
+            }
             Binding* b = lookup(callee->text);
             if (b == nullptr) {
                 fail_n(n, "lucb.check.name", "unknown name `" + string(callee->text) + "`");
@@ -358,6 +676,124 @@ struct Checker {
         return t_error();
     }
 
+    Type* type_from_expr_or_name(Node* a) {
+        if (a == nullptr) {
+            return t_error();
+        }
+        if (a->kind == NodeKind::Name) {
+            Type* named = named_scalar(a->text);
+            if (named != nullptr && lookup(a->text) == nullptr) {
+                a->ty = named;
+                return named;
+            }
+            Binding* b = lookup(a->text);
+            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
+                a->ty = b->type;
+                a->resolved = b->decl;
+                return b->type;
+            }
+        }
+        return check_expr(a, nullptr);
+    }
+
+    Type* check_sizeof(Node* n) {
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`sizeof` takes one argument");
+            return t_usize();
+        }
+        Type* t = type_from_expr_or_name(n->body->left);
+        if (t->kind == TypeKind::Error) {
+            return t_usize();
+        }
+        n->body->left->ty = t;
+        return t_usize();
+    }
+
+    Type* check_alignof(Node* n) {
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`alignof` takes one type");
+            return t_usize();
+        }
+        Type* t = type_from_expr_or_name(n->body->left);
+        n->body->left->ty = t;
+        return t_usize();
+    }
+
+    Type* check_checked_conv(Node* n, Type* dest) {
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "a conversion takes one argument");
+            return dest;
+        }
+        Node* arg = n->body->left;
+        Type* src = check_expr(arg, nullptr);
+        if (!convert_ok(n, src, dest, true)) {
+            return t_error();
+        }
+        return dest;
+    }
+
+    Type* check_cast(Node* n, bool checked) {
+        Type* dest = resolve_type(n->type);
+        Type* src = check_expr(n->left, nullptr);
+        if (!convert_ok(n, src, dest, checked)) {
+            return t_error();
+        }
+        return dest;
+    }
+
+    bool convert_ok(Node* n, Type* src, Type* dest, bool checked) {
+        if (src == nullptr || dest == nullptr) {
+            return false;
+        }
+        Node* srcn = n->kind == NodeKind::Cast ? n->left
+                                               : (n->body != nullptr ? n->body->left : n);
+        if (src->kind == TypeKind::UntypedInt) {
+            if (checked && is_int(dest)) {
+                src = coerce(srcn, src, dest);
+            } else if (is_int(dest)) {
+                src = dest;
+            } else {
+                src = coerce(srcn, src, t_i64());
+            }
+            if (srcn != nullptr) {
+                srcn->ty = src;
+            }
+        }
+        if (type_eq(src, dest) || can_widen(src, dest)) {
+            return true;
+        }
+        if (is_int(src) && is_int(dest)) {
+            if (checked && n->kind == NodeKind::Call && n->body != nullptr &&
+                n->body->left != nullptr && n->body->left->kind == NodeKind::Literal) {
+                ParsedInt p = parse_int_literal(n->body->left->text);
+                if (p.ok && !int_fits(p.value, false, dest)) {
+                    fail_n(n, "lucb.check.number",
+                           "this conversion cannot succeed for this literal");
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (is_int(src) && is_float(dest)) {
+            return true;
+        }
+        if (is_float(src) && is_int(dest)) {
+            return true;
+        }
+        if (is_float(src) && is_float(dest)) {
+            return true;
+        }
+        if (src->kind == TypeKind::Char && is_int(dest)) {
+            return true;
+        }
+        if (is_int(src) && dest->kind == TypeKind::Char) {
+            return true;
+        }
+        fail_n(n, "lucb.check.type",
+               "cannot convert `" + type_name(src) + "` to `" + type_name(dest) + "`");
+        return false;
+    }
+
     Type* check_print(Node* n) {
         n->resolved = nullptr;
         int count = count_args(n->body);
@@ -365,9 +801,14 @@ struct Checker {
             fail_n(n, "lucb.check.call", "`print` takes one argument");
             return t_unit();
         }
-        Type* a = check_expr(n->body->left);
-        if (!type_eq(a, t_i64()) && !type_eq(a, t_bool()) && !type_eq(a, t_str())) {
-            fail_n(n, "lucb.check.type", "`print` in the scalar core takes i64, bool, or str");
+        Type* a = check_expr(n->body->left, nullptr);
+        if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+            a = coerce(n->body->left, a, t_i64());
+            n->body->left->ty = a;
+        }
+        if (!is_int(a) && !is_float(a) && a->kind != TypeKind::Bool && a->kind != TypeKind::Str &&
+            a->kind != TypeKind::Char) {
+            fail_n(n, "lucb.check.type", "`print` takes a scalar or `str`");
         }
         return t_unit();
     }
@@ -392,7 +833,6 @@ struct Checker {
             if (a->left == nullptr) {
                 continue;
             }
-            Type* at = check_expr(a->left);
             Node* field = nullptr;
             if (!a->text.empty()) {
                 field = struct_member(st, a->text, NodeKind::Field);
@@ -406,7 +846,8 @@ struct Checker {
                 continue;
             }
             a->resolved = field;
-            if (!type_eq(at, field->ty)) {
+            Type* at = check_expr(a->left, field->ty);
+            if (!type_eq(at, field->ty) && !can_widen(at, field->ty)) {
                 fail_n(a, "lucb.check.type",
                        "field `" + string(field->text) + "` has type " + type_name(field->ty));
             }
@@ -435,8 +876,8 @@ struct Checker {
                 fail_n(a, "lucb.check.call", "argument name does not match parameter `" +
                                                  string(p->text) + "`");
             }
-            Type* at = check_expr(a->left);
-            if (!type_eq(at, p->ty)) {
+            Type* at = check_expr(a->left, p->ty);
+            if (!type_eq(at, p->ty) && !can_widen(at, p->ty)) {
                 fail_n(a, "lucb.check.type",
                        "parameter `" + string(p->text) + "` has type " + type_name(p->ty));
             }
@@ -544,10 +985,14 @@ struct Checker {
                 t = resolve_type(n->type);
             }
             if (n->left != nullptr) {
-                Type* init = check_expr(n->left);
+                Type* init = check_expr(n->left, t);
                 if (t == nullptr) {
+                    if (init != nullptr && init->kind == TypeKind::UntypedInt) {
+                        init = coerce(n->left, init, t_i64());
+                        n->left->ty = init;
+                    }
                     t = init;
-                } else if (!type_eq(t, init)) {
+                } else if (!type_eq(t, init) && !can_widen(init, t)) {
                     fail_n(n, "lucb.check.type", "initialiser has type " + type_name(init) +
                                                      ", expected " + type_name(t));
                 }
@@ -562,24 +1007,27 @@ struct Checker {
             break;
         }
         case NodeKind::Assign: {
-            Type* lt = check_expr(n->left);
-            Type* rt = check_expr(n->right);
+            Type* lt = check_expr(n->left, nullptr);
             if (!is_mut_place(n->left)) {
                 fail_n(n, "lucb.check.mut", "this place is not assignable");
             }
             if (n->op == TokenKind::Eq) {
-                if (!type_eq(lt, rt)) {
+                Type* rt = check_expr(n->right, lt);
+                if (!type_eq(lt, rt) && !can_widen(rt, lt)) {
                     fail_n(n, "lucb.check.type", "assignment type mismatch");
                 }
             } else {
-                if (!type_eq(lt, t_i64()) || !type_eq(rt, t_i64())) {
-                    fail_n(n, "lucb.check.type", "compound assignment requires `i64`");
+                Type* rt = check_expr(n->right, lt);
+                if (!is_int(lt) || (!is_int(rt) && rt->kind != TypeKind::UntypedInt)) {
+                    if (!(is_float(lt) && is_float(rt))) {
+                        fail_n(n, "lucb.check.type", "compound assignment requires a number");
+                    }
                 }
             }
             break;
         }
         case NodeKind::If: {
-            Type* c = check_expr(n->left);
+            Type* c = check_expr(n->left, t_bool());
             if (n->left != nullptr && n->left->kind == NodeKind::Let) {
                 fail_n(n, "lucb.check.unsupported", "`if let` is not in the scalar core yet");
             } else if (!type_eq(c, t_bool())) {
@@ -592,7 +1040,7 @@ struct Checker {
             break;
         }
         case NodeKind::While: {
-            Type* c = check_expr(n->left);
+            Type* c = check_expr(n->left, t_bool());
             if (!type_eq(c, t_bool())) {
                 fail_n(n, "lucb.check.type", "a condition must be `bool`");
             }
@@ -602,9 +1050,9 @@ struct Checker {
         case NodeKind::Return: {
             Type* t = t_unit();
             if (n->left != nullptr) {
-                t = check_expr(n->left);
+                t = check_expr(n->left, return_type);
             }
-            if (return_type != nullptr && !type_eq(t, return_type)) {
+            if (return_type != nullptr && !type_eq(t, return_type) && !can_widen(t, return_type)) {
                 fail_n(n, "lucb.check.type", "return type is " + type_name(t) + ", expected " +
                                                  type_name(return_type));
             }
@@ -802,8 +1250,21 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_never = c.make_type(TypeKind::Never, "never");
     c.ty_unit = c.make_type(TypeKind::Unit, "unit");
     c.ty_bool = c.make_type(TypeKind::Bool, "bool");
+    c.ty_i8 = c.make_type(TypeKind::I8, "i8");
+    c.ty_i16 = c.make_type(TypeKind::I16, "i16");
+    c.ty_i32 = c.make_type(TypeKind::I32, "i32");
     c.ty_i64 = c.make_type(TypeKind::I64, "i64");
+    c.ty_isize = c.make_type(TypeKind::Isize, "isize");
+    c.ty_u8 = c.make_type(TypeKind::U8, "u8");
+    c.ty_u16 = c.make_type(TypeKind::U16, "u16");
+    c.ty_u32 = c.make_type(TypeKind::U32, "u32");
+    c.ty_u64 = c.make_type(TypeKind::U64, "u64");
+    c.ty_usize = c.make_type(TypeKind::Usize, "usize");
+    c.ty_f32 = c.make_type(TypeKind::F32, "f32");
+    c.ty_f64 = c.make_type(TypeKind::F64, "f64");
+    c.ty_char = c.make_type(TypeKind::Char, "char");
     c.ty_str = c.make_type(TypeKind::Str, "str");
+    c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.check_module(module);
     return diagnostics.empty();
 }

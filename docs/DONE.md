@@ -13,6 +13,14 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M5 — Numbers, casts, `usize`
+
+Integer widths, `usize`/`isize` as pointer width, wrapping (`+%`) and
+saturating (`+|`) arithmetic, shifts, implicit same-signedness widening,
+checked `T(x)` vs C `(T)x`, `sizeof`. `f32`/`f64` convert. Not `f16`, not
+`+?` (needs optionals). Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`,
+`tests/check_test.cpp`.
+
 ## M4 — C backend
 
 Scalar-core programs compile to C, then to a host executable with

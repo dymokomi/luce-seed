@@ -48,6 +48,7 @@ compiled binary must agree. **Landed.**
 
 All scalars of §5.1. Wrapping / saturating / checked operators. Implicit
 same-signedness widening. `T(x)` vs `(T)x`. `sizeof`. Host pointer width.
+**Landed** (`f16` and `+?` wait; `offsetof` waits on layout tests).
 
 ## M6 — Pointers, arrays, spans, `str`
 
@@ -94,5 +95,13 @@ Last. Interpreter rejects `asm` (§8.9); C backend only.
 
 ## After this compiler
 
-A new tree, `luce-base`, written in Base, compiled by `lucb`. Out of scope
-here.
+A new tree, `luce-base`, written in Base, compiled by `lucb`. Same shape as
+Zig after the C++ compiler could emit C:
+
+1. `lucb` builds `luce-base` to C, host `cc` makes a binary (`zig2`).
+2. That binary's first backend is still C, so it can rebuild itself without
+   this C++ tree.
+3. QBE or a machine backend is added in `luce-base`, not here (`zig3`).
+4. Freeze a seed (C dump or wasm) so C++ can go away (`zig1.wasm`).
+
+Out of scope in this repo. See [`DESIGN.md`](DESIGN.md).

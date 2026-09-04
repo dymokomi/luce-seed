@@ -106,3 +106,34 @@ TEST(check_no_shadow) {
     CHECK(check_has("pub func answer() -> i64:\n    let x = 1\n    let x = 2\n    return x\n",
                     "lucb.check.shadow"));
 }
+
+TEST(check_u8_literal_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n    let x: u8 = 200\n    return i64(x)\n"));
+}
+
+TEST(check_u8_literal_too_big) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x: u8 = 300\n    return 0\n",
+                    "lucb.check.number"));
+}
+
+TEST(check_unary_minus_unsigned_rejected) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x: u8 = 1\n    return i64(-x)\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_checked_conv_literal_impossible) {
+    CHECK(check_has("pub func answer() -> i64:\n    return i64(u8(300))\n", "lucb.check.number"));
+}
+
+TEST(check_c_cast_truncates) {
+    CHECK(check_ok("pub func answer() -> i64:\n    return i64((u8)300)\n"));
+}
+
+TEST(check_widen_u8_to_u32) {
+    CHECK(check_ok("pub func answer() -> i64:\n    let x: u8 = 3\n    let y: u32 = x\n    return i64(y)\n"));
+}
+
+TEST(check_no_implicit_signedness_change) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x: u8 = 3\n    let y: i64 = x\n    return y\n",
+                    "lucb.check.type"));
+}
