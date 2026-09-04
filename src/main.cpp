@@ -1,5 +1,7 @@
 // lucb: the Luce Base bootstrap compiler driver.
 
+#include "check/check.h"
+#include "interp/interp.h"
 #include "lex/lexer.h"
 #include "parse/parser.h"
 #include "source/source.h"
@@ -26,11 +28,12 @@ void print_help(ostream& out) {
         << "Usage:\n"
         << "  lucb --version\n"
         << "  lucb --help\n"
-        << "  lucb check <file.lucb>     lex and parse\n"
+        << "  lucb check <file.lucb>     lex, parse, and typecheck\n"
         << "  lucb lex   <file.lucb>     print tokens\n"
         << "  lucb dump  <file.lucb>     print the parse tree\n"
+        << "  lucb eval  <file.lucb>     run `answer()` in the interpreter\n"
         << "\n"
-        << "Not yet implemented: build, run, eval, test.\n";
+        << "Not yet implemented: build, run, test.\n";
 }
 
 string read_file(const string& path, string& error) {
@@ -91,8 +94,39 @@ int cmd_check(const string& path) {
         return print_diagnostics(diagnostics);
     }
     lucb::Arena arena;
-    lucb::parse(source, tokens, arena, diagnostics);
+    lucb::ParseResult parsed = lucb::parse(source, tokens, arena, diagnostics);
+    if (!diagnostics.empty() || parsed.module == nullptr) {
+        return print_diagnostics(diagnostics);
+    }
+    lucb::check_module(parsed.module, arena, diagnostics, path);
     return print_diagnostics(diagnostics);
+}
+
+int cmd_eval(const string& path) {
+    lucb::DiagnosticBag diagnostics;
+    lucb::Source source;
+    vector<lucb::Token> tokens;
+    if (!load_and_lex(path, source, tokens, diagnostics)) {
+        return print_diagnostics(diagnostics);
+    }
+    lucb::Arena arena;
+    lucb::ParseResult parsed = lucb::parse(source, tokens, arena, diagnostics);
+    if (!diagnostics.empty() || parsed.module == nullptr) {
+        return print_diagnostics(diagnostics);
+    }
+    if (!lucb::check_module(parsed.module, arena, diagnostics, path)) {
+        return print_diagnostics(diagnostics);
+    }
+    lucb::EvalResult result = lucb::eval_module(parsed.module);
+    cout << result.output;
+    if (result.trapped) {
+        cerr << "trap: " << result.trap << '\n';
+        return 1;
+    }
+    if (result.has_answer) {
+        cout << result.answer << '\n';
+    }
+    return result.ok ? 0 : 1;
 }
 
 int cmd_dump(const string& path) {
@@ -145,7 +179,10 @@ int main(int argc, char** argv) {
     if (arg1 == "dump") {
         return cmd_dump(path);
     }
-    if (arg1 == "build" || arg1 == "run" || arg1 == "eval" || arg1 == "test") {
+    if (arg1 == "eval") {
+        return cmd_eval(path);
+    }
+    if (arg1 == "build" || arg1 == "run" || arg1 == "test") {
         cerr << "lucb: `" << arg1 << "` is not implemented yet\n";
         return 2;
     }

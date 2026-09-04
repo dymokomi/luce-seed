@@ -12,7 +12,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 3.2 | Layout, 4-space indent, delimiter suites | done | `lex_test` layout cases |
 | 3.3 | Comments and `##` documentation | done | `lex_test` comments |
 | 3.4 | Naming (formatter/linter) | unsupported | later |
-| 3.5 | Scope | unsupported | M3 |
+| 3.5 | Scope, no shadowing | partial | `check_no_shadow`; modules later |
 | 3.6 | Reserved words; `class`/`spawn` refused | done | `lex_test` keywords, `parse_class_belongs_to_full_luce` |
 | 4.1 | `true` `false` `none` | done | `lex_test` keywords |
 | 4.2 | Integer literals | done | `lex_test` numbers |
@@ -30,4 +30,11 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 16 | Imports, `test` | partial | `parse_import`, `parse_test_declaration` |
 | 17 | `extern func` | partial | `parse_extern_func` |
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
-| 6, 11–12, 15, 18–20, 22–24 | Semantics, memory, C ABI, examples | unsupported | M3–M14 |
+| 6.1 | `let`/`var`, zero values for i64/bool | partial | `eval_zero_var`; other types later |
+| 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
+| 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var` |
+| 7.2 | Checked `+ - *`, truncating `//` `%` | partial | `eval_arithmetic`, overflow/div0 traps; wrapping ops later |
+| 7.3 | `and`/`or`/`not`, no chaining | partial | `eval_bool_and_or`; parse rejects chaining |
+| 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `check_explicit_self_rejected` |
+| 11.5 | Traps | partial | overflow, division by zero, `trap()` |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M4–M14 |

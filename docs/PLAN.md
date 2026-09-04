@@ -37,7 +37,7 @@ progress if a production consumes nothing. **Landed.**
 
 `i64`, `bool`, `unit`, `let`/`var`, `if`/`while`/`return`, `func`, `struct`
 with implicit `self`, checked arithmetic with truncating `//`, `print`.
-Test entry `pub func answer() -> i64` until `main` exists.
+Test entry `pub func answer() -> i64` until `main` exists. **Landed.**
 
 ## M4 — C backend for the scalar core
 

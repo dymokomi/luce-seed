@@ -1,0 +1,108 @@
+#include "check/check.h"
+#include "lex/lexer.h"
+#include "parse/parser.h"
+#include "source/source.h"
+#include "support/arena.h"
+#include "support/diagnostics.h"
+#include "support/test.h"
+
+using lucb::Arena;
+using lucb::DiagnosticBag;
+using lucb::Source;
+using lucb::Token;
+using lucb::check_module;
+using lucb::parse;
+using lucb::tokenize;
+
+static bool check_ok(const char* text) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb", text, diagnostics);
+    if (!source.ok()) {
+        return false;
+    }
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    if (!diagnostics.empty()) {
+        return false;
+    }
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    if (!diagnostics.empty() || parsed.module == nullptr) {
+        return false;
+    }
+    return check_module(parsed.module, arena, diagnostics, "t.lucb");
+}
+
+static bool check_has(const char* text, const char* code) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb", text, diagnostics);
+    if (!source.ok()) {
+        return false;
+    }
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    if (!diagnostics.empty()) {
+        return diagnostics.has_code(code);
+    }
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    if (parsed.module == nullptr) {
+        return diagnostics.has_code(code);
+    }
+    check_module(parsed.module, arena, diagnostics, "t.lucb");
+    return diagnostics.has_code(code);
+}
+
+TEST(check_hello_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
+}
+
+TEST(check_type_mismatch) {
+    CHECK(check_has("pub func answer() -> i64:\n    return true\n", "lucb.check.type"));
+}
+
+TEST(check_unknown_name) {
+    CHECK(check_has("pub func answer() -> i64:\n    return missing\n", "lucb.check.name"));
+}
+
+TEST(check_mutating_needs_var) {
+    CHECK(check_has("struct Point:\n"
+                    "    var x: i64\n"
+                    "    mutating func bump():\n"
+                    "        self.x += 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    let p = Point(x = 0)\n"
+                    "    p.bump()\n"
+                    "    return p.x\n",
+                    "lucb.check.mut"));
+}
+
+TEST(check_explicit_self_rejected) {
+    CHECK(check_has("struct Point:\n"
+                    "    var x: i64\n"
+                    "    mutating func bump(self: Point):\n"
+                    "        self.x += 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.self"));
+}
+
+TEST(check_condition_must_be_bool) {
+    CHECK(check_has("pub func answer() -> i64:\n    if 1:\n        return 1\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_missing_return) {
+    CHECK(check_has("pub func answer() -> i64:\n    var x = 1\n", "lucb.check.return"));
+}
+
+TEST(check_unknown_type) {
+    CHECK(check_has("pub func answer() -> Widget:\n    return 1\n", "lucb.check.type"));
+}
+
+TEST(check_pointer_unsupported) {
+    CHECK(check_has("pub func answer(p: i64*) -> i64:\n    return 0\n", "lucb.check.unsupported"));
+}
+
+TEST(check_no_shadow) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x = 1\n    let x = 2\n    return x\n",
+                    "lucb.check.shadow"));
+}

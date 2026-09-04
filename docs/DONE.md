@@ -13,6 +13,13 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M3 — Check and interpreter
+
+Scalar core: `i64`, `bool`, `unit`, structs with implicit `self`, checked
+`+ - * // %`, `print`, `trap`. Entry is `pub func answer() -> i64`.
+`lucb check` typechecks; `lucb eval` runs the interpreter. Evidence:
+`tests/check_test.cpp`, `tests/eval_test.cpp`, `testdata/programs/hello.lucb`.
+
 ## M2 — Parser
 
 Recursive-descent parser for `base.md` §21, with layered expression

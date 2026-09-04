@@ -130,6 +130,9 @@ struct Node {
     Node* body = nullptr;
     Node* type = nullptr;
     Node* next = nullptr;
+    // Filled by check:
+    struct Type* ty = nullptr;   // resolved type of this node
+    Node* resolved = nullptr;    // declaration a name/call refers to
 };
 
 // Field map, by kind:

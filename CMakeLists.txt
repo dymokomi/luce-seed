@@ -28,6 +28,10 @@ set(LUCB_CORE_SOURCES
     src/lex/lexer.cpp
     src/parse/ast.cpp
     src/parse/parser.cpp
+    src/support/literal.cpp
+    src/check/type.cpp
+    src/check/check.cpp
+    src/interp/interp.cpp
 )
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
@@ -43,6 +47,8 @@ add_executable(lucb_tests
     tests/source_test.cpp
     tests/lex_test.cpp
     tests/parse_test.cpp
+    tests/check_test.cpp
+    tests/eval_test.cpp
 )
 target_link_libraries(lucb_tests PRIVATE lucb_core)
 target_include_directories(lucb_tests PRIVATE src tests)

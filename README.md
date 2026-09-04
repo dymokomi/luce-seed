@@ -34,13 +34,15 @@ every test.
 ```text
 lucb --version
 lucb --help
-lucb check <file.lucb>     # lex and parse
+lucb check <file.lucb>     # lex, parse, typecheck
 lucb lex   <file.lucb>     # print tokens
 lucb dump  <file.lucb>     # print the parse tree
+lucb eval  <file.lucb>     # run pub func answer() -> i64
 ```
 
-`build`, `run`, `eval`, and `test` arrive with later slices.
+`build`, `run`, and `test` arrive with later slices.
 
 ## Status
 
-M0–M2: skeleton, lexer, parser. Next is M3 (check + interpreter). See `docs/PLAN.md`.
+M0–M3: skeleton, lexer, parser, scalar-core checker and interpreter.
+Next is M4 (C backend). See `docs/PLAN.md`.
