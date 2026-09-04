@@ -41,7 +41,8 @@ Test entry `pub func answer() -> i64` until `main` exists. **Landed.**
 
 ## M4 — C backend for the scalar core
 
-HIR → C. Link `start.c` + `trap.c` + checked helpers. Agreement tests begin.
+Emit C from the checked AST. Link `lucb_rt.c` + `start.c`. Interpreter and
+compiled binary must agree. **Landed.**
 
 ## M5 — Numbers, casts, `usize`
 

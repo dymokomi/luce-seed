@@ -13,6 +13,13 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M4 — C backend
+
+Scalar-core programs compile to C, then to a host executable with
+`lucb build`. Checked arithmetic and traps live in `src/runtime`.
+Interpreter and native binary agree on stdout and trap reasons.
+Evidence: `tests/agree_test.cpp`.
+
 ## M3 — Check and interpreter
 
 Scalar core: `i64`, `bool`, `unit`, structs with implicit `self`, checked

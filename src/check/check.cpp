@@ -22,19 +22,31 @@ struct Checker {
     Arena* arena = nullptr;
     DiagnosticBag* diag = nullptr;
     string path;
-    TypeSet types;
+    Type* ty_error = nullptr;
+    Type* ty_never = nullptr;
+    Type* ty_unit = nullptr;
+    Type* ty_bool = nullptr;
+    Type* ty_i64 = nullptr;
+    Type* ty_str = nullptr;
     vector<Binding> scope;
     int depth = 0;
     Node* current_fn = nullptr;
     Node* current_struct = nullptr;
     Type* return_type = nullptr;
 
-    Type* t_error() { return &types.error; }
-    Type* t_never() { return &types.never; }
-    Type* t_unit() { return &types.unit; }
-    Type* t_bool() { return &types.boolean; }
-    Type* t_i64() { return &types.i64; }
-    Type* t_str() { return &types.str; }
+    Type* t_error() { return ty_error; }
+    Type* t_never() { return ty_never; }
+    Type* t_unit() { return ty_unit; }
+    Type* t_bool() { return ty_bool; }
+    Type* t_i64() { return ty_i64; }
+    Type* t_str() { return ty_str; }
+
+    Type* make_type(TypeKind kind, string_view name) {
+        Type* t = arena->make<Type>();
+        t->kind = kind;
+        t->name = name;
+        return t;
+    }
 
     void fail(Span span, const char* code, const string& message) {
         diag->add(code, path, span, message);
@@ -699,7 +711,8 @@ struct Checker {
                     fail_n(d, "lucb.check.shadow", "this name is already in scope");
                     continue;
                 }
-                Type* t = types.intern_struct(d->text, d, *arena);
+                Type* t = make_type(TypeKind::Struct, d->text);
+                t->decl = d;
                 d->ty = t;
                 bind(d->text, t, false, d);
             } else if (d->kind == NodeKind::Func) {
@@ -785,6 +798,12 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.arena = &arena;
     c.diag = &diagnostics;
     c.path = string(path);
+    c.ty_error = c.make_type(TypeKind::Error, "");
+    c.ty_never = c.make_type(TypeKind::Never, "never");
+    c.ty_unit = c.make_type(TypeKind::Unit, "unit");
+    c.ty_bool = c.make_type(TypeKind::Bool, "bool");
+    c.ty_i64 = c.make_type(TypeKind::I64, "i64");
+    c.ty_str = c.make_type(TypeKind::Str, "str");
     c.check_module(module);
     return diagnostics.empty();
 }

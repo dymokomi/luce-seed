@@ -32,10 +32,14 @@ set(LUCB_CORE_SOURCES
     src/check/type.cpp
     src/check/check.cpp
     src/interp/interp.cpp
+    src/emit/emit.cpp
+    src/emit/host.cpp
 )
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
 target_include_directories(lucb_core PUBLIC src)
+target_compile_definitions(lucb_core PUBLIC
+    LUCB_RUNTIME_DIR="${CMAKE_SOURCE_DIR}/src/runtime")
 lucb_warnings(lucb_core)
 
 add_executable(lucb src/main.cpp)
@@ -49,6 +53,7 @@ add_executable(lucb_tests
     tests/parse_test.cpp
     tests/check_test.cpp
     tests/eval_test.cpp
+    tests/agree_test.cpp
 )
 target_link_libraries(lucb_tests PRIVATE lucb_core)
 target_include_directories(lucb_tests PRIVATE src tests)

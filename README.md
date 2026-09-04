@@ -38,11 +38,13 @@ lucb check <file.lucb>     # lex, parse, typecheck
 lucb lex   <file.lucb>     # print tokens
 lucb dump  <file.lucb>     # print the parse tree
 lucb eval  <file.lucb>     # run pub func answer() -> i64
+lucb build <file.lucb> -o <exe>
+lucb build <file.lucb> --emit=c -o <file.c>
 ```
 
-`build`, `run`, and `test` arrive with later slices.
+`run` and `test` arrive with later slices.
 
 ## Status
 
-M0–M3: skeleton, lexer, parser, scalar-core checker and interpreter.
-Next is M4 (C backend). See `docs/PLAN.md`.
+M0–M4: skeleton through a C backend for the scalar core. Interpreter and
+compiled binary agree. Next is M5 (the rest of the scalars). See `docs/PLAN.md`.

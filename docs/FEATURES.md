@@ -37,4 +37,5 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 7.3 | `and`/`or`/`not`, no chaining | partial | `eval_bool_and_or`; parse rejects chaining |
 | 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `check_explicit_self_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M4–M14 |
+| 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M5–M14 |
