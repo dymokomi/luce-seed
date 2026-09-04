@@ -4,34 +4,25 @@
 
 #include "source/source.h"
 
-#include <string>
-#include <string_view>
-#include <vector>
-
 namespace lucb {
 
 struct Diagnostic {
-    std::string code;
-    std::string path;
+    string code;
+    string path;
     Span span;
-    std::string message;
+    string message;
 
-    std::string format() const;
+    string format() const;
 };
 
-class DiagnosticBag {
-public:
-    void add(std::string code, std::string path, Span span, std::string message);
+struct DiagnosticBag {
+    vector<Diagnostic> items;
 
-    const std::vector<Diagnostic>& items() const { return items_; }
-    size_t count() const { return items_.size(); }
-    bool empty() const { return items_.empty(); }
-
-    bool has_code(std::string_view code) const;
+    void add(string code, string path, Span span, string message);
+    bool has_code(string_view code) const;
     const Diagnostic* first() const;
-
-private:
-    std::vector<Diagnostic> items_;
+    size_t count() const { return items.size(); }
+    bool empty() const { return items.empty(); }
 };
 
 } // namespace lucb

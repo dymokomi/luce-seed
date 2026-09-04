@@ -10,5 +10,12 @@ with ASAN+UBSAN.
 
 ## M1 — Lexer
 
-The lexer of `base.md` §3, §4, and the tokens of §21. Evidence: `tests/lex_test.cpp`
-and `tests/source_test.cpp`, run by `./test.sh`.
+The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
+lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
+
+## M2 — Parser
+
+Recursive-descent parser for `base.md` §21, with layered expression
+precedence. Arena AST, sibling lists, s-expression dump (`lucb dump`).
+Chained comparisons, `not a == b`, `class`/`spawn`, and `goto` are refused
+with stable codes. Evidence: `tests/parse_test.cpp`, `./test.sh`.

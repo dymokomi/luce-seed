@@ -100,6 +100,8 @@ const char* token_kind_name(TokenKind kind) {
         return "indent";
     case TokenKind::Dedent:
         return "dedent";
+    case TokenKind::RawLine:
+        return "raw";
     case TokenKind::Name:
         return "name";
     case TokenKind::IntLit:

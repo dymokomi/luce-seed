@@ -1,28 +1,24 @@
 #include "support/diagnostics.h"
 
-#include <sstream>
-
 namespace lucb {
 
-std::string Diagnostic::format() const {
-    std::ostringstream out;
-    out << path << ':' << span.line << ':' << span.column << ": " << message << " [" << code
-        << ']';
-    return out.str();
+string Diagnostic::format() const {
+    return path + ":" + std::to_string(span.line) + ":" + std::to_string(span.column) + ": " +
+           message + " [" + code + "]";
 }
 
-void DiagnosticBag::add(std::string code, std::string path, Span span, std::string message) {
-    items_.push_back(Diagnostic{
-        .code = std::move(code),
-        .path = std::move(path),
-        .span = span,
-        .message = std::move(message),
-    });
+void DiagnosticBag::add(string code, string path, Span span, string message) {
+    Diagnostic item;
+    item.code = code;
+    item.path = path;
+    item.span = span;
+    item.message = message;
+    items.push_back(item);
 }
 
-bool DiagnosticBag::has_code(std::string_view code) const {
-    for (const Diagnostic& item : items_) {
-        if (item.code == code) {
+bool DiagnosticBag::has_code(string_view code) const {
+    for (size_t i = 0; i < items.size(); i++) {
+        if (items[i].code == code) {
             return true;
         }
     }
@@ -30,10 +26,10 @@ bool DiagnosticBag::has_code(std::string_view code) const {
 }
 
 const Diagnostic* DiagnosticBag::first() const {
-    if (items_.empty()) {
+    if (items.empty()) {
         return nullptr;
     }
-    return &items_.front();
+    return &items[0];
 }
 
 } // namespace lucb

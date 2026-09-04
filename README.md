@@ -34,12 +34,13 @@ every test.
 ```text
 lucb --version
 lucb --help
-lucb check <file.lucb>     # lex (and, later, parse and typecheck)
-lucb lex   <file.lucb>     # print tokens, for debugging the lexer
+lucb check <file.lucb>     # lex and parse
+lucb lex   <file.lucb>     # print tokens
+lucb dump  <file.lucb>     # print the parse tree
 ```
 
 `build`, `run`, `eval`, and `test` arrive with later slices.
 
 ## Status
 
-M0 (skeleton) and M1 (lexer) are the first slices. See `docs/PLAN.md`.
+M0–M2: skeleton, lexer, parser. Next is M3 (check + interpreter). See `docs/PLAN.md`.

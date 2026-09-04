@@ -132,6 +132,9 @@ private:
     std::vector<Token> tokens_;
     uint32_t commented_close_line_ = 0;
     uint32_t commented_close_column_ = 0;
+    bool saw_asm_ = false;
+    bool raw_suite_ = false;
+    bool raw_started_ = false;
 
     bool at_end() const { return pos_ >= bytes_.size(); }
 
@@ -213,7 +216,84 @@ private:
         return static_cast<int>(delimiters_.size()) == layout_regions_.back().depth;
     }
 
+    // An `asm` suite is captured raw: lines are not tokenised, `#` is not a
+    // comment, and the suite indent is stripped (base.md §8.9).
+    void scan_raw_line_start() {
+        while (!at_end()) {
+            size_t width = 0;
+            while (pos_ + width < bytes_.size() && bytes_[pos_ + width] == ' ') {
+                width += 1;
+            }
+            const size_t content = pos_ + width;
+            if (content >= bytes_.size()) {
+                pos_ = content;
+                end_raw_suite();
+                return;
+            }
+            const char next = bytes_[content];
+            if (next == '\n' || next == '\r') {
+                if (raw_started_) {
+                    emit(TokenKind::RawLine, content, content);
+                }
+                pos_ = content;
+                advance_line();
+                continue;
+            }
+
+            const int suite_indent = raw_started_ ? indent_width_ : indent_width_ + 4;
+            if (static_cast<int>(width) < suite_indent) {
+                end_raw_suite();
+                pos_ = content;
+                update_indentation(static_cast<int>(width));
+                pending_layout_ = false;
+                return;
+            }
+
+            if (!raw_started_) {
+                if (static_cast<int>(width) != indent_width_ + 4) {
+                    error("lucb.lex.indent", "indentation must increase by four spaces");
+                    raw_suite_ = false;
+                    return;
+                }
+                indent_width_ += 4;
+                emit(TokenKind::Indent, content, content);
+                raw_started_ = true;
+            }
+
+            pos_ = line_start_ + static_cast<size_t>(indent_width_);
+            const size_t start = pos_;
+            while (!at_end() && peek_byte() != '\n' && peek_byte() != '\r') {
+                pos_ += 1;
+            }
+            emit(TokenKind::RawLine, start, pos_);
+            if (!at_end() && (peek_byte() == '\n' || peek_byte() == '\r')) {
+                advance_line();
+            }
+        }
+        end_raw_suite();
+    }
+
+    void end_raw_suite() {
+        if (!raw_suite_) {
+            return;
+        }
+        raw_suite_ = false;
+        raw_started_ = false;
+        while (indent_width_ > 0) {
+            // Only close the suite we opened. Outer indents stay.
+            // The caller of scan_line_start will emit remaining dedents
+            // when the real indent of the next line is known.
+            break;
+        }
+        // Dedent for the asm suite is emitted by update_indentation on the
+        // next real line, or by finish() at EOF.
+    }
+
     void scan_line_start() {
+        if (raw_suite_) {
+            scan_raw_line_start();
+            return;
+        }
         while (!at_end()) {
             size_t width = 0;
             while (pos_ + width < bytes_.size() && bytes_[pos_ + width] == ' ') {
@@ -318,6 +398,7 @@ private:
                 emit(TokenKind::Newline, pos_, pos_);
                 pending_layout_ = true;
             }
+            saw_asm_ = false;
             advance_line();
             return;
         }
@@ -380,6 +461,9 @@ private:
         }
         const std::string_view word = slice(start, pos_);
         const TokenKind kind = keyword_kind(word);
+        if (kind == TokenKind::KwAsm) {
+            saw_asm_ = true;
+        }
         emit_at(kind, start, pos_, start_line, start_column);
     }
 
@@ -958,11 +1042,16 @@ private:
             } else if (ch == ')' || ch == ']' || ch == '}') {
                 finish_layout_region();
                 closes_field = close_delimiter(ch, start_column, start);
-            } else if (ch == ':' && !delimiters_.empty() && colon_ends_line()) {
-                layout_regions_.push_back(LayoutRegion{
-                    .depth = static_cast<int>(delimiters_.size()),
-                    .base = indent_width_,
-                });
+            } else if (ch == ':' && colon_ends_line()) {
+                if (saw_asm_) {
+                    raw_suite_ = true;
+                }
+                if (!delimiters_.empty()) {
+                    layout_regions_.push_back(LayoutRegion{
+                        .depth = static_cast<int>(delimiters_.size()),
+                        .base = indent_width_,
+                    });
+                }
             }
         }
 
@@ -990,7 +1079,8 @@ private:
         if (!tokens_.empty()) {
             const TokenKind last = tokens_.back().kind;
             const bool needs_newline = last != TokenKind::Newline && last != TokenKind::Indent &&
-                                       last != TokenKind::Dedent && last != TokenKind::DocComment;
+                                       last != TokenKind::Dedent && last != TokenKind::DocComment &&
+                                       last != TokenKind::RawLine;
             if (needs_newline) {
                 emit(TokenKind::Newline, pos_, pos_);
             }

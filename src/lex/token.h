@@ -1,12 +1,9 @@
 // Tokens. A token is a kind plus a span into the source; literals keep their
-// exact spelling. Keywords and operators have their own kinds so the parser
-// can switch on them. base.md §3, §4, §21.
+// exact spelling. base.md §3, §4, §21.
 
 #pragma once
 
 #include "source/source.h"
-
-#include <string_view>
 
 namespace lucb {
 
@@ -15,6 +12,7 @@ enum class TokenKind : uint16_t {
     Newline,
     Indent,
     Dedent,
+    RawLine, // one physical line of an `asm` suite, baseline indent removed
 
     Name,
     IntLit,
@@ -108,16 +106,16 @@ enum class TokenKind : uint16_t {
     Gt,
     Eq,
 
-    Arrow,    // ->
-    FatArrow, // =>
+    Arrow,
+    FatArrow,
     EqEq,
     NotEq,
     LtEq,
     GtEq,
-    SlashSlash, // //
+    SlashSlash,
     DotDot,
-    DotDotLt, // ..<
-    DotDotEq, // ..=
+    DotDotLt,
+    DotDotEq,
     LtLt,
     GtGt,
 
@@ -133,15 +131,15 @@ enum class TokenKind : uint16_t {
     LtLtEq,
     GtGtEq,
 
-    PlusPercent,   // +%
-    MinusPercent,  // -%
-    StarPercent,   // *%
-    PlusPipe,      // +|
-    MinusPipe,     // -|
-    StarPipe,      // *|
-    PlusQuestion,  // +?
-    MinusQuestion, // -?
-    StarQuestion,  // *?
+    PlusPercent,
+    MinusPercent,
+    StarPercent,
+    PlusPipe,
+    MinusPipe,
+    StarPipe,
+    PlusQuestion,
+    MinusQuestion,
+    StarQuestion,
 
     PlusPercentEq,
     MinusPercentEq,
@@ -150,22 +148,19 @@ enum class TokenKind : uint16_t {
     MinusPipeEq,
     StarPipeEq,
 
-    DashDashDash, // ---
-    DotDotDot,    // ...
+    DashDashDash,
+    DotDotDot,
 };
 
 struct Token {
     TokenKind kind = TokenKind::EndOfFile;
     Span span;
-    std::string_view text;
-    std::string_view suffix; // integer/float suffix, empty otherwise
+    string_view text;
+    string_view suffix;
 };
 
 const char* token_kind_name(TokenKind kind);
-
-// Keyword kind for an ASCII word, or Name if it is not reserved.
-TokenKind keyword_kind(std::string_view word);
-
+TokenKind keyword_kind(string_view word);
 bool is_keyword(TokenKind kind);
 
 } // namespace lucb

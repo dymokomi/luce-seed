@@ -29,9 +29,9 @@ CMake, `lucb --help` / `--version`, arena, diagnostics, source positions,
 
 ## M2 — Parser (full grammar)
 
-Recursive descent for declarations and statements; Pratt for expressions
-with the precedence of §7.10. Arena AST. Recovery: one diagnostic per
-mistake, resume at next newline / dedent.
+Recursive descent for declarations and statements; layered precedence for
+expressions (§7.10). Arena AST. Recovery: one diagnostic per mistake, force
+progress if a production consumes nothing. **Landed.**
 
 ## M3 — Check + interpreter: the scalar core
 

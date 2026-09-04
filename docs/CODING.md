@@ -1,34 +1,41 @@
 # Coding conventions
 
-Write code a tired reader can understand a week later. Prefer plain code over
-clever modern ceremony. The north star for module shape is the Zig stage-0
-coding guide; this file is the C++ form.
+Write code a tired reader can understand a week later. Prefer plain, old-school
+C++ over clever modern ceremony.
 
 ## Language
 
-- C++20, `-Wall -Wextra -Wpedantic -Werror`, `-fno-exceptions -fno-rtti`.
-- `clang-format` (see `.clang-format`) before a commit.
-- `namespace lucb`. Files are `snake_case.{h,cpp}`.
-- Tagged unions and `enum class`, not virtual class trees.
-- Diagnostics are values collected in a `DiagnosticBag`. No C++ exceptions
-  for user errors. `abort` only on an internal compiler error.
-- Allocation that outlives a function is explicit: an `Arena&`, or a
-  container the caller owns. Arena-backed objects do not run destructors;
-  do not put `std::string` inside them.
+A small subset:
 
-## Modules
+- C++20 as a better C: structs, enums, functions, `vector`/`string`.
+- `-Wall -Wextra -Wpedantic -Werror`, `-fno-exceptions -fno-rtti`.
+- Tagged unions (`enum` + a struct of pointers), not virtual class trees.
+- Explicit types. `auto` only for iterators nobody wants to spell.
+- No lambdas unless a one-line predicate is clearly better than a name.
+- No exceptions for user errors. Diagnostics are values. `abort` on ICE.
+- `clang-format` before a commit.
 
-A file has one job. Split at a real API or privacy boundary, not at a line
-count. The header says what the file is for. Public types say who owns what.
+Standard-library names live in `namespace lucb` via `support/common.h`, so
+headers write `string`, not `std::string`. `.cpp` files may add
+`using namespace std;` after the includes. Never `using namespace std` in a
+header.
+
+## Files
+
+`namespace lucb`. `snake_case.{h,cpp}`. A file has one job. Split at a real
+boundary, not at a line count. The header says what the file is for.
 
 The language library never opens files. The driver hands it source buffers.
 
+Arena-backed objects are not destroyed. Do not put `string` inside them;
+borrow `string_view` into the source, or allocate bytes on the arena.
+
 ## Naming
 
-- Types: `PascalCase`. Functions, methods, fields, files: `snake_case`.
-- Enumerators: `PascalCase` (`TokenKind::KwFunc`, `TokenKind::PlusPercent`).
-- Diagnostic codes: `lucb.<stage>.<name>` (`lucb.lex.tab`). Tests pin codes,
-  never wording.
+- Types: `PascalCase`. Functions, fields, files: `snake_case`.
+- Enumerators: `PascalCase` (`TokenKind::KwFunc`, `NodeKind::Func`).
+- Diagnostic codes: `lucb.<stage>.<name>` (`lucb.parse.chain`). Tests pin
+  codes, never wording.
 - Cite the spec where a rule is implemented: `// base.md §3.2`.
 
 ## Commits
@@ -41,5 +48,4 @@ lowercase subject. No trailers.
 - Unit tests live in `tests/` and use `src/support/test.h`.
 - Language programs live in `testdata/`.
 - `./test.sh` is the gate. A slice is not done until it is green.
-- A FEATURES.md row names its tests. Adding a capability without a ledger
-  row is incomplete.
+- A FEATURES.md row names its tests.

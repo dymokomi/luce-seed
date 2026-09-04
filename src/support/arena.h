@@ -1,42 +1,37 @@
-// Arena bump allocator. Chunked so pointers stay valid for the arena's life.
-// Objects allocated here are not destroyed; do not put std::string in them.
+// Chunked bump allocator. Pointers stay valid for the arena's life.
+// Allocated objects are not destroyed.
 
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <new>
-#include <utility>
-#include <vector>
+#include "support/common.h"
 
 namespace lucb {
 
-class Arena {
-public:
-    explicit Arena(size_t chunk_size = 64 * 1024);
+struct Arena {
+    Arena();
     Arena(const Arena&) = delete;
     Arena& operator=(const Arena&) = delete;
-    ~Arena() = default;
 
-    void* allocate(size_t bytes, size_t alignment = alignof(std::max_align_t));
+    void* alloc(size_t bytes, size_t align = 8);
 
-    template <typename T, typename... Args>
-    T* make(Args&&... args) {
-        void* storage = allocate(sizeof(T), alignof(T));
-        return new (storage) T(std::forward<Args>(args)...);
+    template <typename T>
+    T* make() {
+        T* p = static_cast<T*>(alloc(sizeof(T), alignof(T)));
+        *p = T{};
+        return p;
     }
 
-    size_t bytes_allocated() const { return bytes_allocated_; }
+    size_t bytes_allocated() const { return used_; }
 
 private:
     struct Chunk {
-        std::vector<uint8_t> data;
+        vector<uint8_t> data;
         size_t used = 0;
     };
 
-    size_t chunk_size_;
-    size_t bytes_allocated_ = 0;
-    std::vector<Chunk> chunks_;
+    size_t chunk_size_ = 64 * 1024;
+    size_t used_ = 0;
+    vector<Chunk> chunks_;
 };
 
 } // namespace lucb

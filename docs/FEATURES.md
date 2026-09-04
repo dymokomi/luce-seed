@@ -11,15 +11,23 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 3.1 | Confusable punctuation | done | `lex_test` look-alikes |
 | 3.2 | Layout, 4-space indent, delimiter suites | done | `lex_test` layout cases |
 | 3.3 | Comments and `##` documentation | done | `lex_test` comments |
-| 3.4 | Naming (formatter/linter) | unsupported | M2+ |
+| 3.4 | Naming (formatter/linter) | unsupported | later |
 | 3.5 | Scope | unsupported | M3 |
-| 3.6 | Reserved words | done | `lex_test` keywords |
+| 3.6 | Reserved words; `class`/`spawn` refused | done | `lex_test` keywords, `parse_class_belongs_to_full_luce` |
 | 4.1 | `true` `false` `none` | done | `lex_test` keywords |
 | 4.2 | Integer literals | done | `lex_test` numbers |
 | 4.3 | Float literals | done | `lex_test` numbers |
-| 4.4 | Characters, strings, bytes, raw, formatted | done | `lex_test` strings |
-| 4.5 | Array literals | unsupported | M2 |
-| 5–24 | Types through examples | unsupported | M2–M14 |
-
-Grammar tokens of §21 that are not a literal or keyword are covered by the
-operator and punctuation cases in `lex_test`.
+| 4.4 | Characters, strings, bytes, raw, formatted | done | `lex_test` strings, `parse_formatted_string` |
+| 4.5 | Array literals | done | `parse_array_literal` |
+| 5 | Types as syntax | partial | `parse_pointer_and_span_types`; checking is M3 |
+| 7.3 | No chained comparisons; `not a == b` refused | done | `parse_chained_comparison`, `parse_not_before_comparison` |
+| 7.5 | `(u8)x` cast vs `(value)` group | done | `parse_cast_vs_call` |
+| 8 | Control flow syntax | partial | if/while/for/match/defer/labels in `parse_test` |
+| 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
+| 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
+| 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
+| 13–14 | Generics/interfaces as syntax | partial | `parse_interface` |
+| 16 | Imports, `test` | partial | `parse_import`, `parse_test_declaration` |
+| 17 | `extern func` | partial | `parse_extern_func` |
+| 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
+| 6, 11–12, 15, 18–20, 22–24 | Semantics, memory, C ABI, examples | unsupported | M3–M14 |

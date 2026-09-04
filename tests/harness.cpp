@@ -4,6 +4,7 @@ int lucb::test::run_all() {
     int failed_tests = 0;
     const std::vector<Case>& cases = registry();
     std::fprintf(stdout, "running %zu tests\n", cases.size());
+    std::fflush(stdout);
     for (const Case& test : cases) {
         const int before = failures();
         test.fn();

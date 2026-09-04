@@ -26,6 +26,8 @@ set(LUCB_CORE_SOURCES
     src/source/source.cpp
     src/lex/token.cpp
     src/lex/lexer.cpp
+    src/parse/ast.cpp
+    src/parse/parser.cpp
 )
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
@@ -40,6 +42,7 @@ add_executable(lucb_tests
     tests/harness.cpp
     tests/source_test.cpp
     tests/lex_test.cpp
+    tests/parse_test.cpp
 )
 target_link_libraries(lucb_tests PRIVATE lucb_core)
 target_include_directories(lucb_tests PRIVATE src tests)
