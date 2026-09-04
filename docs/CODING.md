@@ -31,6 +31,11 @@ The language library never opens files. The driver hands it source buffers.
   never wording.
 - Cite the spec where a rule is implemented: `// base.md §3.2`.
 
+## Commits
+
+Author and committer are always `Dy Mokomi <dy@dymokomi.com>`. One short
+lowercase subject. No trailers.
+
 ## Tests
 
 - Unit tests live in `tests/` and use `src/support/test.h`.
