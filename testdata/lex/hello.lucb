@@ -1,0 +1,5 @@
+## The first Luce Base module the lexer accepts.
+
+pub func answer() -> i64:
+    var counter = 40
+    return counter
