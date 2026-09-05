@@ -29,7 +29,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
 | 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
-| 13–14 | Generics/interfaces as syntax | partial | `parse_generic_func`, `parse_generic_struct`, `parse_interface` |
+| 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | partial | `parse_extern_func` |
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
@@ -71,5 +71,9 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
 | 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer` |
-| 13.1 | Constraints, declaration-time checking | partial | `agree_generic_comparable`, `check_generic_plus_rejected`; only `Comparable`/`Equatable`; no user interfaces |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M12–M14 |
+| 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
+| 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
+| 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
+| 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`; user `Display` not yet |
+| 5.5 / 9.1 | `fmt`, `format`, `location()` | done | `agree_format`, `agree_location` |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M13–M14 |

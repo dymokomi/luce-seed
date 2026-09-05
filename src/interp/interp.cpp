@@ -168,6 +168,7 @@ struct Interp {
     string err_storage;
     Frame globals;
     Value current_alloc;
+    std::deque<string> strings;
     struct Deferred {
         Node* n = nullptr;
         bool err_only = false;
@@ -497,7 +498,12 @@ struct Interp {
             if (p == nullptr) {
                 return v_unit();
             }
-            return *p;
+            Value v = *p;
+            if (n->ty != nullptr && n->ty->kind == TypeKind::Interface && v.kind == TypeKind::Pointer) {
+                v.kind = TypeKind::Interface;
+                v.type = n->ty;
+            }
+            return v;
         }
         case NodeKind::Group:
             return eval(n->left);
@@ -523,6 +529,8 @@ struct Interp {
             return eval_new(n);
         case NodeKind::Alloc:
             return eval_alloc(n);
+        case NodeKind::Formatted:
+            return eval_formatted(n);
         case NodeKind::Cast:
             return eval_conv(n->left, n->ty, false);
         case NodeKind::Else:
@@ -727,6 +735,56 @@ struct Interp {
             }
         }
         return make_array(n->ty, std::move(elems));
+    }
+
+    Value eval_formatted(Node* n) {
+        string s;
+        for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
+            if (p->kind == NodeKind::FormatText) {
+                s += decode_string(p->text);
+            } else if (p->kind == NodeKind::FormatField) {
+                Value f = eval(p->left);
+                if (trapped) {
+                    return v_unit();
+                }
+                s += show(f);
+            }
+        }
+        strings.push_back(s);
+        return v_str(strings.back());
+    }
+
+    Value eval_format(Node* n) {
+        Node* bufn = n->body != nullptr ? n->body->left : nullptr;
+        Node* msgn = n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
+        Value buf = eval(bufn);
+        Value msg;
+        if (msgn != nullptr && msgn->kind == NodeKind::Formatted) {
+            msg = eval_formatted(msgn);
+        } else {
+            msg = eval(msgn);
+        }
+        if (trapped) {
+            return v_unit();
+        }
+        string text = msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg);
+        if (text.size() > buf.length) {
+            Value r;
+            r.kind = TypeKind::Fallible;
+            r.failed = true;
+            r.err_code = 1;
+            r.err_msg = "memory.exhausted";
+            r.type = n->ty;
+            return r;
+        }
+        strings.push_back(text);
+        Value r;
+        r.kind = TypeKind::Fallible;
+        r.failed = false;
+        r.type = n->ty;
+        r.str = strings.back();
+        r.length = strings.back().size();
+        return r;
     }
 
     Value eval_span_make(Node* n) {
@@ -962,6 +1020,9 @@ struct Interp {
             v.kind = TypeKind::Pointer;
             v.type = n->ty;
             v.ptr = p;
+            if (n->ty != nullptr && n->ty->kind == TypeKind::Interface) {
+                v.kind = TypeKind::Interface;
+            }
             return v;
         }
         if (n->op == TokenKind::Star) {
@@ -1759,12 +1820,38 @@ struct Interp {
             return v_unit();
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
-            Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            if (arg != nullptr && arg->kind == NodeKind::Formatted) {
+                Value a = eval_formatted(arg);
+                if (!trapped) {
+                    output += show(a);
+                    output += '\n';
+                }
+                return v_unit();
+            }
+            Value a = eval(arg);
             if (!trapped) {
                 output += show(a);
                 output += '\n';
             }
             return v_unit();
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
+            Value v;
+            v.kind = TypeKind::Struct;
+            v.type = n->ty;
+            v.fields.push_back(v_str(n->ty != nullptr ? string_view("t.lucb") : string_view("t.lucb")));
+            Value line;
+            line.kind = TypeKind::U32;
+            line.u = n->span.line;
+            v.fields.push_back(line);
+            string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
+            strings.push_back(fn);
+            v.fields.push_back(v_str(strings.back()));
+            return v;
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+            return eval_format(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             Value a = eval(n->body != nullptr ? n->body->left : nullptr);
@@ -1826,6 +1913,34 @@ struct Interp {
                 return call_func(n->resolved, nullptr, n->body);
             }
             Node* method = callee->resolved;
+            Type* ot = callee->left != nullptr ? callee->left->ty : nullptr;
+            if (is_ptr(ot) && ot->elem != nullptr) {
+                ot = ot->elem;
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Interface) {
+                Value view = eval(callee->left);
+                if (trapped || view.ptr == nullptr) {
+                    fail("null interface");
+                    return v_unit();
+                }
+                Value* obj = view.ptr;
+                Type* ct = obj->type;
+                Node* impl = nullptr;
+                if (ct != nullptr && ct->decl != nullptr) {
+                    impl = nullptr;
+                    for (Node* m = ct->decl->body; m != nullptr; m = m->next) {
+                        if (m->kind == NodeKind::Func && m->text == callee->text) {
+                            impl = m;
+                            break;
+                        }
+                    }
+                }
+                if (impl == nullptr) {
+                    fail("unknown method");
+                    return v_unit();
+                }
+                return call_func(impl, obj, n->body);
+            }
             if (callee->text == "compare" && (method == nullptr || method->kind != NodeKind::Func)) {
                 Value L = eval(callee->left);
                 Value R = eval(n->body != nullptr ? n->body->left : nullptr);

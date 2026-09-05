@@ -501,6 +501,22 @@ TEST(eval_enum_checked_conv_traps) {
     CHECK(r.trapped);
 }
 
+TEST(eval_interface_view) {
+    EvalResult r = run("interface Counter:\n"
+                       "    mutating func bump() -> i64\n"
+                       "struct Box implements Counter:\n"
+                       "    var n: i64\n"
+                       "    mutating func bump() -> i64:\n"
+                       "        self.n += 1\n"
+                       "        return self.n\n"
+                       "pub func answer() -> i64:\n"
+                       "    var b = Box(n = 10)\n"
+                       "    let c: Counter = &b\n"
+                       "    return c.bump()\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 11);
+}
+
 TEST(eval_generic_id) {
     EvalResult r = run("func id[T](x: T) -> T:\n"
                        "    return x\n"

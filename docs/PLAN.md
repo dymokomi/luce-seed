@@ -88,6 +88,7 @@ Functions and structs. Constraints. Declaration-time checking.
 ## M12 — Interfaces, `fmt`, `Display`, `Writer`
 
 Nominal `implements`. Two-word views. `print` / `format` / `fmt` / `location()`.
+**Landed.**
 
 ## M13 — Calling C
 

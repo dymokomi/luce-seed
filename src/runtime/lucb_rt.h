@@ -80,6 +80,30 @@ void lb_print_f64(double value);
 void lb_check_index(uint64_t i, uint64_t n);
 void lb_check_utf8(const char* s, size_t n);
 
+typedef struct lb_iface {
+    void* data;
+    const void* vtable;
+} lb_iface;
+
+typedef struct lb_Location {
+    lb_str file;
+    uint32_t line;
+    lb_str function;
+} lb_Location;
+
+typedef struct lb_fmtbuf {
+    char* data;
+    size_t cap;
+    size_t used;
+} lb_fmtbuf;
+
+int lb_fmtbuf_put(lb_fmtbuf* b, const char* s, size_t n);
+int lb_fmtbuf_i64(lb_fmtbuf* b, int64_t v);
+int lb_fmtbuf_u64(lb_fmtbuf* b, uint64_t v);
+int lb_fmtbuf_f64(lb_fmtbuf* b, double v);
+int lb_fmtbuf_bool(lb_fmtbuf* b, bool v);
+lb_str lb_fmtbuf_finish(lb_fmtbuf* b);
+
 typedef struct lb_alloc {
     void* ctx;
     int kind; /* 0 heap, 1 fixed buffer, -1 unset */

@@ -77,6 +77,9 @@ string c_type(Type* t) {
     if (t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
         return "lb_fixed";
     }
+    if (t->kind == TypeKind::Struct && t->name == "Location") {
+        return "lb_Location";
+    }
     if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
         (t->kind == TypeKind::Enum && !is_int_enum(t))) {
         if (t->decl != nullptr) {
@@ -461,6 +464,22 @@ struct Emitter {
         string e = emit_expr_inner(n);
         if (is_opt(n->ty) && !produces_opt(n)) {
             return wrap_opt(n->ty, e);
+        }
+        if (n->ty != nullptr && n->ty->kind == TypeKind::Interface) {
+            Type* src = nullptr;
+            if (n->kind == NodeKind::Unary && n->op == TokenKind::Amp && n->left != nullptr) {
+                src = n->left->ty;
+            } else if (n->kind == NodeKind::Name && n->resolved != nullptr) {
+                src = n->resolved->ty;
+            }
+            if (is_ptr(src)) {
+                src = src->elem;
+            }
+            if (src != nullptr && src->kind == TypeKind::Struct && src->decl != nullptr &&
+                n->ty->decl != nullptr) {
+                return "((lb_iface){ (void*)(" + e + "), &lb_vt_" + string(src->decl->text) + "_" +
+                       string(n->ty->decl->text) + " })";
+            }
         }
         return e;
     }
@@ -988,6 +1007,195 @@ struct Emitter {
         return "&(" + emit_expr(n) + ")";
     }
 
+    string vt_type_name(Type* iface) {
+        string n = iface != nullptr && iface->decl != nullptr ? string(iface->decl->text)
+                                                              : string("I");
+        return "lb_vt_" + n;
+    }
+
+    string vt_instance_name(Node* st, Node* iface) {
+        return "lb_vt_" + string(st->text) + "_" + string(iface->text);
+    }
+
+    string emit_display_buf(const string& b, Node* v) {
+        Type* t = v != nullptr ? v->ty : nullptr;
+        string e = emit_expr(v);
+        if (t != nullptr && t->kind == TypeKind::Bool) {
+            return "lb_fmtbuf_bool(&" + b + ", " + e + ")";
+        }
+        if (t != nullptr && t->kind == TypeKind::Str) {
+            return "lb_fmtbuf_put(&" + b + ", " + e + ".data, " + e + ".length)";
+        }
+        if (is_float(t)) {
+            return "lb_fmtbuf_f64(&" + b + ", (double)(" + e + "))";
+        }
+        if (t != nullptr && is_unsigned_int(t)) {
+            return "lb_fmtbuf_u64(&" + b + ", (uint64_t)(" + e + "))";
+        }
+        if (is_ptr(t)) {
+            return "lb_fmtbuf_u64(&" + b + ", (uint64_t)(uintptr_t)(" + e + "))";
+        }
+        return "lb_fmtbuf_i64(&" + b + ", (int64_t)(" + e + "))";
+    }
+
+    string emit_print_formatted(Node* n) {
+        string s = "({ ";
+        for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
+            if (p->kind == NodeKind::FormatText) {
+                string d = decode_lit(p->text);
+                s += "fputs(" + c_escape(d) + ", stdout); ";
+            } else if (p->kind == NodeKind::FormatField) {
+                Type* t = p->left != nullptr ? p->left->ty : nullptr;
+                string e = emit_expr(p->left);
+                if (t != nullptr && t->kind == TypeKind::Bool) {
+                    s += "fputs((" + e + ") ? \"true\" : \"false\", stdout); ";
+                } else if (t != nullptr && t->kind == TypeKind::Str) {
+                    s += "fwrite(" + e + ".data, 1, " + e + ".length, stdout); ";
+                } else if (is_float(t)) {
+                    s += "fprintf(stdout, \"%g\", (double)(" + e + ")); ";
+                } else if (t != nullptr && is_unsigned_int(t)) {
+                    s += "fprintf(stdout, \"%llu\", (unsigned long long)(" + e + ")); ";
+                } else {
+                    s += "fprintf(stdout, \"%lld\", (long long)(" + e + ")); ";
+                }
+            }
+        }
+        s += "fputc('\\n', stdout); (void)0; })";
+        return s;
+    }
+
+    string emit_format_call(Node* n) {
+        Node* buf = n->body != nullptr ? n->body->left : nullptr;
+        Node* msg = n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
+        int id = tmp();
+        string bn = "_lb_fb" + std::to_string(id);
+        string rn = "_lb_fr" + std::to_string(id);
+        string s = "({ lb_span _lb_ds" + std::to_string(id) + " = " + emit_expr(buf) + "; ";
+        s += "lb_fmtbuf " + bn + " = { (char*)_lb_ds" + std::to_string(id) + ".data, _lb_ds" +
+             std::to_string(id) + ".length, 0 }; ";
+        s += "int " + rn + " = 0; ";
+        if (msg != nullptr && msg->kind == NodeKind::Formatted) {
+            for (Node* p = msg->body; p != nullptr; p = p->next) {
+                if (p->kind == NodeKind::FormatText) {
+                    string d = decode_lit(p->text);
+                    s += rn + " = " + rn + " || lb_fmtbuf_put(&" + bn + ", " + c_escape(d) + ", " +
+                         std::to_string(d.size()) + "); ";
+                } else if (p->kind == NodeKind::FormatField) {
+                    s += rn + " = " + rn + " || " + emit_display_buf(bn, p->left) + "; ";
+                }
+            }
+        } else {
+            string e = emit_expr(msg);
+            s += rn + " = " + rn + " || lb_fmtbuf_put(&" + bn + ", " + e + ".data, " + e +
+                 ".length); ";
+        }
+        s += "lb_r_str _lb_out" + std::to_string(id) + "; ";
+        s += "if (" + rn + ") { _lb_out" + std::to_string(id) +
+             " = ((lb_r_str){ .error = { .code = LB_MEMORY_EXHAUSTED, .message = "
+             "(lb_str){\"memory.exhausted\", 16} }, .failed = true }); } else { _lb_out" +
+             std::to_string(id) + " = ((lb_r_str){ .value = lb_fmtbuf_finish(&" + bn +
+             "), .failed = false }); } _lb_out" + std::to_string(id) + "; })";
+        return s;
+    }
+
+    void emit_iface_typedef(Node* iface) {
+        if (iface == nullptr || iface->kind != NodeKind::Interface) {
+            return;
+        }
+        line("typedef struct " + vt_type_name(iface->ty) + " {");
+        indent++;
+        for (Node* m = iface->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::Func) {
+                continue;
+            }
+            string sig = fn_c_ret(m) + " (*" + string(m->text) + ")(void* self";
+            for (Node* p = m->right; p != nullptr; p = p->next) {
+                sig += ", " + c_type(p->ty);
+            }
+            sig += ");";
+            line(sig);
+        }
+        indent--;
+        line("} " + vt_type_name(iface->ty) + ";");
+        out += '\n';
+    }
+
+    void emit_vtable(Node* st, Node* iface_type_node) {
+        Type* iface = iface_type_node != nullptr ? iface_type_node->ty : nullptr;
+        if (st == nullptr || iface == nullptr || iface->decl == nullptr) {
+            return;
+        }
+        string iname = vt_instance_name(st, iface->decl);
+        line("static const " + vt_type_name(iface) + " " + iname + " = {");
+        indent++;
+        bool first = true;
+        for (Node* m = iface->decl->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::Func) {
+                continue;
+            }
+            Node* impl = nullptr;
+            for (Node* sm = st->body; sm != nullptr; sm = sm->next) {
+                if (sm->kind == NodeKind::Func && sm->text == m->text) {
+                    impl = sm;
+                    break;
+                }
+            }
+            string fn = impl != nullptr ? func_ident(impl, st) : "NULL";
+            string cast = "(" + fn_c_ret(m) + " (*)(void*";
+            for (Node* p = m->right; p != nullptr; p = p->next) {
+                cast += ", " + c_type(p->ty);
+            }
+            cast += "))";
+            if (!first) {
+                // already commas on lines
+            }
+            first = false;
+            line("." + string(m->text) + " = " + cast + fn + ",");
+        }
+        indent--;
+        line("};");
+        out += '\n';
+    }
+
+    void emit_ifaces(Node* mod) {
+        if (mod == nullptr) {
+            return;
+        }
+        bool need_writer = false;
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Interface) {
+                emit_iface_typedef(d);
+            }
+            if (d->kind != NodeKind::Struct) {
+                continue;
+            }
+            for (Node* t = d->right; t != nullptr; t = t->next) {
+                if (t->ty != nullptr && t->ty->kind == TypeKind::Interface && t->ty->decl != nullptr &&
+                    t->ty->decl->text == "Writer") {
+                    need_writer = true;
+                }
+            }
+        }
+        if (need_writer) {
+            line("typedef struct lb_vt_Writer {");
+            indent++;
+            line("lb_r_usize (*write)(void* self, lb_cspan);");
+            indent--;
+            line("} lb_vt_Writer;");
+            out += '\n';
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind != NodeKind::Struct) {
+                continue;
+            }
+            for (Node* t = d->right; t != nullptr; t = t->next) {
+                if (t->ty != nullptr && t->ty->kind == TypeKind::Interface) {
+                    emit_vtable(d, t);
+                }
+            }
+        }
+    }
+
     string emit_args(Node* args) {
         string s;
         bool first = true;
@@ -1003,6 +1211,20 @@ struct Emitter {
 
     string emit_call(Node* n) {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
+            string file = "t.lucb";
+            uint32_t line = n->span.line;
+            string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
+            char lbuf[16];
+            snprintf(lbuf, sizeof(lbuf), "%u", line);
+            return "((lb_Location){ .file = (lb_str){" + c_escape(file) + ", " +
+                   std::to_string(file.size()) + "}, .line = " + lbuf +
+                   "u, .function = (lb_str){" + c_escape(fn) + ", " + std::to_string(fn.size()) +
+                   "} })";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+            return emit_format_call(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
             return "lb_heap_alloc()";
         }
@@ -1017,6 +1239,9 @@ struct Emitter {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
             Type* t = arg != nullptr ? arg->ty : nullptr;
+            if (t != nullptr && t->kind == TypeKind::Fmt) {
+                return emit_print_formatted(arg);
+            }
             string e = emit_expr(arg);
             if (t != nullptr && t->kind == TypeKind::Bool) {
                 return "lb_print_bool(" + e + ")";
@@ -1088,6 +1313,21 @@ struct Emitter {
             Node* method = callee->resolved;
             Node* obj = callee->left;
             Type* ot = obj != nullptr ? obj->ty : nullptr;
+            if (ot != nullptr && is_ptr(ot) && ot->elem != nullptr) {
+                ot = ot->elem;
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Interface && method != nullptr) {
+                int id = tmp();
+                string vn = "_lb_if" + std::to_string(id);
+                string args = emit_args(n->body);
+                string call = "((" + vt_type_name(ot) + "*)" + vn + ".vtable)->" +
+                              string(method->text) + "(" + vn + ".data";
+                if (!args.empty()) {
+                    call += ", " + args;
+                }
+                call += ")";
+                return "({ lb_iface " + vn + " = " + emit_expr(obj) + "; " + call + "; })";
+            }
             if (callee->text == "compare" && method == nullptr) {
                 string L = emit_expr(obj);
                 string R = emit_expr(n->body != nullptr ? n->body->left : nullptr);
@@ -2137,6 +2377,16 @@ struct Emitter {
         if (!opts.empty() || !fails.empty()) {
             out += '\n';
         }
+        bool has_usize = false;
+        for (size_t i = 0; i < fails.size(); i++) {
+            if (fail_c_name(fails[i]) == "lb_r_usize") {
+                has_usize = true;
+            }
+        }
+        if (!has_usize) {
+            line("LB_RES(size_t, lb_r_usize);");
+            out += '\n';
+        }
     }
 
     void note_fail_fn(Node* fn) {
@@ -2369,6 +2619,7 @@ struct Emitter {
         emit_types(mod);
         emit_opt_typedefs();
         emit_decls(mod);
+        emit_ifaces(mod);
         out += '\n';
         emit_defs(mod);
         emit_answer_unwrap(mod);
@@ -2397,6 +2648,9 @@ struct Emitter {
         emit_opt_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_decls(modules[static_cast<size_t>(i)]);
+        }
+        for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
+            emit_ifaces(modules[static_cast<size_t>(i)]);
         }
         out += '\n';
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {

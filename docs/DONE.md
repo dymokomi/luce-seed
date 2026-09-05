@@ -13,6 +13,13 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M12 — Interfaces, `fmt`, `Writer`
+
+Nominal `implements`, two-word interface views with a vtable, builtin
+`Writer` and `Location`, `print(f"...")`, `format(buffer, fmt) -> str!`,
+`fmt`, and `location()`. Compiler Display covers scalars and `str`.
+Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M11 — Generics
 
 Generic functions and structs with declaration-time checking of an

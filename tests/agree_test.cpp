@@ -460,6 +460,52 @@ TEST(agree_thread_local) {
                  "    return n\n"));
 }
 
+TEST(agree_writer_view) {
+    CHECK(agrees("struct Sink implements Writer:\n"
+                 "    var n: usize\n"
+                 "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                 "        self.n += bytes.length\n"
+                 "        return bytes.length\n"
+                 "pub func answer() -> i64!:\n"
+                 "    var s = Sink(n = 0)\n"
+                 "    let w: Writer = &s\n"
+                 "    let n = try w.write(\"ab\".bytes)\n"
+                 "    return i64(n)\n"));
+}
+
+TEST(agree_interface_view) {
+    CHECK(agrees("interface Counter:\n"
+                 "    mutating func bump() -> i64\n"
+                 "struct Box implements Counter:\n"
+                 "    var n: i64\n"
+                 "    mutating func bump() -> i64:\n"
+                 "        self.n += 1\n"
+                 "        return self.n\n"
+                 "pub func answer() -> i64:\n"
+                 "    var b = Box(n = 10)\n"
+                 "    let c: Counter = &b\n"
+                 "    return c.bump()\n"));
+}
+
+TEST(agree_print_formatted) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    print(f\"n={40}\")\n"
+                 "    return 0\n"));
+}
+
+TEST(agree_format) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var buf: u8[32]\n"
+                 "    let s = try format(buf, f\"{7}\")\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_location) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let loc = location()\n"
+                 "    return i64(loc.line)\n"));
+}
+
 TEST(agree_generic_id) {
     CHECK(agrees("func id[T](x: T) -> T:\n"
                  "    return x\n"

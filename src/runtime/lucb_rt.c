@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static _Thread_local lb_alloc lb_current_alloc = {NULL, -1};
 
@@ -29,6 +30,67 @@ lb_alloc lb_get_alloc(void) {
 }
 
 void lb_set_alloc(lb_alloc a) { lb_current_alloc = a; }
+
+int lb_fmtbuf_put(lb_fmtbuf* b, const char* s, size_t n) {
+    if (b == NULL) {
+        return 1;
+    }
+    if (n > b->cap || b->used > b->cap - n) {
+        return 1;
+    }
+    if (s != NULL && n > 0) {
+        memcpy(b->data + b->used, s, n);
+    }
+    b->used += n;
+    return 0;
+}
+
+int lb_fmtbuf_i64(lb_fmtbuf* b, int64_t v) {
+    char tmp[32];
+    int n = snprintf(tmp, sizeof(tmp), "%" PRId64, v);
+    if (n < 0) {
+        return 1;
+    }
+    return lb_fmtbuf_put(b, tmp, (size_t)n);
+}
+
+int lb_fmtbuf_u64(lb_fmtbuf* b, uint64_t v) {
+    char tmp[32];
+    int n = snprintf(tmp, sizeof(tmp), "%" PRIu64, v);
+    if (n < 0) {
+        return 1;
+    }
+    return lb_fmtbuf_put(b, tmp, (size_t)n);
+}
+
+int lb_fmtbuf_f64(lb_fmtbuf* b, double v) {
+    char tmp[64];
+    int n = snprintf(tmp, sizeof(tmp), "%g", v);
+    if (n < 0) {
+        return 1;
+    }
+    return lb_fmtbuf_put(b, tmp, (size_t)n);
+}
+
+int lb_fmtbuf_bool(lb_fmtbuf* b, bool v) {
+    const char* s = v ? "true" : "false";
+    return lb_fmtbuf_put(b, s, v ? 4 : 5);
+}
+
+lb_str lb_fmtbuf_finish(lb_fmtbuf* b) {
+    lb_str s;
+    s.data = "";
+    s.length = 0;
+    if (b == NULL) {
+        return s;
+    }
+    if (b->used < b->cap) {
+        b->data[b->used] = 0;
+    }
+    s.data = b->data;
+    s.length = b->used;
+    return s;
+}
 
 static size_t align_up(size_t n, size_t a) {
     if (a <= 1) {

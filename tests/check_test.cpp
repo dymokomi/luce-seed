@@ -207,6 +207,16 @@ TEST(check_new_zeroable) {
                     "lucb.check.type"));
 }
 
+TEST(check_interface_missing_method) {
+    CHECK(check_has("interface Counter:\n"
+                    "    mutating func bump() -> i64\n"
+                    "struct Box implements Counter:\n"
+                    "    var n: i64\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_generic_id_ok) {
     CHECK(check_ok("func id[T](x: T) -> T:\n"
                    "    return x\n"

@@ -132,6 +132,10 @@ string type_name(const Type* t) {
         return "Allocator";
     case TypeKind::Param:
         return t->name.empty() ? "<param>" : string(t->name);
+    case TypeKind::Interface:
+        return t->name.empty() ? "<interface>" : string(t->name);
+    case TypeKind::Fmt:
+        return "fmt";
     }
     return "<unknown>";
 }
@@ -382,7 +386,8 @@ int type_align(const Type* t) {
         return 1;
     }
     if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str ||
-        t->kind == TypeKind::CStr || t->kind == TypeKind::Allocator) {
+        t->kind == TypeKind::CStr || t->kind == TypeKind::Allocator ||
+        t->kind == TypeKind::Interface) {
         return static_cast<int>(sizeof(void*));
     }
     if (t->kind == TypeKind::Array) {
@@ -488,6 +493,10 @@ int type_size(const Type* t) {
         return static_cast<int>(sizeof(void*));
     case TypeKind::Allocator:
         return static_cast<int>(sizeof(void*) + sizeof(int));
+    case TypeKind::Interface:
+        return static_cast<int>(sizeof(void*) * 2);
+    case TypeKind::Fmt:
+        return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Span:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Optional:
@@ -609,6 +618,10 @@ const char* c_type_name(const Type* t) {
         return "const char*";
     case TypeKind::Allocator:
         return "lb_alloc";
+    case TypeKind::Interface:
+        return "lb_iface";
+    case TypeKind::Fmt:
+        return "lb_str";
     case TypeKind::Pointer:
         return "void*";
     case TypeKind::Span:

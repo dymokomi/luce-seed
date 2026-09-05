@@ -40,6 +40,8 @@ enum class TypeKind : uint8_t {
     CStr,
     Allocator,
     Param,
+    Interface,
+    Fmt,
 };
 
 struct Type {
@@ -61,6 +63,7 @@ struct Type {
 enum {
     BoundEquatable = 1u,
     BoundComparable = 2u,
+    BoundIface = 4u,
 };
 
 inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }

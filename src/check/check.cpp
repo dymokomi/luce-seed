@@ -49,6 +49,9 @@ struct Checker {
     Type* ty_alloc = nullptr;
     Type* ty_fixed = nullptr;
     Type* ty_calloc = nullptr;
+    Type* ty_fmt = nullptr;
+    Type* ty_writer = nullptr;
+    Type* ty_location = nullptr;
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
@@ -140,6 +143,9 @@ struct Checker {
         if (name == "Allocator" || name == "CAllocator") {
             return ty_alloc;
         }
+        if (name == "fmt") {
+            return ty_fmt;
+        }
         return nullptr;
     }
 
@@ -190,9 +196,27 @@ struct Checker {
         return t;
     }
 
+    Type* intern_iface(Node* decl, bool nullable) {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Interface && t->decl == decl && t->is_nullable == nullable) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Interface, decl != nullptr ? decl->text : string_view{});
+        t->decl = decl;
+        t->is_nullable = nullable;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
     Type* intern_opt(Type* elem) {
         if (is_ptr(elem) && !elem->is_nullable) {
             return intern_ptr(elem->elem, elem->is_const, elem->is_volatile, true);
+        }
+        if (elem != nullptr && elem->kind == TypeKind::Interface && !elem->is_nullable) {
+            return intern_iface(elem->decl, true);
         }
         for (size_t i = 0; i < interned.size(); i++) {
             Type* t = interned[i];
@@ -398,6 +422,36 @@ struct Checker {
         bind("CAllocator", ty_alloc, false, nullptr);
         bind("FixedBuffer", ty_fixed, false, fb);
         bind("memory", mt, false, mem);
+
+        if (ty_fmt == nullptr) {
+            ty_fmt = make_type(TypeKind::Fmt, "fmt");
+        }
+        Node* wr = syn_node(NodeKind::Interface, "Writer");
+        Node* wfn = syn_node(NodeKind::Func, "write");
+        wfn->flags |= FlagMutating | FlagFallible;
+        Node* wpar = syn_node(NodeKind::Param, "bytes");
+        wpar->ty = intern_sp(ty_u8, true);
+        wfn->right = wpar;
+        wfn->ty = ty_usize;
+        wr->body = wfn;
+        ty_writer = intern_iface(wr, false);
+        wr->ty = ty_writer;
+        bind("Writer", ty_writer, false, wr);
+
+        Node* loc = syn_node(NodeKind::Struct, "Location");
+        Node* ffile = syn_node(NodeKind::Field, "file");
+        ffile->ty = ty_str;
+        Node* fline = syn_node(NodeKind::Field, "line");
+        fline->ty = ty_u32;
+        Node* ffun = syn_node(NodeKind::Field, "function");
+        ffun->ty = ty_str;
+        ffile->next = fline;
+        fline->next = ffun;
+        loc->body = ffile;
+        ty_location = make_type(TypeKind::Struct, "Location");
+        ty_location->decl = loc;
+        loc->ty = ty_location;
+        bind("Location", ty_location, false, loc);
     }
 
     bool is_generic_decl(Node* n) {
@@ -470,8 +524,15 @@ struct Checker {
             } else if (name == "Equatable") {
                 t->bounds |= BoundEquatable;
             } else if (!name.empty()) {
-                fail_n(b, "lucb.check.unsupported",
-                       "constraint `" + string(name) + "` is not in this slice");
+                Binding* ib = lookup(name);
+                if (ib != nullptr && ib->type != nullptr &&
+                    ib->type->kind == TypeKind::Interface) {
+                    t->bounds |= BoundIface;
+                    t->elem = ib->type;
+                } else {
+                    fail_n(b, "lucb.check.type",
+                           "unknown constraint `" + string(name) + "`");
+                }
             }
         }
     }
@@ -571,7 +632,36 @@ struct Checker {
         return false;
     }
 
-    bool satisfies_bounds(Type* t, uint32_t bounds, Node* at) {
+    bool struct_implements(Node* st, Type* iface) {
+        if (st == nullptr || iface == nullptr || iface->decl == nullptr) {
+            return false;
+        }
+        for (Node* t = st->right; t != nullptr; t = t->next) {
+            Type* it = t->ty;
+            if (it == nullptr && t->kind == NodeKind::Type) {
+                it = resolve_type(t);
+            }
+            if (it != nullptr && it->decl == iface->decl) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool iface_has_mutating(Type* iface) {
+        if (iface == nullptr || iface->decl == nullptr) {
+            return false;
+        }
+        for (Node* m = iface->decl->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Func && (m->flags & FlagMutating) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool satisfies_bounds(Type* t, Node* g, Node* at) {
+        uint32_t bounds = g != nullptr && g->ty != nullptr ? g->ty->bounds : 0;
         if (bounds == 0) {
             return true;
         }
@@ -580,8 +670,20 @@ struct Checker {
                    "`" + type_name(t) + "` does not satisfy `Comparable`");
             return false;
         }
-        if ((bounds & BoundEquatable) != 0) {
-            (void)t;
+        if ((bounds & BoundIface) != 0) {
+            Type* iface = g != nullptr && g->ty != nullptr ? g->ty->elem : nullptr;
+            Node* st = t != nullptr ? t->decl : nullptr;
+            if (is_ptr(t)) {
+                st = t->elem != nullptr ? t->elem->decl : nullptr;
+            }
+            if (!struct_implements(st, iface) &&
+                !(t != nullptr && iface != nullptr && t->kind == TypeKind::Interface &&
+                  t->decl == iface->decl)) {
+                fail_n(at, "lucb.check.type",
+                       "`" + type_name(t) + "` does not implement `" +
+                           (iface != nullptr ? type_name(iface) : "interface") + "`");
+                return false;
+            }
         }
         return true;
     }
@@ -665,8 +767,7 @@ struct Checker {
             if (inf[static_cast<size_t>(i)]->kind == TypeKind::UntypedInt) {
                 inf[static_cast<size_t>(i)] = ty_i64;
             }
-            if (!satisfies_bounds(inf[static_cast<size_t>(i)],
-                                  g->ty != nullptr ? g->ty->bounds : 0, at)) {
+            if (!satisfies_bounds(inf[static_cast<size_t>(i)], g, at)) {
                 return false;
             }
             i++;
@@ -974,7 +1075,8 @@ struct Checker {
             if (d->text == name && (d->flags & FlagPub) != 0 &&
                 (d->kind == NodeKind::Func || d->kind == NodeKind::Struct ||
                  d->kind == NodeKind::Enum || d->kind == NodeKind::Union ||
-                 d->kind == NodeKind::Const || d->kind == NodeKind::Global)) {
+                 d->kind == NodeKind::Interface || d->kind == NodeKind::Const ||
+                 d->kind == NodeKind::Global)) {
                 return d;
             }
         }
@@ -1014,7 +1116,8 @@ struct Checker {
                name == "trap" || name == "hash" || name == "format" || name == "location" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
                named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt" ||
-               name == "FixedBuffer" || name == "memory";
+               name == "FixedBuffer" || name == "memory" || name == "fmt" || name == "format" ||
+               name == "location" || name == "Writer" || name == "Location";
     }
 
     bool const_u64(Node* n, uint64_t* out) {
@@ -1125,8 +1228,10 @@ struct Checker {
             bool type_bind = b->decl == nullptr || b->decl->kind == NodeKind::Struct ||
                              b->decl->kind == NodeKind::Enum || b->decl->kind == NodeKind::Union ||
                              b->decl->kind == NodeKind::GenericParam ||
+                             b->decl->kind == NodeKind::Interface ||
                              b->type->kind == TypeKind::Allocator ||
-                             b->type->kind == TypeKind::Param;
+                             b->type->kind == TypeKind::Param ||
+                             b->type->kind == TypeKind::Interface;
             if (type_bind) {
                 Type* t = b->type;
                 if (n->body != nullptr) {
@@ -1308,6 +1413,9 @@ struct Checker {
         case NodeKind::Alloc:
             t = check_alloc(n);
             break;
+        case NodeKind::Formatted:
+            t = check_formatted(n);
+            break;
         case NodeKind::Conditional: {
             Type* tc = check_expr(n->type, t_bool());
             Type* tv = check_expr(n->left, expected);
@@ -1380,6 +1488,30 @@ struct Checker {
         }
         if (expected == nullptr) {
             return got;
+        }
+        if (expected->kind == TypeKind::Interface) {
+            Type* conc = got;
+            bool from_ptr = is_ptr(got);
+            if (from_ptr) {
+                conc = got->elem;
+            }
+            if (conc != nullptr && conc->kind == TypeKind::Struct &&
+                struct_implements(conc->decl, expected)) {
+                if (iface_has_mutating(expected) &&
+                    ((from_ptr && got->is_const) || (n != nullptr && !from_ptr && !is_mut_place(n)))) {
+                    fail_n(n, "lucb.check.mut",
+                           "a mutating interface view needs a `var` receiver");
+                }
+                return expected;
+            }
+            if (got->kind == TypeKind::Interface && got->decl == expected->decl) {
+                return expected;
+            }
+        }
+        if (expected->kind == TypeKind::Fmt) {
+            if (got->kind == TypeKind::Fmt || got->kind == TypeKind::Str) {
+                return expected;
+            }
         }
         if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
             if (is_array(got) && is_span(expected)) {
@@ -1960,6 +2092,12 @@ struct Checker {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             return check_print(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+            return check_format(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
+            return check_location(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             return check_trap(n);
         }
@@ -2197,6 +2335,30 @@ struct Checker {
         return false;
     }
 
+    bool is_display(Type* t) {
+        if (t == nullptr) {
+            return false;
+        }
+        return is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Str ||
+               t->kind == TypeKind::Char || is_ptr(t);
+    }
+
+    Type* check_formatted(Node* n) {
+        for (Node* p = n->body; p != nullptr; p = p->next) {
+            if (p->kind == NodeKind::FormatField) {
+                Type* ft = check_expr(p->left, nullptr);
+                if (ft != nullptr && ft->kind == TypeKind::UntypedInt) {
+                    ft = coerce(p->left, ft, t_i64());
+                    p->left->ty = ft;
+                }
+                if (!is_display(ft)) {
+                    fail_n(p, "lucb.check.type", "this value cannot be formatted");
+                }
+            }
+        }
+        return ty_fmt;
+    }
+
     Type* check_print(Node* n) {
         n->resolved = nullptr;
         int count = count_args(n->body);
@@ -2210,10 +2372,35 @@ struct Checker {
             n->body->left->ty = a;
         }
         if (!is_int(a) && !is_float(a) && a->kind != TypeKind::Bool && a->kind != TypeKind::Str &&
-            a->kind != TypeKind::Char) {
-            fail_n(n, "lucb.check.type", "`print` takes a scalar or `str`");
+            a->kind != TypeKind::Char && a->kind != TypeKind::Fmt) {
+            fail_n(n, "lucb.check.type", "`print` takes a scalar, `str`, or a formatted string");
         }
         return t_unit();
+    }
+
+    Type* check_format(Node* n) {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 2) {
+            fail_n(n, "lucb.check.call", "`format` takes a buffer and a formatted string");
+            return intern_fail(t_str());
+        }
+        Type* buf = check_expr(n->body->left, intern_sp(ty_u8, false));
+        if (!is_span(buf) || buf->elem == nullptr || buf->elem->kind != TypeKind::U8) {
+            fail_n(n, "lucb.check.type", "`format` needs a `u8[]` buffer");
+        }
+        Type* msg = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, ty_fmt);
+        if (msg != nullptr && msg->kind != TypeKind::Fmt && msg->kind != TypeKind::Str) {
+            fail_n(n, "lucb.check.type", "`format` needs a formatted string or `str`");
+        }
+        return intern_fail(t_str());
+    }
+
+    Type* check_location(Node* n) {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 0) {
+            fail_n(n, "lucb.check.call", "`location` takes no arguments");
+        }
+        return ty_location;
     }
 
     Type* check_error(Node* n) {
@@ -2533,6 +2720,27 @@ struct Checker {
         if (is_ptr(ot) && ot->elem != nullptr) {
             recv = ot->elem;
         }
+        if (recv != nullptr && recv->kind == TypeKind::Interface && recv->decl != nullptr) {
+            Node* method = struct_member(recv->decl, mem->text, NodeKind::Func);
+            if (method == nullptr) {
+                fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");
+                return t_error();
+            }
+            mem->resolved = method;
+            n->resolved = method;
+            return check_func_call(n, method, obj);
+        }
+        if (recv != nullptr && recv->kind == TypeKind::Param && (recv->bounds & BoundIface) != 0 &&
+            recv->elem != nullptr && recv->elem->decl != nullptr) {
+            Node* method = struct_member(recv->elem->decl, mem->text, NodeKind::Func);
+            if (method == nullptr) {
+                fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");
+                return t_error();
+            }
+            mem->resolved = method;
+            n->resolved = method;
+            return check_func_call(n, method, obj);
+        }
         if (mem->text == "compare" && comparable_type(recv)) {
             if (count_args(n->body) != 1) {
                 fail_n(n, "lucb.check.call", "`compare` takes one argument");
@@ -2736,6 +2944,9 @@ struct Checker {
                 if (is_fail(init) && (t == nullptr || !is_fail(t))) {
                     fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
                 }
+                if (t == nullptr && init != nullptr && init->kind == TypeKind::Fmt) {
+                    fail_n(n, "lucb.check.type", "`fmt` cannot be stored");
+                }
                 if (t == nullptr) {
                     if (init != nullptr && init->kind == TypeKind::UntypedInt) {
                         init = coerce(n->left, init, t_i64());
@@ -2753,6 +2964,9 @@ struct Checker {
                 fail_n(n, "lucb.check.type", "this type has no zero value; write an initialiser");
             }
             n->ty = t;
+            if (t != nullptr && t->kind == TypeKind::Fmt) {
+                fail_n(n, "lucb.check.type", "`fmt` cannot be stored");
+            }
             bind(n->text, t, n->kind == NodeKind::Var, n);
             if (n->left != nullptr && is_local(n->left)) {
                 set_from_local(n->text, true);
@@ -3107,6 +3321,86 @@ struct Checker {
             pop_scope();
             checking_generic_template = saved_generic;
         }
+        check_implements(st);
+    }
+
+    bool sig_matches(Node* impl, Node* req) {
+        if (impl == nullptr || req == nullptr) {
+            return false;
+        }
+        Node* ip = impl->right;
+        Node* rp = req->right;
+        while (ip != nullptr && rp != nullptr) {
+            if (!type_eq(ip->ty, rp->ty) && !can_widen(ip->ty, rp->ty)) {
+                return false;
+            }
+            ip = ip->next;
+            rp = rp->next;
+        }
+        if (ip != nullptr || rp != nullptr) {
+            return false;
+        }
+        Type* ir = impl->ty != nullptr ? impl->ty : t_unit();
+        Type* rr = req->ty != nullptr ? req->ty : t_unit();
+        if ((req->flags & FlagFallible) != 0) {
+            if ((impl->flags & FlagFallible) != 0) {
+                return type_eq(ir, rr);
+            }
+            return type_eq(ir, rr);
+        }
+        if ((impl->flags & FlagFallible) != 0) {
+            return false;
+        }
+        return type_eq(ir, rr);
+    }
+
+    void check_implements(Node* st) {
+        for (Node* t = st->right; t != nullptr; t = t->next) {
+            Type* iface = resolve_type(t);
+            if (iface == nullptr || iface->kind != TypeKind::Interface || iface->decl == nullptr) {
+                fail_n(t, "lucb.check.type", "`implements` needs an interface");
+                continue;
+            }
+            t->ty = iface;
+            for (Node* req = iface->decl->body; req != nullptr; req = req->next) {
+                if (req->kind != NodeKind::Func) {
+                    continue;
+                }
+                Node* impl = struct_member(st, req->text, NodeKind::Func);
+                if (impl == nullptr) {
+                    fail_n(st, "lucb.check.type",
+                           "`" + string(st->text) + "` is missing `" + string(req->text) +
+                               "` for `" + string(iface->decl->text) + "`");
+                    continue;
+                }
+                if ((req->flags & FlagMutating) != 0 && (impl->flags & FlagMutating) == 0) {
+                    fail_n(impl, "lucb.check.mut",
+                           "`" + string(req->text) + "` must be `mutating`");
+                }
+                if (!sig_matches(impl, req)) {
+                    fail_n(impl, "lucb.check.type",
+                           "`" + string(impl->text) + "` does not match `" +
+                               string(iface->decl->text) + "." + string(req->text) + "`");
+                }
+            }
+        }
+    }
+
+    void check_interface(Node* iface) {
+        if (is_generic_decl(iface)) {
+            fail_n(iface, "lucb.check.unsupported", "generic interfaces are not in this slice");
+            return;
+        }
+        for (Node* m = iface->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::Func) {
+                fail_n(m, "lucb.check.unsupported", "an interface may only declare methods");
+                continue;
+            }
+            if (is_generic_decl(m)) {
+                fail_n(m, "lucb.check.unsupported", "generic methods are not in this slice");
+            }
+            resolve_sig(m);
+        }
     }
 
     void collect_type_decl(Node* d, TypeKind kind) {
@@ -3122,6 +3416,9 @@ struct Checker {
             t->align_to = static_cast<int>(al);
         }
         d->ty = t;
+        if (kind == TypeKind::Interface) {
+            interned.push_back(t);
+        }
         bind(d->text, t, false, d);
     }
 
@@ -3133,6 +3430,8 @@ struct Checker {
                 collect_type_decl(d, TypeKind::Enum);
             } else if (d->kind == NodeKind::Union) {
                 collect_type_decl(d, TypeKind::Union);
+            } else if (d->kind == NodeKind::Interface) {
+                collect_type_decl(d, TypeKind::Interface);
             } else if (d->kind == NodeKind::Func) {
                 if (is_core_name(d->text)) {
                     fail_n(d, "lucb.check.shadow", "this name belongs to the language");
@@ -3215,6 +3514,12 @@ struct Checker {
                 Binding* b = lookup(d->text);
                 if (b != nullptr && b->decl == d) {
                     b->type = d->ty;
+                }
+            } else if (d->kind == NodeKind::Interface) {
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind == NodeKind::Func) {
+                        resolve_sig(m);
+                    }
                 }
             } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
                        d->kind == NodeKind::Union) {
@@ -3402,6 +3707,11 @@ struct Checker {
         bind_imports(mod);
         collect_module(mod);
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Interface) {
+                check_interface(d);
+            }
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
                 check_struct(d);
             } else if (d->kind == NodeKind::Enum) {
@@ -3469,6 +3779,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
     c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
+    c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
     c.check_module(module);
     return diagnostics.empty();
 }
@@ -3505,6 +3816,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
     c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
+    c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
         if (modules[static_cast<size_t>(i)] != nullptr) {
             c.check_module(modules[static_cast<size_t>(i)]);
