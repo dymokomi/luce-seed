@@ -66,19 +66,18 @@ TEST(hidden_import_rejected) {
     DiagnosticBag diagnostics;
     Arena arena;
     Program program;
-    // from util import hidden — hidden is not pub
-    CHECK(load_program("testdata/m9/fromapp.lucb", program, arena, diagnostics));
-    CHECK(program.files.size() >= 2);
+    CHECK(load_program("testdata/m9/fromhidden.lucb", program, arena, diagnostics));
+    check_program(mods_of(program), arena, diagnostics, "testdata/m9/fromhidden.lucb");
+    CHECK(diagnostics.has_code("lucb.check.import"));
 }
 
 TEST(check_unused_import) {
     DiagnosticBag diagnostics;
     Arena arena;
     Program program;
-    CHECK(load_program("testdata/m9/util.lucb", program, arena, diagnostics));
-    // util.lucb has no imports
-    CHECK(check_program(mods_of(program), arena, diagnostics, "testdata/m9/util.lucb"));
-    CHECK(diagnostics.empty());
+    CHECK(load_program("testdata/m9/unused.lucb", program, arena, diagnostics));
+    check_program(mods_of(program), arena, diagnostics, "testdata/m9/unused.lucb");
+    CHECK(diagnostics.has_code("lucb.check.import"));
 }
 
 TEST(eval_tests_pass_and_fail) {

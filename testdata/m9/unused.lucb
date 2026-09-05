@@ -1,0 +1,4 @@
+import util
+
+pub func answer() -> i64:
+    return 1

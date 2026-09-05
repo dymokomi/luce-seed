@@ -148,8 +148,7 @@ auto Parser::parse_postfix() -> Node* {
             if (eat(TokenKind::Dot)) {
                 Node* m = make(NodeKind::Member, start.span);
                 m->left = value;
-                if (!at(TokenKind::Name) && !at(TokenKind::KwNone) &&
-                    !at(TokenKind::KwSpawn) && !at(TokenKind::KwTry)) {
+                if (!at_ident()) {
                     fail("lucb.parse.expect", "expected a member name");
                 } else {
                     m->text = take().text;
@@ -204,14 +203,12 @@ auto Parser::expr_as_type(Node* value) -> Node* {
     }
 
 auto Parser::parse_subscript(Node* value, Token start) -> Node* {
-        if (eat(TokenKind::DotDotLt) || at(TokenKind::DotDot)) {
-            // shouldn't happen, `[..<end]` starts with ..<
-        }
-        if (at(TokenKind::DotDotLt)) {
-            take();
+        if (eat(TokenKind::DotDotLt) || eat(TokenKind::DotDot)) {
             Node* s = make(NodeKind::Slice, start.span);
             s->left = value;
-            s->right = parse_expression();
+            if (peek(-1).kind == TokenKind::DotDotLt) {
+                s->right = parse_expression();
+            }
             expect(TokenKind::RBracket, "lucb.parse.expect", "expected `]`");
             s->span = span_from(start);
             return s;
@@ -294,8 +291,53 @@ auto Parser::parse_type_args() -> Node* {
         return list;
     }
 
+auto Parser::parse_type_builtin() -> Node* {
+        Token start = take();
+        Node* n = make(NodeKind::Call, start.span);
+        n->left = make_tok(NodeKind::Name, start);
+        expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
+        Node* list = nullptr;
+        if (!at(TokenKind::RParen)) {
+            Node* a = make(NodeKind::Param, cur().span);
+            bool as_type = at(TokenKind::KwConst) || at(TokenKind::KwFunc) || at(TokenKind::KwVolatile) ||
+                           at(TokenKind::At) || at(TokenKind::LParen);
+            if (at(TokenKind::Name)) {
+                TokenKind nxt = peek(1).kind;
+                if (nxt == TokenKind::Star || nxt == TokenKind::StarQuestion ||
+                    nxt == TokenKind::LBracket || nxt == TokenKind::Question ||
+                    nxt == TokenKind::Bang || nxt == TokenKind::Dot) {
+                    as_type = true;
+                }
+            }
+            if (as_type) {
+                a->left = parse_type();
+            } else {
+                a->left = parse_expression();
+            }
+            append_node(&list, a);
+            if (eat(TokenKind::Comma)) {
+                Node* f = make(NodeKind::Param, cur().span);
+                if (at_ident()) {
+                    f->left = make_tok(NodeKind::Name, take());
+                } else {
+                    fail("lucb.parse.expect", "expected a field name");
+                }
+                append_node(&list, f);
+            }
+        }
+        expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
+        n->body = list;
+        n->span = span_from(start);
+        return n;
+    }
+
 auto Parser::parse_primary() -> Node* {
         Token start = cur();
+        if (at(TokenKind::Name) &&
+            (cur().text == "sizeof" || cur().text == "alignof" || cur().text == "offsetof") &&
+            peek(1).kind == TokenKind::LParen) {
+            return parse_type_builtin();
+        }
         if (at(TokenKind::FormatStart)) {
             return parse_formatted();
         }
@@ -312,7 +354,7 @@ auto Parser::parse_primary() -> Node* {
         }
         if (eat(TokenKind::Dot)) {
             Node* n = make(NodeKind::CaseValue, start.span);
-            if (at(TokenKind::Name) || at(TokenKind::KwNone)) {
+            if (at_ident()) {
                 n->text = take().text;
             } else {
                 fail("lucb.parse.expect", "expected a case name");
@@ -621,11 +663,11 @@ auto Parser::parse_primary_type() -> Node* {
         Token name = take();
         size_t path_start = name.span.start;
         size_t path_end = name.span.end;
-        while (eat(TokenKind::Dot)) {
-            if (!at(TokenKind::Name)) {
-                fail("lucb.parse.expect", "expected a name after `.`");
+        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Name) {
+            if (peek(2).kind == TokenKind::LParen) {
                 break;
             }
+            take();
             path_end = take().span.end;
         }
         Node* t = make(NodeKind::Type, start.span);

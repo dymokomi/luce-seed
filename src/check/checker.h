@@ -483,6 +483,8 @@ struct Checker {
     Type* check_method_call(Node* n);
     Type* check_member(Node* n, bool as_call);
     bool is_mut_place(Node* n);
+    bool place_is_local(Node* n);
+    bool imported_owner(Node* st);
     void check_stmt(Node* n);
     bool always_returns(Node* n);
     void check_params(Node* fn);

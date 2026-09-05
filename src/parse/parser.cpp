@@ -43,10 +43,24 @@ auto Parser::is_array_suffix_ahead() const -> bool {
         if (!at(TokenKind::LBracket)) {
             return false;
         }
-        if (peek(1).kind == TokenKind::RBracket) {
+        TokenKind k = peek(1).kind;
+        if (k == TokenKind::RBracket) {
             return true;
         }
-        return peek(1).kind == TokenKind::IntLit && peek(2).kind == TokenKind::RBracket;
+        if (k == TokenKind::IntLit || k == TokenKind::LParen) {
+            return true;
+        }
+        if (k == TokenKind::Name) {
+            string_view t = peek(1).text;
+            if (t == "sizeof" || t == "alignof") {
+                return true;
+            }
+            if (is_type_path_ident(t)) {
+                return false;
+            }
+            return true;
+        }
+        return false;
     }
 
 auto Parser::is_generic_call_ahead() const -> bool {
@@ -81,24 +95,34 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         while (peek_kind(i) == TokenKind::KwConst || peek_kind(i) == TokenKind::KwVolatile) {
             i++;
         }
-        // `c.int`
-        if (peek_kind(i) == TokenKind::Name && peek_text(i) == "c" &&
-            peek_kind(i + 1) == TokenKind::Dot && peek_kind(i + 2) == TokenKind::Name &&
-            peek_kind(i + 3) == TokenKind::RParen) {
-            TokenKind after = peek_kind(i + 4);
-            return expr_starts(after) || after == TokenKind::Minus || after == TokenKind::Star ||
-                   after == TokenKind::Amp || after == TokenKind::LParen ||
-                   after == TokenKind::Tilde || after == TokenKind::MinusPercent;
-        }
         if (peek_kind(i) != TokenKind::Name) {
             return false;
         }
         Token name = tok[i];
         i++;
+        if (name.text == "c" && peek_kind(i) == TokenKind::Dot && peek_kind(i + 1) == TokenKind::Name) {
+            i += 2;
+        }
         int stars = 0;
-        while (peek_kind(i) == TokenKind::Star || peek_kind(i) == TokenKind::StarQuestion) {
-            stars++;
-            i++;
+        while (true) {
+            if (peek_kind(i) == TokenKind::Star || peek_kind(i) == TokenKind::StarQuestion) {
+                stars++;
+                i++;
+                continue;
+            }
+            if (peek_kind(i) == TokenKind::Question || peek_kind(i) == TokenKind::Bang) {
+                i++;
+                continue;
+            }
+            if (peek_kind(i) == TokenKind::LBracket) {
+                int close = find_match(i, TokenKind::LBracket, TokenKind::RBracket);
+                if (close < 0) {
+                    return false;
+                }
+                i = close + 1;
+                continue;
+            }
+            break;
         }
         if (peek_kind(i) != TokenKind::RParen) {
             return false;
@@ -108,12 +132,12 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
             operand == TokenKind::FloatLit || operand == TokenKind::CharLit ||
             operand == TokenKind::KwSelf || operand == TokenKind::KwTrue ||
             operand == TokenKind::KwFalse) {
-            if (stars == 0 && !is_scalar_type(name.text)) {
+            if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {
                 return false;
             }
             return true;
         }
-        if (stars == 0 && !is_scalar_type(name.text)) {
+        if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {
             return false;
         }
         return operand == TokenKind::LParen || operand == TokenKind::Minus ||

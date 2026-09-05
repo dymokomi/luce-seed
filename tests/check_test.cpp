@@ -159,7 +159,7 @@ TEST(check_packed_addr_rejected) {
 TEST(check_none_case_rejected) {
     CHECK(check_has("enum E:\n    none\n"
                     "pub func answer() -> i64:\n    return 0\n",
-                    "lucb.parse.expect"));
+                    "lucb.check.type"));
 }
 
 TEST(check_u8_literal_ok) {
@@ -407,4 +407,143 @@ TEST(check_match_expr_ok) {
                    "        .red => 1\n"
                    "        .blue => 2\n"
                    "    return n\n"));
+}
+
+TEST(check_func_as_value) {
+    CHECK(check_has("func add(a: i64, b: i64) -> i64:\n"
+                    "    return a + b\n"
+                    "pub func answer() -> i64:\n"
+                    "    return add\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_escape_global_ok) {
+    CHECK(check_ok("var g: i64 = 40\n"
+                   "func addr() -> i64*:\n"
+                   "    return &g\n"
+                   "pub func answer() -> i64:\n"
+                   "    return *addr()\n"));
+}
+
+TEST(check_let_field_mut) {
+    CHECK(check_has("struct Point:\n"
+                    "    let x: i64\n"
+                    "pub func answer() -> i64:\n"
+                    "    var p = Point(x = 1)\n"
+                    "    p.x = 2\n"
+                    "    return p.x\n",
+                    "lucb.check.mut"));
+}
+
+TEST(check_nullable_deref) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    var p: i64*? = none\n"
+                    "    return *p\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_match_guard_not_cover) {
+    CHECK(check_has("enum E:\n"
+                    "    a\n"
+                    "    b\n"
+                    "pub func answer() -> i64:\n"
+                    "    match E.a:\n"
+                    "        .a if false:\n"
+                    "            return 1\n"
+                    "        .b:\n"
+                    "            return 2\n",
+                    "lucb.check.match"));
+}
+
+TEST(check_fallible_field) {
+    CHECK(check_has("struct Box:\n"
+                    "    var r: i64!\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_ptr_int_cast_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    var n: i64 = 1\n"
+                   "    let p = &n\n"
+                   "    let a = (usize)p\n"
+                   "    let q = (i64*)a\n"
+                   "    return *q\n"));
+}
+
+TEST(check_match_expr_unify) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let x = match true:\n"
+                    "        true => 1\n"
+                    "        false => false\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_always_returns_early) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    return 1\n"
+                   "    print(2)\n"));
+}
+
+TEST(check_atomic_store_mut) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let hits: @u64\n"
+                    "    hits.store(1)\n"
+                    "    return 0\n",
+                    "lucb.check.mut"));
+}
+
+TEST(check_alloc_needs_count) {
+    CHECK(check_has("pub func answer() -> i64!:\n"
+                    "    let s = try alloc i64[]\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_eq_unconstrained) {
+    CHECK(check_has("func eq[T](a: T, b: T) -> bool:\n"
+                    "    return a == b\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_sizeof_ptr_ok) {
+    CHECK(check_ok("struct Node:\n"
+                   "    var n: i64\n"
+                   "pub func answer() -> i64:\n"
+                   "    return i64(sizeof(Node*))\n"));
+}
+
+TEST(check_payload_arity) {
+    CHECK(check_has("enum Cmd:\n"
+                    "    go(n: i64)\n"
+                    "pub func answer() -> i64:\n"
+                    "    match Cmd.go(1):\n"
+                    "        .go:\n"
+                    "            return 0\n",
+                    "lucb.check.call"));
+}
+
+TEST(check_new_count_ok) {
+    CHECK(check_ok("pub func answer() -> i64!:\n"
+                   "    let n: usize = 2\n"
+                   "    let p = try new i64[n]\n"
+                   "    free(p)\n"
+                   "    return 0\n"));
+}
+
+TEST(check_keyword_enum_ok) {
+    CHECK(check_ok("enum TokenKind:\n"
+                   "    eof\n"
+                   "    func\n"
+                   "pub func answer() -> i64:\n"
+                   "    let t = TokenKind.func\n"
+                   "    match t:\n"
+                   "        .eof:\n"
+                   "            return 0\n"
+                   "        .func:\n"
+                   "            return 1\n"));
 }

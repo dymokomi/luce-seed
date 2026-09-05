@@ -91,11 +91,25 @@ inline bool is_assign_op(TokenKind k) {
     }
 }
 
+inline bool is_keyword_kind(TokenKind k) {
+    return k >= TokenKind::KwAlloc && k <= TokenKind::KwWith;
+}
+
 inline bool is_core_type(string_view name) {
     return name == "bool" || name == "u8" || name == "u16" || name == "u32" || name == "u64" ||
            name == "i8" || name == "i16" || name == "i32" || name == "i64" || name == "usize" ||
            name == "isize" || name == "f16" || name == "f32" || name == "f64" || name == "char" ||
            name == "str" || name == "cstr" || name == "fmt" || name == "unit" || name == "never";
+}
+
+inline bool is_type_path_ident(string_view name) {
+    if (name.empty()) {
+        return false;
+    }
+    if (name[0] >= 'A' && name[0] <= 'Z') {
+        return true;
+    }
+    return is_core_type(name) || name == "void" || name == "c";
 }
 
 inline bool is_scalar_type(string_view name) {
@@ -325,6 +339,10 @@ struct Parser {
         return cur().kind == TokenKind::Name && cur().text == s;
     }
 
+    bool at_ident() const {
+        return at(TokenKind::Name) || is_keyword_kind(cur().kind);
+    }
+
     Token take() {
         Token t = cur();
         if (pos < n - 1) {
@@ -442,6 +460,7 @@ struct Parser {
     Node* parse_arg_list();
     Node* parse_type_args();
     Node* parse_primary();
+    Node* parse_type_builtin();
     Node* parse_literal();
     Node* parse_formatted();
     Node* parse_lambda();

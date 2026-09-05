@@ -87,7 +87,11 @@ auto Emitter::emit_enum_value(Node* n) -> string {
             return "((" + c_type(t) + ")" + std::to_string(v) + "u)";
         }
         int tag = emit_case_tag(t != nullptr ? t->decl : nullptr, cse);
-        string s = "((" + c_type(t) + "){ .tag = " + std::to_string(tag);
+        string tn = c_type(t);
+        if (tn == "void") {
+            tn = t != nullptr && t->decl != nullptr ? struct_ident(t->decl) : "int";
+        }
+        string s = "((" + tn + "){ .tag = " + std::to_string(tag);
         if (n->body != nullptr && cse->body != nullptr) {
             s += ", .u." + string(cse->text) + " = {";
             bool first = true;

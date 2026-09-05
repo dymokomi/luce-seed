@@ -112,7 +112,9 @@ Scalar core: `i64`, `bool`, `unit`, structs with implicit `self`, checked
 `lucb check` typechecks; `lucb eval` runs the interpreter. Untyped integer
 literals infer `i64` in `let`, array literals, conditionals, and `match`
 expressions; struct field defaults apply when omitted at a constructor.
-Evidence: `tests/check_test.cpp`, `tests/eval_test.cpp`,
+Keywords after `.` are members and cases. `new T[n]` takes a count
+expression; `new Type.case(...)` allocates a payload enum. Evidence:
+`tests/check_test.cpp`, `tests/eval_test.cpp`, `tests/parse_test.cpp`,
 `testdata/programs/`.
 
 ## M2 — Parser

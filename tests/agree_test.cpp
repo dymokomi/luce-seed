@@ -883,6 +883,75 @@ TEST(agree_program_scan) { CHECK(agrees_file("testdata/programs/scan.lucb")); }
 
 TEST(agree_program_table) { CHECK(agrees_file("testdata/programs/table.lucb")); }
 
+TEST(agree_slice_from_zero) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let xs: i64[4] = [1, 2, 3, 4]\n"
+                 "    let s = xs[..<2]\n"
+                 "    return s[0] + s[1]\n"));
+}
+
+TEST(agree_new_count_var) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let n: usize = 3\n"
+                 "    var items = try new i64[n]\n"
+                 "    items[0] = 10\n"
+                 "    items[1] = 20\n"
+                 "    items[2] = 30\n"
+                 "    let s = items[0] + items[1] + items[2]\n"
+                 "    free(items)\n"
+                 "    return s\n"));
+}
+
+TEST(agree_new_enum_case) {
+    CHECK(agrees("enum Expr:\n"
+                 "    number(value: i64)\n"
+                 "pub func answer() -> i64!:\n"
+                 "    let p = try new Expr.number(value = 7)\n"
+                 "    match *p:\n"
+                 "        .number(value):\n"
+                 "            return value\n"));
+}
+
+TEST(agree_ptr_int_cast) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 41\n"
+                 "    let p = &n\n"
+                 "    let a = (usize)p\n"
+                 "    let q = (i64*)a\n"
+                 "    return *q\n"));
+}
+
+TEST(agree_escape_global) {
+    CHECK(agrees("var g: i64 = 40\n"
+                 "func addr() -> i64*:\n"
+                 "    return &g\n"
+                 "pub func answer() -> i64:\n"
+                 "    return *addr()\n"));
+}
+
+TEST(agree_keyword_enum) {
+    CHECK(agrees("enum TokenKind:\n"
+                 "    eof\n"
+                 "    func\n"
+                 "pub func answer() -> i64:\n"
+                 "    let t = TokenKind.func\n"
+                 "    match t:\n"
+                 "        .eof:\n"
+                 "            return 0\n"
+                 "        .func:\n"
+                 "            return 1\n"));
+}
+
+TEST(agree_sizeof_ptr) {
+    CHECK(agrees("struct Node:\n"
+                 "    var n: i64\n"
+                 "pub func answer() -> i64:\n"
+                 "    let s = sizeof(Node*)\n"
+                 "    if s == 0:\n"
+                 "        return 0\n"
+                 "    return 1\n"));
+}
+
 TEST(native_asm_add) {
     Both both;
     const char* src = "pub func answer() -> i64:\n"

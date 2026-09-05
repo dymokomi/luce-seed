@@ -28,6 +28,9 @@ auto Parser::parse_suite() -> Node* {
         if (at(TokenKind::KwIf) || at(TokenKind::KwWhile) || at(TokenKind::KwFor) ||
             at(TokenKind::KwMatch) || at(TokenKind::KwWith) || at(TokenKind::KwAsm)) {
             fail("lucb.parse.suite", "a same-line suite cannot contain a compound statement");
+            Node* block = make(NodeKind::Block, start.span);
+            append_node(&block->body, parse_statement());
+            return block;
         }
         Node* block = make(NodeKind::Block, start.span);
         Node* s = parse_simple_stmt();
@@ -309,6 +312,7 @@ auto Parser::parse_match(bool as_expr) -> Node* {
             if (at(TokenKind::Dedent)) {
                 break;
             }
+            int here = pos;
             Node* arm = make(NodeKind::MatchArm, cur().span);
             Node* pats = nullptr;
             append_node(&pats, parse_pattern());
@@ -328,6 +332,9 @@ auto Parser::parse_match(bool as_expr) -> Node* {
                 arm->body = parse_suite();
             }
             append_node(&arms, arm);
+            if (pos == here) {
+                take();
+            }
         }
         expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
         n->body = arms;
@@ -344,9 +351,7 @@ auto Parser::parse_pattern() -> Node* {
             return n;
         }
         if (eat(TokenKind::Dot)) {
-            if (at(TokenKind::Name) || at(TokenKind::KwNone)) {
-                n->text = take().text;
-            } else if (at_name("some") || at(TokenKind::Name)) {
+            if (at_ident() || at_name("some")) {
                 n->text = take().text;
             } else {
                 fail("lucb.parse.expect", "expected a case name");
@@ -376,12 +381,16 @@ auto Parser::parse_pattern() -> Node* {
             n->span = span_from(start);
             return n;
         }
-        if (eat(TokenKind::Minus)) {
-            n->op = TokenKind::Minus;
-        }
+        bool neg = eat(TokenKind::Minus);
         if (is_literal_kind(cur().kind) || at(TokenKind::IntLit) || at(TokenKind::FloatLit) ||
             at(TokenKind::CharLit) || at(TokenKind::StringLit)) {
             n->left = parse_literal();
+            if (neg) {
+                Node* u = make(NodeKind::Unary, start.span);
+                u->op = TokenKind::Minus;
+                u->left = n->left;
+                n->left = u;
+            }
             if (at(TokenKind::DotDotLt) || at(TokenKind::DotDotEq)) {
                 n->op = cur().kind;
                 take();

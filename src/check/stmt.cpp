@@ -69,12 +69,17 @@ auto Checker::check_stmt(Node* n) -> void {
             } else if (t == nullptr) {
                 fail_n(n, "lucb.check.type", "this binding needs a type or an initialiser");
                 t = t_error();
+            } else if (n->kind == NodeKind::Let) {
+                fail_n(n, "lucb.check.type", "`let` needs an initialiser");
             } else if (!is_zeroable(t)) {
                 fail_n(n, "lucb.check.type", "this type has no zero value; write an initialiser");
             }
             n->ty = t;
             if (t != nullptr && t->kind == TypeKind::Fmt) {
                 fail_n(n, "lucb.check.type", "`fmt` cannot be stored");
+            }
+            if (is_fail(t)) {
+                fail_n(n, "lucb.check.type", "`T!` cannot be stored");
             }
             bind(n->text, t, n->kind == NodeKind::Var, n);
             if (n->left != nullptr && is_local(n->left)) {
@@ -341,11 +346,12 @@ auto Checker::always_returns(Node* n) -> bool {
             return n->left != nullptr && n->left->ty != nullptr &&
                    n->left->ty->kind == TypeKind::Never;
         case NodeKind::Block: {
-            bool r = false;
             for (Node* s = n->body; s != nullptr; s = s->next) {
-                r = always_returns(s);
+                if (always_returns(s)) {
+                    return true;
+                }
             }
-            return r;
+            return false;
         }
         case NodeKind::If:
             return always_returns(n->body) && always_returns(n->right);

@@ -163,7 +163,7 @@ bool type_eq(const Type* a, const Type* b) {
     if (a->kind == TypeKind::Error || b->kind == TypeKind::Error) {
         return true;
     }
-    if (a->kind == TypeKind::Never || b->kind == TypeKind::Never) {
+    if (a->kind == TypeKind::Never && b->kind == TypeKind::Never) {
         return true;
     }
     return false;

@@ -1,0 +1,4 @@
+from util import hidden
+
+pub func answer() -> i64:
+    return hidden()

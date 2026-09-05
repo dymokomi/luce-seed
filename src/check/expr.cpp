@@ -197,6 +197,9 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             }
             return is_opt(expected) ? expected : dest;
         }
+        if (got->kind == TypeKind::Never) {
+            return expected != nullptr ? expected : got;
+        }
         if (expected == nullptr) {
             return got;
         }
@@ -233,7 +236,7 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             return expected;
         }
         if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
-            if (is_array(got) && is_span(expected)) {
+            if (is_array(got) && is_span(expected) && place_is_local(n)) {
                 mark_local(n);
             }
             return expected;
@@ -409,6 +412,11 @@ auto Checker::check_name(Node* n) -> Type* {
         }
         n->resolved = b->decl;
         mark_import(b);
+        if (b->decl != nullptr &&
+            (b->decl->kind == NodeKind::Func || b->decl->kind == NodeKind::ExternFunc)) {
+            fail_n(n, "lucb.check.type", "a function must be called");
+            return t_error();
+        }
         if (b->from_local) {
             mark_local(n);
         }
@@ -503,6 +511,10 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
                 fail_n(n, "lucb.check.type", "cannot dereference this type");
                 return t_error();
             }
+            if (inner->is_nullable) {
+                fail_n(n, "lucb.check.type", "unwrap a nullable pointer with `if let` or `else`");
+                return t_error();
+            }
             if (is_local(n->left)) {
                 mark_local(n);
             }
@@ -526,10 +538,7 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
                     }
                 }
             }
-            if (n->left != nullptr &&
-                (n->left->kind == NodeKind::Name || n->left->kind == NodeKind::Self ||
-                 n->left->kind == NodeKind::Index || n->left->kind == NodeKind::Member ||
-                 n->left->kind == NodeKind::Unary)) {
+            if (place_is_local(n->left)) {
                 mark_local(n);
             }
             return p;
@@ -562,7 +571,7 @@ auto Checker::check_index(Node* n) -> Type* {
             return base->elem;
         }
         if (is_array(base) || is_span(base)) {
-            if (is_local(n->left) || is_array(base)) {
+            if (is_local(n->left) || (is_array(base) && place_is_local(n->left))) {
                 mark_local(n);
             }
             return base->elem;
@@ -584,7 +593,9 @@ auto Checker::check_slice(Node* n) -> Type* {
         if (is_array(base)) {
             elem = base->elem;
             cnst = !is_mut_place(n->left);
-            mark_local(n);
+            if (place_is_local(n->left)) {
+                mark_local(n);
+            }
         } else if (is_span(base)) {
             elem = base->elem;
             cnst = base->is_const;
@@ -747,6 +758,17 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
             n->right->ty = R;
         }
         if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+            if ((L != nullptr && L->kind == TypeKind::Interface) ||
+                (R != nullptr && R->kind == TypeKind::Interface)) {
+                fail_n(n, "lucb.check.type", "interface views cannot be compared");
+                return t_bool();
+            }
+            if ((L != nullptr && L->kind == TypeKind::Param &&
+                 (L->bounds & (BoundEquatable | BoundComparable)) == 0) ||
+                (R != nullptr && R->kind == TypeKind::Param &&
+                 (R->bounds & (BoundEquatable | BoundComparable)) == 0)) {
+                fail_n(n, "lucb.check.type", "`==` on a type parameter needs `Equatable`");
+            }
             Type* u = unify_int(L, R);
             if (u != nullptr && is_int(u)) {
                 if (L->kind == TypeKind::UntypedInt) {
@@ -909,6 +931,9 @@ auto Checker::type_from_expr_or_name(Node* a) -> Type* {
         if (a == nullptr) {
             return t_error();
         }
+        if (a->kind == NodeKind::Type) {
+            return resolve_type(a);
+        }
         if (a->kind == NodeKind::Name) {
             Type* named = named_scalar(a->text);
             if (named != nullptr && lookup(a->text) == nullptr) {
@@ -1042,6 +1067,15 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
             return true;
         }
         if (is_ptr(src) && is_ptr(dest)) {
+            return true;
+        }
+        if (src->kind == TypeKind::Never) {
+            return true;
+        }
+        if (is_ptr(src) && (dest->kind == TypeKind::Usize || dest->kind == TypeKind::Isize)) {
+            return true;
+        }
+        if ((src->kind == TypeKind::Usize || src->kind == TypeKind::Isize) && is_ptr(dest)) {
             return true;
         }
         if (is_int(src) && is_int(dest)) {
@@ -1229,13 +1263,20 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
         vector<string_view> saw_cases;
         for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
             push_scope();
+            bool guarded = arm->type != nullptr;
             for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
                 if (pat->text == "_") {
-                    saw_rest = true;
+                    if (!guarded) {
+                        saw_rest = true;
+                    }
                 } else if (pat->text == "none") {
-                    saw_none = true;
+                    if (!guarded) {
+                        saw_none = true;
+                    }
                 } else if (pat->text == "some") {
-                    saw_some = true;
+                    if (!guarded) {
+                        saw_some = true;
+                    }
                     if (pat->body != nullptr && !pat->body->text.empty() && is_opt(scrut)) {
                         bind(pat->body->text, scrut->elem, false, pat);
                     }
@@ -1245,7 +1286,9 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                     if (cse == nullptr) {
                         fail_n(pat, "lucb.check.name", "no case `" + string(pat->text) + "`");
                     } else {
-                        saw_cases.push_back(pat->text);
+                        if (!guarded) {
+                            saw_cases.push_back(pat->text);
+                        }
                         pat->resolved = cse;
                         Node* p = cse->body;
                         Node* b = pat->body;
@@ -1255,6 +1298,9 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                             }
                             p = p->next;
                             b = b->next;
+                        }
+                        if (p != nullptr || b != nullptr) {
+                            fail_n(pat, "lucb.check.call", "wrong number of payload fields");
                         }
                     }
                 } else if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
@@ -1274,9 +1320,24 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                 }
             }
             if (n->kind == NodeKind::MatchExpr) {
-                Type* bt = check_expr(arm->body, expected);
+                Type* want = result;
+                if (want != nullptr && want->kind == TypeKind::UntypedInt) {
+                    want = t_i64();
+                }
+                if (want == nullptr) {
+                    want = expected;
+                }
+                Type* bt = check_expr(arm->body, want);
                 if (result == nullptr) {
                     result = bt;
+                    if (result != nullptr && result->kind == TypeKind::UntypedInt) {
+                        result = t_i64();
+                        coerce(arm->body, bt, result);
+                        arm->body->ty = result;
+                    }
+                } else if (!type_eq(bt, result) && !can_widen(bt, result) &&
+                           !type_eq(bt, t_never())) {
+                    fail_n(arm, "lucb.check.type", "match arms must have the same type");
                 }
             } else {
                 check_stmt(arm->body);
@@ -1353,6 +1414,12 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
             if (!type_eq(at, field->ty) && !can_widen(at, field->ty)) {
                 fail_n(a, "lucb.check.type",
                        "field `" + string(field->text) + "` has type " + type_name(field->ty));
+            }
+            for (Node* o = n->body; o != a; o = o->next) {
+                if (o->text == a->text && !a->text.empty()) {
+                    fail_n(a, "lucb.check.shadow", "duplicate field");
+                    break;
+                }
             }
         }
         if (st != nullptr) {
@@ -1616,6 +1683,12 @@ auto Checker::check_method_call(Node* n) -> Type* {
             Type* elem = at->elem;
             n->resolved = nullptr;
             mem->resolved = nullptr;
+            if (mem->text != "load" && mem->text != "wait" && mem->text != "wake") {
+                bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const);
+                if (!mut_ok) {
+                    fail_n(n, "lucb.check.mut", "a mutating method needs a `var` receiver");
+                }
+            }
             int nargs = count_args(n->body);
             Binding* ob = lookup("Ordering");
             Type* ord = ob != nullptr ? ob->type : ty_i32;
@@ -1762,6 +1835,10 @@ auto Checker::check_method_call(Node* n) -> Type* {
             fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");
             return t_error();
         }
+        if (imported_owner(recv->decl) && (method->flags & FlagPub) == 0) {
+            fail_n(n, "lucb.check.name", "no public `" + string(mem->text) + "`");
+            return t_error();
+        }
         if ((method->flags & FlagStatic) != 0) {
             fail_n(n, "lucb.check.call", "a static method is called on the type");
         }
@@ -1894,6 +1971,10 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
             fail_n(n, "lucb.check.name", "no field `" + string(n->text) + "`");
             return t_error();
         }
+        if (imported_owner(ot->decl) && (field->flags & FlagPub) == 0) {
+            fail_n(n, "lucb.check.name", "no public `" + string(n->text) + "`");
+            return t_error();
+        }
         n->resolved = field;
         if (is_local(n->left)) {
             mark_local(n);
@@ -1914,6 +1995,9 @@ auto Checker::is_mut_place(Node* n) -> bool {
             return b != nullptr && b->mut;
         }
         if (n->kind == NodeKind::Member) {
+            if (n->resolved != nullptr && (n->resolved->flags & FlagConst) != 0) {
+                return false;
+            }
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::Global) {
                 return true;
             }
@@ -1940,6 +2024,47 @@ auto Checker::is_mut_place(Node* n) -> bool {
             }
         }
         return false;
+    }
+
+auto Checker::place_is_local(Node* n) -> bool {
+        if (n == nullptr) {
+            return false;
+        }
+        if (n->kind == NodeKind::Name) {
+            Binding* b = lookup(n->text);
+            if (b == nullptr || b->decl == nullptr) {
+                return false;
+            }
+            if (b->decl->kind == NodeKind::Global || b->decl->kind == NodeKind::Const) {
+                return false;
+            }
+            return b->depth > 0;
+        }
+        if (n->kind == NodeKind::Self) {
+            return false;
+        }
+        if (n->kind == NodeKind::Member) {
+            Type* ot = n->left != nullptr ? n->left->ty : nullptr;
+            if (is_ptr(ot)) {
+                return is_local(n->left);
+            }
+            return place_is_local(n->left);
+        }
+        if (n->kind == NodeKind::Index) {
+            return place_is_local(n->left) || is_local(n->left);
+        }
+        if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {
+            return is_local(n->left);
+        }
+        return is_local(n);
+    }
+
+auto Checker::imported_owner(Node* st) -> bool {
+        if (st == nullptr) {
+            return false;
+        }
+        Binding* b = lookup(st->text);
+        return b != nullptr && b->import_src != nullptr;
     }
 
 } // namespace lucb

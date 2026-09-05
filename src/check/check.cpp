@@ -351,6 +351,7 @@ auto Checker::check_new(Node* n) -> Type* {
         }
         Type* t = resolve_type(tn);
         if (n->body != nullptr && n->body->kind == NodeKind::CaseValue) {
+            n->body->ty = t;
             check_case_value(n->body, t);
         } else if (n->body != nullptr) {
             if (t->kind != TypeKind::Struct || t->decl == nullptr) {
@@ -388,6 +389,8 @@ auto Checker::check_alloc(Node* n) -> Type* {
                 if (!is_int(ct) && ct->kind != TypeKind::UntypedInt) {
                     fail_n(n->type->right, "lucb.check.type", "`alloc T[count]` needs a `usize` count");
                 }
+            } else {
+                fail_n(n, "lucb.check.type", "`alloc T[count]` needs a count");
             }
             return intern_fail(intern_sp(elem, false));
         }
@@ -1278,6 +1281,9 @@ auto Checker::collect_module(Node* mod) -> void {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Field) {
                         m->ty = resolve_type(m->type);
+                        if (is_fail(m->ty)) {
+                            fail_n(m, "lucb.check.type", "`T!` cannot be stored");
+                        }
                     }
                 }
             } else if (d->kind == NodeKind::Enum) {
@@ -1437,6 +1443,9 @@ auto Checker::resolve_sig(Node* fn) -> void {
                 continue;
             }
             p->ty = resolve_type(p->type);
+            if (is_fail(p->ty)) {
+                fail_n(p, "lucb.check.type", "`T!` cannot be a parameter");
+            }
         }
         if (generic) {
             pop_scope();

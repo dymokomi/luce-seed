@@ -292,6 +292,95 @@ TEST(parse_try_as_member) {
     CHECK(p.dump().find("(member \"try\"") != std::string::npos);
 }
 
+TEST(parse_slice_from_zero) {
+    Parsed p("func f(xs: i64[]) -> i64:\n    return xs[..<2][0]\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(slice") != std::string::npos);
+}
+
+TEST(parse_new_count_name) {
+    Parsed p("func f(n: usize) -> i64:\n    let p = try new i64[n]\n    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(new") != std::string::npos);
+}
+
+TEST(parse_new_enum_case) {
+    Parsed p("enum Expr:\n    number(value: i64)\n"
+             "func f() -> i64:\n    let p = try new Expr.number(value = 1)\n    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(case_value \"number\"") != std::string::npos ||
+          p.dump().find("number") != std::string::npos);
+}
+
+TEST(parse_keyword_member) {
+    Parsed p("func f(t: Token) -> i64:\n    return t.func\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(member \"func\"") != std::string::npos);
+}
+
+TEST(parse_keyword_case) {
+    Parsed p("func f(t: TokenKind) -> i64:\n    match t:\n        .func: return 1\n        _: return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(pat \"func\"") != std::string::npos);
+}
+
+TEST(parse_sizeof_ptr) {
+    Parsed p("func f() -> usize:\n    return sizeof(Node*)\n");
+    CHECK(p.diagnostics.empty());
+}
+
+TEST(parse_c_int_ptr_cast) {
+    Parsed p("func f(p: void*) -> i64:\n    let q = (c.int*)p\n    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(cast") != std::string::npos);
+}
+
+TEST(parse_same_line_compound) {
+    Parsed p("func f() -> i64:\n    if x: if y: return 1\n    return 0\n");
+    CHECK(p.has("lucb.parse.suite"));
+}
+
+TEST(parse_interface_junk_recovers) {
+    Parsed p("interface Writer:\n    var x: i64\nfunc f() -> i64:\n    return 0\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
+TEST(parse_variadic_base_rejected) {
+    Parsed p("func log(fmt: cstr, ...) -> i32:\n    return 0\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
+TEST(parse_let_needs_init) {
+    Parsed p("func f() -> i64:\n    let x: i64\n    return 0\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
+TEST(parse_weak_belongs_to_full_luce) {
+    Parsed p("weak var n: i64 = 0\nfunc f() -> i64:\n    return 0\n");
+    CHECK(p.has("lucb.parse.tier"));
+}
+
+TEST(parse_spawn_belongs_to_full_luce) {
+    Parsed p("spawn func f() -> i64:\n    return 0\n");
+    CHECK(p.has("lucb.parse.tier"));
+}
+
+TEST(parse_import_not_top) {
+    Parsed p("func f() -> i64:\n    return 1\nimport util\n");
+    CHECK(p.has("lucb.parse.import"));
+}
+
+TEST(parse_const_without_star) {
+    Parsed p("func f(x: const i64) -> i64:\n    return 0\n");
+    CHECK(p.has("lucb.parse.type"));
+}
+
+TEST(parse_field_named_type) {
+    Parsed p("struct Node:\n    var type: i64\nfunc f() -> i64:\n    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(field \"type\"") != std::string::npos);
+}
+
 TEST(lex_asm_body_is_raw) {
     lucb::DiagnosticBag diagnostics;
     lucb::Source source = lucb::Source::from_bytes(

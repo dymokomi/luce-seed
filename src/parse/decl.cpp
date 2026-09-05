@@ -130,7 +130,7 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
     }
 
 auto Parser::parse_top() -> Node* {
-        if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn)) {
+        if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn) || at(TokenKind::KwWeak)) {
             fail("lucb.parse.tier", "this construct belongs to full Luce");
             take();
             sync_line();
@@ -290,6 +290,9 @@ auto Parser::parse_func(uint32_t flags) -> Node* {
         if (eat(TokenKind::KwMutating)) {
             flags |= FlagMutating;
         }
+        if ((flags & FlagStatic) != 0 && (flags & FlagMutating) != 0) {
+            fail("lucb.parse.expect", "a static method cannot be `mutating`");
+        }
         expect(TokenKind::KwFunc, "lucb.parse.expect", "expected `func`");
         Node* n = make(NodeKind::Func, start.span);
         n->flags = flags;
@@ -357,6 +360,9 @@ auto Parser::parse_params(bool extern_form) -> Node* {
         if (!at(TokenKind::RParen)) {
             while (true) {
                 if (eat(TokenKind::DotDotDot)) {
+                    if (!extern_form) {
+                        fail("lucb.parse.expect", "a Base function cannot be variadic");
+                    }
                     Node* p = make(NodeKind::Param, peek(-1).span);
                     p->flags = FlagVariadic;
                     append_node(&list, p);
@@ -438,7 +444,11 @@ auto Parser::parse_struct(uint32_t flags, bool is_extern) -> Node* {
             if (at(TokenKind::Dedent)) {
                 break;
             }
+            int here = pos;
             append_node(&n->body, parse_type_member(is_extern));
+            if (pos == here) {
+                take();
+            }
         }
         expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
         n->span = span_from(start);
@@ -483,7 +493,7 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
                 }
                 take();
             }
-            if (!at(TokenKind::Name)) {
+            if (!at_ident()) {
                 fail("lucb.parse.expect", "expected a field name");
             } else {
                 f->text = take().text;
@@ -497,8 +507,13 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
             f->span = span_from(start);
             return f;
         }
-        Node* fn = parse_func(flags);
-        return fn;
+        if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
+            at_name("inline")) {
+            return parse_func(flags);
+        }
+        fail("lucb.parse.expect", "expected a field or method");
+        sync_line();
+        return make(NodeKind::Field, cur().span);
     }
 
 auto Parser::parse_enum(uint32_t flags) -> Node* {
@@ -538,13 +553,14 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
             if (eat(TokenKind::KwPub)) {
                 mflags |= FlagPub;
             }
-            if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at(TokenKind::KwMutating)) {
+            if (at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
+                (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name)) {
                 append_node(&n->body, parse_func(mflags));
                 continue;
             }
             Token t = cur();
             Node* c = make(NodeKind::EnumCase, t.span);
-            if (!at(TokenKind::Name)) {
+            if (!at_ident()) {
                 fail("lucb.parse.expect", "expected a case name");
                 sync_line();
                 continue;
@@ -628,7 +644,7 @@ auto Parser::parse_interface(uint32_t flags) -> Node* {
             if (at(TokenKind::Dedent)) {
                 break;
             }
-            // Signature only: mutating func name(...) -> T newline
+            int here = pos;
             Token fs = cur();
             uint32_t mflags = 0;
             if (eat(TokenKind::KwMutating)) {
@@ -658,6 +674,9 @@ auto Parser::parse_interface(uint32_t flags) -> Node* {
             }
             expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
             append_node(&n->body, fn);
+            if (pos == here) {
+                take();
+            }
         }
         expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
         n->span = span_from(start);
