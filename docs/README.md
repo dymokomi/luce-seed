@@ -7,3 +7,5 @@
 - [Done](DONE.md) — committed behavior and the evidence behind it.
 - [Coding](CODING.md) — C++ conventions for this tree.
 - [Features](FEATURES.md) — spec-section to tests ledger.
+- [Examples](../examples/) — complete programs shaped like compiler work,
+  each proved by both executions on every test run.
