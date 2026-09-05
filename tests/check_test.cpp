@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   tests/check_test - The checker accepts and rejects the right programs
+//
+//   DESCRIPTION:
+//       Positive programs check cleanly; negative programs are refused with the pinned
+//       diagnostic code.
+//
+//==============================================================================================
+
 #include "check/check.h"
 #include "lex/lexer.h"
 #include "parse/parser.h"
@@ -7,11 +17,11 @@
 #include "support/test.h"
 
 using lucb::Arena;
+using lucb::check_module;
 using lucb::DiagnosticBag;
+using lucb::parse;
 using lucb::Source;
 using lucb::Token;
-using lucb::check_module;
-using lucb::parse;
 using lucb::tokenize;
 
 static bool check_ok(const char* text) {
@@ -99,7 +109,8 @@ TEST(check_unknown_type) {
 }
 
 TEST(check_pointer_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n    var n: i64 = 1\n    let p = &n\n    return *p\n"));
+    CHECK(
+        check_ok("pub func answer() -> i64:\n    var n: i64 = 1\n    let p = &n\n    return *p\n"));
 }
 
 TEST(check_optional_ok) {
@@ -185,12 +196,14 @@ TEST(check_c_cast_truncates) {
 }
 
 TEST(check_widen_u8_to_u32) {
-    CHECK(check_ok("pub func answer() -> i64:\n    let x: u8 = 3\n    let y: u32 = x\n    return i64(y)\n"));
+    CHECK(check_ok(
+        "pub func answer() -> i64:\n    let x: u8 = 3\n    let y: u32 = x\n    return i64(y)\n"));
 }
 
 TEST(check_no_implicit_signedness_change) {
-    CHECK(check_has("pub func answer() -> i64:\n    let x: u8 = 3\n    let y: i64 = x\n    return y\n",
-                    "lucb.check.type"));
+    CHECK(check_has(
+        "pub func answer() -> i64:\n    let x: u8 = 3\n    let y: i64 = x\n    return y\n",
+        "lucb.check.type"));
 }
 
 TEST(check_new_needs_try) {

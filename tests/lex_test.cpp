@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   tests/lex_test - Tokens and layout
+//
+//   DESCRIPTION:
+//       Keywords, literals, operators, formatted strings, comments, raw assembly,
+//       indentation, delimiter suites, encoding rules, and look-alike punctuation.
+//
+//==============================================================================================
+
 #include "lex/lexer.h"
 #include "source/source.h"
 #include "support/diagnostics.h"
@@ -10,9 +20,9 @@
 using lucb::DiagnosticBag;
 using lucb::Source;
 using lucb::Token;
-using lucb::TokenKind;
 using lucb::token_kind_name;
 using lucb::tokenize;
+using lucb::TokenKind;
 
 struct Lexed {
     std::vector<Token> tokens;
@@ -46,7 +56,9 @@ struct Lexed {
         return out;
     }
 
-    bool has(std::string_view code) const { return diagnostics.has_code(code); }
+    bool has(std::string_view code) const {
+        return diagnostics.has_code(code);
+    }
 };
 
 static bool kinds_eq(const Lexed& lexed, std::initializer_list<const char*> expected) {
@@ -77,15 +89,15 @@ TEST(lex_empty_file_is_eof) {
 TEST(lex_hello_function) {
     Lexed lexed("func main:\n    return\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent",
-                           "eof"}));
+    CHECK(kinds_eq(
+        lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent", "eof"}));
 }
 
 TEST(lex_missing_final_newline_is_inserted) {
     Lexed lexed("func main:\n    return");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent",
-                           "eof"}));
+    CHECK(kinds_eq(
+        lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent", "eof"}));
 }
 
 TEST(lex_keywords_are_not_names) {
@@ -135,8 +147,8 @@ TEST(lex_blank_and_comment_lines_do_not_change_indent) {
                 "\n"
                 "    return\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent",
-                           "eof"}));
+    CHECK(kinds_eq(
+        lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent", "eof"}));
 }
 
 TEST(lex_doc_comment_at_line_start) {
@@ -192,7 +204,8 @@ TEST(lex_base_operators_longest_first) {
 TEST(lex_augmented_wrapping_operators) {
     Lexed lexed("x +%= 1\ny *|= 2\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"name", "+%=", "int", "newline", "name", "*|=", "int", "newline", "eof"}));
+    CHECK(
+        kinds_eq(lexed, {"name", "+%=", "int", "newline", "name", "*|=", "int", "newline", "eof"}));
 }
 
 TEST(lex_markers_dashes_dots_at) {
@@ -220,23 +233,23 @@ TEST(lex_markers_dashes_dots_at) {
 TEST(lex_range_and_slash_slash) {
     Lexed lexed("a += b\nc..<d\ne // f\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"name", "+=", "name", "newline", "name", "..<", "name", "newline", "name",
-                           "//", "name", "newline", "eof"}));
+    CHECK(kinds_eq(lexed, {"name", "+=", "name", "newline", "name", "..<", "name", "newline",
+                           "name", "//", "name", "newline", "eof"}));
 }
 
 TEST(lex_dot_dot_eq_outranks_dot_dot) {
     Lexed lexed("1..=4\nitems[1..]\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"int", "..=", "int", "newline", "name", "[", "int", "..", "]", "newline",
-                           "eof"}));
+    CHECK(kinds_eq(
+        lexed, {"int", "..=", "int", "newline", "name", "[", "int", "..", "]", "newline", "eof"}));
 }
 
 TEST(lex_arrow_and_fat_arrow) {
     Lexed lexed("func f() -> i64:\n    match x:\n        _ => 1\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"func", "name", "(", ")", "->", "name", ":", "newline", "indent", "match",
-                           "name", ":", "newline", "indent", "_", "=>", "int", "newline", "dedent",
-                           "dedent", "eof"}));
+    CHECK(kinds_eq(lexed, {"func",    "name",   "(",     ")",       "->",     "name",    ":",
+                           "newline", "indent", "match", "name",    ":",      "newline", "indent",
+                           "_",       "=>",     "int",   "newline", "dedent", "dedent",  "eof"}));
 }
 
 TEST(lex_integer_literals) {
@@ -338,8 +351,8 @@ TEST(lex_formatted_string_escaped_braces) {
 TEST(lex_crlf_layout) {
     Lexed lexed("func f:\r\n    return\r\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent",
-                           "eof"}));
+    CHECK(kinds_eq(
+        lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent", "eof"}));
 }
 
 TEST(lex_bom_does_not_shift_columns) {
@@ -389,6 +402,6 @@ TEST(lex_slash_slash_is_division_not_a_comment) {
 TEST(lex_core_type_names_are_names) {
     Lexed lexed("i64 u32 usize str bool never unit\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"name", "name", "name", "name", "name", "name", "name", "newline",
-                           "eof"}));
+    CHECK(kinds_eq(lexed,
+                   {"name", "name", "name", "name", "name", "name", "name", "newline", "eof"}));
 }

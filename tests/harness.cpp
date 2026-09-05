@@ -1,3 +1,12 @@
+//==============================================================================================
+//
+//   tests/harness - Test runner entry
+//
+//   DESCRIPTION:
+//       Runs every registered test and reports the tally.
+//
+//==============================================================================================
+
 #include "support/test.h"
 
 int lucb::test::run_all() {
@@ -23,4 +32,6 @@ int lucb::test::run_all() {
     return 1;
 }
 
-int main() { return lucb::test::run_all(); }
+int main() {
+    return lucb::test::run_all();
+}

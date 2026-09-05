@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   tests/parse_test - Syntax
+//
+//   DESCRIPTION:
+//       Every declaration and statement form, expression precedence, cast disambiguation, and
+//       the forms Base refuses with a stable code.
+//
+//==============================================================================================
+
 #include "lex/lexer.h"
 #include "parse/parser.h"
 #include "source/source.h"
@@ -7,12 +17,12 @@
 
 using lucb::Arena;
 using lucb::DiagnosticBag;
+using lucb::dump_tree;
 using lucb::Node;
+using lucb::parse;
 using lucb::ParseResult;
 using lucb::Source;
 using lucb::Token;
-using lucb::dump_tree;
-using lucb::parse;
 using lucb::tokenize;
 
 struct Parsed {
@@ -40,7 +50,9 @@ struct Parsed {
         return dump_tree(result.module);
     }
 
-    bool has(const char* code) const { return diagnostics.has_code(code); }
+    bool has(const char* code) const {
+        return diagnostics.has_code(code);
+    }
 };
 
 TEST(parse_hello_function) {
@@ -357,7 +369,8 @@ TEST(parse_keyword_member) {
 }
 
 TEST(parse_keyword_case) {
-    Parsed p("func f(t: TokenKind) -> i64:\n    match t:\n        .func: return 1\n        _: return 0\n");
+    Parsed p("func f(t: TokenKind) -> i64:\n    match t:\n        .func: return 1\n        _: "
+             "return 0\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("(pat \"func\"") != std::string::npos);
 }

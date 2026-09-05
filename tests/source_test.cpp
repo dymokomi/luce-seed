@@ -1,3 +1,12 @@
+//==============================================================================================
+//
+//   tests/source_test - Source loading
+//
+//   DESCRIPTION:
+//       BOM and CRLF handling, the encoding gate, and position mapping.
+//
+//==============================================================================================
+
 #include "source/source.h"
 #include "support/diagnostics.h"
 #include "support/test.h"
@@ -76,7 +85,9 @@ TEST(source_crlf_is_accepted) {
 
 TEST(source_utf16_le_bom_is_named) {
     DiagnosticBag diagnostics;
-    Source source = load("\xFF\xFE""a\0", diagnostics);
+    Source source = load("\xFF\xFE"
+                         "a\0",
+                         diagnostics);
     CHECK(!source.ok());
     CHECK(diagnostics.has_code("lucb.source.encoding"));
 }
