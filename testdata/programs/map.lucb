@@ -1,0 +1,11 @@
+func intern[K: Hashable & Equatable](keys: const K[], key: K) -> usize:
+    var i: usize = 0
+    while i < keys.length:
+        if keys[i] == key:
+            return i
+        i += 1
+    return 0
+
+pub func answer() -> i64:
+    let names: str[3] = ["lex", "parse", "emit"]
+    return i64(intern(names, "parse"))

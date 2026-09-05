@@ -2,6 +2,12 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## `Hashable` bound
+
+`T: Hashable` and `T: Hashable & Equatable` are derived like `Equatable`.
+A compiler intern table can be generic. Evidence: `agree_hashable_intern`,
+`testdata/programs/map.lucb`.
+
 ## User `Allocator`
 
 `Allocator` is the interface of §12.4. `new` / `alloc` / `free` / `with` /

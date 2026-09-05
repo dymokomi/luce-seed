@@ -25,6 +25,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 7.7 | Pointer `*`, `&`, `p+n` | done | `agree_pointer_deref`, `agree_assign_through_pointer` |
 | 7.7 | `memory.copy` / `move` / `set` / `read[T]` / `write[T]` | done | `agree_memory_copy`, `agree_memory_move`, `agree_memory_set`, `agree_memory_read_write`, `testdata/programs/memory.lucb` |
 | 7.4 | `hash` / `hex` / `bin` / `pad` | done | `agree_hash_int`, `agree_hex_bin_pad`, `testdata/programs/hash.lucb` |
+| 13.1 | `T: Hashable` | done | `agree_hashable_intern`, `check_hashable_bound_ok`, `testdata/programs/map.lucb` |
 | 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |

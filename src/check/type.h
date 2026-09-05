@@ -67,6 +67,7 @@ enum {
     BoundEquatable = 1u,
     BoundComparable = 2u,
     BoundIface = 4u,
+    BoundHashable = 8u,
 };
 
 inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }

@@ -684,6 +684,27 @@ TEST(check_process_run_ok) {
                    "    return i64(code)\n"));
 }
 
+TEST(check_hashable_bound_ok) {
+    CHECK(check_ok("func intern[K: Hashable & Equatable](keys: const K[], key: K) -> usize:\n"
+                   "    if keys[0] == key:\n"
+                   "        return 0\n"
+                   "    return 1\n"
+                   "pub func answer() -> i64:\n"
+                   "    let table: i64[2] = [1, 2]\n"
+                   "    return i64(intern(table, 1))\n"));
+}
+
+TEST(check_hashable_bound_rejected) {
+    CHECK(check_has("func intern[K: Hashable](key: K) -> u64:\n"
+                    "    return hash(key)\n"
+                    "interface Sink:\n"
+                    "    mutating func write(bytes: const u8[]) -> usize\n"
+                    "pub func answer() -> i64:\n"
+                    "    var s: Sink? = none\n"
+                    "    return i64(intern(s))\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_hash_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n"
                    "    if hash(7) == hash(7):\n"

@@ -925,6 +925,8 @@ TEST(agree_program_hash) { CHECK(agrees_file("testdata/programs/hash.lucb")); }
 
 TEST(agree_program_arena) { CHECK(agrees_file("testdata/programs/arena.lucb")); }
 
+TEST(agree_program_map) { CHECK(agrees_file("testdata/programs/map.lucb")); }
+
 TEST(agree_user_arena) {
     CHECK(agrees("pub struct Arena implements Allocator:\n"
                  "    var parent: Allocator\n"
@@ -1048,6 +1050,19 @@ TEST(agree_process_run) {
                  "    var args: cstr[2] = [\"-c\", \"exit 7\"]\n"
                  "    let code = try process.run(\"/bin/sh\", args)\n"
                  "    return i64(code)\n"));
+}
+
+TEST(agree_hashable_intern) {
+    CHECK(agrees("func intern[K: Hashable & Equatable](keys: const K[], key: K) -> usize:\n"
+                 "    var i: usize = 0\n"
+                 "    while i < keys.length:\n"
+                 "        if keys[i] == key:\n"
+                 "            return i\n"
+                 "        i += 1\n"
+                 "    return 0\n"
+                 "pub func answer() -> i64:\n"
+                 "    let table: i64[3] = [10, 20, 30]\n"
+                 "    return i64(intern(table, 20))\n"));
 }
 
 TEST(agree_hash_int) {

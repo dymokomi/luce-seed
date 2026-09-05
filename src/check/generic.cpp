@@ -71,6 +71,8 @@ auto Checker::apply_bounds(Node* g, Type* t) -> void {
                 t->bounds |= BoundComparable;
             } else if (name == "Equatable") {
                 t->bounds |= BoundEquatable;
+            } else if (name == "Hashable") {
+                t->bounds |= BoundHashable;
             } else if (!name.empty()) {
                 Binding* ib = lookup(name);
                 if (ib != nullptr && ib->type != nullptr &&
@@ -216,6 +218,11 @@ auto Checker::satisfies_bounds(Type* t, Node* g, Node* at) -> bool {
         if ((bounds & BoundComparable) != 0 && !comparable_type(t)) {
             fail_n(at, "lucb.check.type",
                    "`" + type_name(t) + "` does not satisfy `Comparable`");
+            return false;
+        }
+        if ((bounds & BoundHashable) != 0 && !is_hashable(t)) {
+            fail_n(at, "lucb.check.type",
+                   "`" + type_name(t) + "` does not satisfy `Hashable`");
             return false;
         }
         if ((bounds & BoundIface) != 0) {
