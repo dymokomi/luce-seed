@@ -312,3 +312,99 @@ TEST(check_sync_mut) {
                     "    return 0\n",
                     "lucb.check.mut"));
 }
+
+TEST(check_assign_let) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let n = 1\n"
+                    "    n = 2\n"
+                    "    return n\n",
+                    "lucb.check.mut"));
+}
+
+TEST(check_arity) {
+    CHECK(check_has("func f(a: i64) -> i64:\n"
+                    "    return a\n"
+                    "pub func answer() -> i64:\n"
+                    "    return f(1, 2)\n",
+                    "lucb.check.call"));
+}
+
+TEST(check_break_outside) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    break\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_never_null_zero) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    var p: i64*\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_missing_field) {
+    CHECK(check_has("struct Box:\n"
+                    "    var p: i64*\n"
+                    "pub func answer() -> i64:\n"
+                    "    var n: i64 = 1\n"
+                    "    let b = Box()\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_duplicate_field) {
+    CHECK(check_has("struct Point:\n"
+                    "    var x: i64\n"
+                    "    var x: i64\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.shadow"));
+}
+
+TEST(check_fmt_stored) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let x = f\"hi\"\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_lambda_unsupported) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let add = (x, y) => x + y\n"
+                    "    return 0\n",
+                    "lucb.check.unsupported"));
+}
+
+TEST(check_type_alias_unsupported) {
+    CHECK(check_has("type Count = i64\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.unsupported"));
+}
+
+TEST(check_func_type_unsupported) {
+    CHECK(check_has("func add(a: i64, b: i64) -> i64:\n"
+                    "    return a + b\n"
+                    "pub func answer() -> i64:\n"
+                    "    let operation: func(i64, i64) -> i64 = add\n"
+                    "    return 0\n",
+                    "lucb.check.unsupported"));
+}
+
+TEST(check_array_infer_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    let xs = [1, 2, 3]\n"
+                   "    return xs[0]\n"));
+}
+
+TEST(check_match_expr_ok) {
+    CHECK(check_ok("enum Color:\n"
+                   "    red\n"
+                   "    blue\n"
+                   "pub func answer() -> i64:\n"
+                   "    let n = match Color.red:\n"
+                   "        .red => 1\n"
+                   "        .blue => 2\n"
+                   "    return n\n"));
+}

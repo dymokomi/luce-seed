@@ -1105,7 +1105,15 @@ auto Checker::check_struct(Node* st) -> void {
         for (Node* m = st->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Func) {
                 check_func(m, st);
-            } else if (m->kind != NodeKind::Field) {
+            } else if (m->kind == NodeKind::Field) {
+                if (m->left != nullptr) {
+                    Type* dt = check_expr(m->left, m->ty);
+                    if (!type_eq(dt, m->ty) && !can_widen(dt, m->ty)) {
+                        fail_n(m, "lucb.check.type",
+                               "field `" + string(m->text) + "` has type " + type_name(m->ty));
+                    }
+                }
+            } else {
                 fail_n(m, "lucb.check.unsupported", "this member is not in the scalar core yet");
             }
         }

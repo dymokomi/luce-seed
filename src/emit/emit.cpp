@@ -156,6 +156,10 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
             unwind_scope(scopes.back());
             scopes.pop_back();
         }
+        if ((fn->flags & FlagFallible) != 0 &&
+            (fn->ty == nullptr || fn->ty->kind == TypeKind::Unit)) {
+            line("return ((lb_r_unit){ .failed = false });");
+        }
         current_fn = saved_fn;
         indent--;
         line("}");
@@ -381,6 +385,24 @@ auto Emitter::walk_types(Node* n) -> void {
         walk_types(n->body);
         walk_types(n->type);
         walk_types(n->next);
+    }
+
+auto Emitter::emit_type_forwards(Node* mod) -> void {
+        if (mod == nullptr) {
+            return;
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Struct || d->kind == NodeKind::ExternStruct) {
+                string n = struct_ident(d);
+                line("typedef struct " + n + " " + n + ";");
+            } else if (d->kind == NodeKind::Union || d->kind == NodeKind::ExternUnion) {
+                string n = struct_ident(d);
+                line("typedef union " + n + " " + n + ";");
+            } else if (d->kind == NodeKind::Enum && d->ty != nullptr && !is_int_enum(d->ty)) {
+                string n = struct_ident(d);
+                line("typedef struct " + n + " " + n + ";");
+            }
+        }
     }
 
 auto Emitter::emit_array_typedefs() -> void {
@@ -696,8 +718,9 @@ auto Emitter::emit_module(Node* mod) -> void {
         fails.clear();
         tups.clear();
         collect_from(mod);
-        emit_array_typedefs();
+        emit_type_forwards(mod);
         emit_types(mod);
+        emit_array_typedefs();
         emit_tup_typedefs();
         emit_opt_typedefs();
         emit_decls(mod);
@@ -730,10 +753,13 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             collect_from(modules[static_cast<size_t>(i)]);
         }
-        emit_array_typedefs();
+        for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
+            emit_type_forwards(modules[static_cast<size_t>(i)]);
+        }
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_types(modules[static_cast<size_t>(i)]);
         }
+        emit_array_typedefs();
         emit_tup_typedefs();
         emit_opt_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {

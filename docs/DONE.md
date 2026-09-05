@@ -109,8 +109,11 @@ Evidence: `tests/agree_test.cpp`.
 
 Scalar core: `i64`, `bool`, `unit`, structs with implicit `self`, checked
 `+ - * // %`, `print`, `trap`. Entry is `pub func answer() -> i64`.
-`lucb check` typechecks; `lucb eval` runs the interpreter. Evidence:
-`tests/check_test.cpp`, `tests/eval_test.cpp`, `testdata/programs/hello.lucb`.
+`lucb check` typechecks; `lucb eval` runs the interpreter. Untyped integer
+literals infer `i64` in `let`, array literals, conditionals, and `match`
+expressions; struct field defaults apply when omitted at a constructor.
+Evidence: `tests/check_test.cpp`, `tests/eval_test.cpp`,
+`testdata/programs/`.
 
 ## M2 — Parser
 

@@ -166,7 +166,14 @@ string c_type(Type* t) {
         if (t->is_volatile) {
             q += "volatile ";
         }
-        return q + c_type(t->elem) + "*";
+        Type* e = t->elem;
+        if (e != nullptr &&
+            (e->kind == TypeKind::Struct || e->kind == TypeKind::Union ||
+             (e->kind == TypeKind::Enum && !is_int_enum(e)))) {
+            const char* tag = e->kind == TypeKind::Union ? "union " : "struct ";
+            return q + tag + c_type(e) + "*";
+        }
+        return q + c_type(e) + "*";
     }
     if (is_opt(t)) {
         return opt_c_name(t);

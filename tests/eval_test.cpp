@@ -568,6 +568,46 @@ TEST(eval_asm_rejected) {
     CHECK(r.trap.find("asm") != std::string::npos);
 }
 
+TEST(eval_match_expr) {
+    EvalResult r = run("enum Color:\n"
+                       "    red\n"
+                       "    blue\n"
+                       "pub func answer() -> i64:\n"
+                       "    let n = match Color.red:\n"
+                       "        .red => 1\n"
+                       "        .blue => 2\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_array_infer) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let xs = [1, 2, 3]\n"
+                       "    return xs[0] + xs[2]\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_str_bytes) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let s = \"hi\"\n"
+                       "    return i64(s.bytes[0])\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 104);
+}
+
+TEST(eval_field_default) {
+    EvalResult r = run("struct Style:\n"
+                       "    var width: i64 = 1\n"
+                       "    var color: i64 = 2\n"
+                       "pub func answer() -> i64:\n"
+                       "    let s = Style(width = 3)\n"
+                       "    return s.color\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}
+
 TEST(eval_sync_once) {
     EvalResult r = run("var n: i64 = 0\n"
                        "func bump():\n"

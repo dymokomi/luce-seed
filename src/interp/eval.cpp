@@ -121,6 +121,9 @@ auto Interp::lvalue(Node* n) -> Value* {
                 fail("not an lvalue");
                 return nullptr;
             }
+            if (n->text == "length" || n->text == "data" || n->text == "bytes") {
+                return nullptr;
+            }
             Value* obj = lvalue(n->left);
             if (obj != nullptr && obj->kind == TypeKind::Pointer && obj->ptr != nullptr) {
                 obj = obj->ptr;
@@ -177,7 +180,10 @@ auto Interp::lvalue(Node* n) -> Value* {
                 if (base->ptr != nullptr) {
                     return base->ptr + static_cast<ptrdiff_t>(i);
                 }
-                return &base->fields[i];
+                if (i < base->fields.size()) {
+                    return &base->fields[i];
+                }
+                return nullptr;
             }
         }
         fail("not an lvalue");
@@ -420,11 +426,19 @@ auto Interp::eval_member(Node* n) -> Value {
             return v;
         }
         if (n->text == "bytes") {
+            string d = decode_string(obj.str);
+            vector<Value> elems;
+            elems.resize(d.size());
+            Type* et = n->ty != nullptr ? n->ty->elem : nullptr;
+            for (size_t i = 0; i < d.size(); i++) {
+                elems[i] = v_int(et, static_cast<unsigned char>(d[i]));
+            }
+            storage.push_back(std::move(elems));
             Value v;
             v.kind = TypeKind::Span;
             v.type = n->ty;
-            v.str = obj.str;
-            v.length = decode_string(obj.str).size();
+            v.ptr = storage.back().empty() ? nullptr : storage.back().data();
+            v.length = storage.back().size();
             return v;
         }
         Value* p = lvalue(n);
@@ -2054,18 +2068,34 @@ auto Interp::eval_extern(Node* n, Node* fn) -> Value {
 
 auto Interp::eval_ctor(Node* n, Node* st) -> Value {
         Value v = v_zero(st->ty);
-        for (Node* a = n->body; a != nullptr; a = a->next) {
-            if (a->text.empty() || a->left == nullptr) {
+        if (st == nullptr) {
+            return v;
+        }
+        int i = 0;
+        for (Node* f = st->body; f != nullptr; f = f->next) {
+            if (f->kind != NodeKind::Field) {
                 continue;
             }
-            int i = field_index(st, a->text);
-            if (i < 0) {
-                continue;
+            Node* provided = nullptr;
+            for (Node* a = n != nullptr ? n->body : nullptr; a != nullptr; a = a->next) {
+                if (a->text == f->text) {
+                    provided = a;
+                    break;
+                }
             }
-            v.fields[static_cast<size_t>(i)] = eval(a->left);
+            if (provided != nullptr && provided->left != nullptr) {
+                if (i < static_cast<int>(v.fields.size())) {
+                    v.fields[static_cast<size_t>(i)] = eval(provided->left);
+                }
+            } else if (f->left != nullptr) {
+                if (i < static_cast<int>(v.fields.size())) {
+                    v.fields[static_cast<size_t>(i)] = eval(f->left);
+                }
+            }
             if (trapped) {
                 return v_unit();
             }
+            i++;
         }
         return v;
     }

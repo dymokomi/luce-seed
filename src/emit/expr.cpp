@@ -137,8 +137,17 @@ auto Emitter::emit_else(Node* n) -> string {
         Type* lt = n->left != nullptr ? n->left->ty : nullptr;
         string s = "({ ";
         s += c_type(lt) + " " + on + " = " + emit_expr(n->left) + "; ";
+        Type* rt = n->right != nullptr ? n->right->ty : nullptr;
+        bool else_never = rt != nullptr && rt->kind == TypeKind::Never;
         if (is_opt(lt)) {
-            s += on + ".present ? " + on + ".value : (" + emit_expr(n->right) + "); })";
+            if (else_never) {
+                s += "if (!" + on + ".present) { " + emit_expr(n->right) + "; } " + on +
+                     ".value; })";
+            } else {
+                s += on + ".present ? " + on + ".value : (" + emit_expr(n->right) + "); })";
+            }
+        } else if (else_never) {
+            s += "if (!(" + on + ")) { " + emit_expr(n->right) + "; } " + on + "; })";
         } else {
             s += on + " ? " + on + " : (" + emit_expr(n->right) + "); })";
         }
@@ -1238,15 +1247,32 @@ auto Emitter::emit_call(Node* n) -> string {
 auto Emitter::emit_ctor(Node* n, Node* st) -> string {
         string s = "(" + struct_ident(st) + "){";
         bool first = true;
-        for (Node* a = n->body; a != nullptr; a = a->next) {
-            if (a->text.empty()) {
-                continue;
+        if (st != nullptr) {
+            for (Node* f = st->body; f != nullptr; f = f->next) {
+                if (f->kind != NodeKind::Field) {
+                    continue;
+                }
+                Node* provided = nullptr;
+                for (Node* a = n != nullptr ? n->body : nullptr; a != nullptr; a = a->next) {
+                    if (a->text == f->text) {
+                        provided = a;
+                        break;
+                    }
+                }
+                string val;
+                if (provided != nullptr && provided->left != nullptr) {
+                    val = emit_expr(provided->left);
+                } else if (f->left != nullptr) {
+                    val = emit_expr(f->left);
+                } else {
+                    continue;
+                }
+                if (!first) {
+                    s += ", ";
+                }
+                first = false;
+                s += "." + string(f->text) + " = " + val;
             }
-            if (!first) {
-                s += ", ";
-            }
-            first = false;
-            s += "." + string(a->text) + " = " + emit_expr(a->left);
         }
         s += "}";
         return s;

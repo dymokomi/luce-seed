@@ -286,6 +286,12 @@ TEST(parse_goto_is_reserved) {
     CHECK(p.has("lucb.parse.reserved"));
 }
 
+TEST(parse_try_as_member) {
+    Parsed p("func f(lock: sync.Mutex) -> bool:\n    return lock.try()\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(member \"try\"") != std::string::npos);
+}
+
 TEST(lex_asm_body_is_raw) {
     lucb::DiagnosticBag diagnostics;
     lucb::Source source = lucb::Source::from_bytes(

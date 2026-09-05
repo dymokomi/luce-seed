@@ -1,0 +1,38 @@
+struct Ring:
+    var items: i64[]
+    var head: usize
+    var count: usize
+
+    static func create(capacity: usize) -> Ring!:
+        if capacity != 4:
+            error(1, "capacity")
+        return Ring(items = try new i64[4], head = 0, count = 0)
+
+    mutating func push(value: i64) -> !:
+        if self.count == self.items.length:
+            error(1, "full")
+        self.items[(self.head + self.count) % self.items.length] = value
+        self.count += 1
+
+    mutating func pop() -> i64?:
+        if self.count == 0:
+            return none
+        let value = self.items[self.head]
+        self.head = (self.head + 1) % self.items.length
+        self.count -= 1
+        return value
+
+    mutating func destroy():
+        free(self.items)
+
+pub func answer() -> i64!:
+    var ring = try Ring.create(4)
+    try ring.push(10)
+    try ring.push(20)
+    try ring.push(30)
+    let a = ring.pop() else 0
+    let b = ring.pop() else 0
+    try ring.push(40)
+    let c = ring.pop() else 0
+    ring.destroy()
+    return a + b + c

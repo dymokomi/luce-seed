@@ -1,0 +1,30 @@
+func is_letter(c: u8) -> bool:
+    return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95
+
+func is_digit(c: u8) -> bool:
+    return c >= 48 and c <= 57
+
+pub func answer() -> i64:
+    let src = "var n = 40"
+    let bytes = src.bytes
+    var i: usize = 0
+    var names: i64 = 0
+    var nums: i64 = 0
+    while i < bytes.length:
+        let c = bytes[i]
+        if is_letter(c):
+            names += 1
+            i += 1
+            while i < bytes.length:
+                let d = bytes[i]
+                if not is_letter(d) and not is_digit(d):
+                    break
+                i += 1
+        elif is_digit(c):
+            nums += 1
+            i += 1
+            while i < bytes.length and is_digit(bytes[i]):
+                i += 1
+        else:
+            i += 1
+    return names * 10 + nums

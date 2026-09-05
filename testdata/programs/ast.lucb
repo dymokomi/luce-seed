@@ -1,0 +1,20 @@
+enum Expr:
+    number(value: i64)
+    add(left: Expr*, right: Expr*)
+    negate(operand: Expr*)
+
+func evaluate(expression: Expr*) -> i64:
+    match *expression:
+        .number(value):
+            return value
+        .add(left, right):
+            return evaluate(left) + evaluate(right)
+        .negate(operand):
+            return -evaluate(operand)
+
+pub func answer() -> i64:
+    var two = Expr.number(value = 2)
+    var three = Expr.number(value = 3)
+    var sum = Expr.add(left = &two, right = &three)
+    var neg = Expr.negate(operand = &sum)
+    return evaluate(&neg)

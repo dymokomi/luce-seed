@@ -743,7 +743,7 @@ bool is_zeroable(const Type* t) {
     }
     for (Node* m = t->decl->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
-            if (m->left != nullptr || !is_zeroable(m->ty)) {
+            if (!is_zeroable(m->ty)) {
                 return false;
             }
         }

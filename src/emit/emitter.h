@@ -286,6 +286,7 @@ struct Emitter {
     void note_tup(Type* t);
     void note_type(Type* t);
     void walk_types(Node* n);
+    void emit_type_forwards(Node* mod);
     void emit_array_typedefs();
     void emit_tup_typedefs();
     void emit_opt_typedefs();

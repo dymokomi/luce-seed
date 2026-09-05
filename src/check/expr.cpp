@@ -175,20 +175,25 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             if (is_opt(expected)) {
                 dest = expected->elem;
             }
+            if (dest != nullptr && dest->kind == TypeKind::UntypedInt) {
+                dest = t_i64();
+            }
             if (dest == nullptr || !is_int(dest)) {
                 fail_n(n, "lucb.check.type",
                        "expected `" + type_name(expected) + "`, got an integer literal");
                 return t_error();
             }
-            ParsedInt p = parse_int_literal(n->text);
-            if (!p.ok) {
-                fail_n(n, "lucb.check.number", "invalid integer literal");
-                return t_error();
-            }
-            if (!int_fits(p.value, false, dest)) {
-                fail_n(n, "lucb.check.number",
-                       "integer literal does not fit in `" + type_name(dest) + "`");
-                return t_error();
+            if (n != nullptr && n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
+                ParsedInt p = parse_int_literal(n->text);
+                if (!p.ok) {
+                    fail_n(n, "lucb.check.number", "invalid integer literal");
+                    return t_error();
+                }
+                if (!int_fits(p.value, false, dest)) {
+                    fail_n(n, "lucb.check.number",
+                           "integer literal does not fit in `" + type_name(dest) + "`");
+                    return t_error();
+                }
             }
             return is_opt(expected) ? expected : dest;
         }
@@ -606,9 +611,19 @@ auto Checker::check_array_lit(Node* n, Type* expected) -> Type* {
             elem = expected->elem;
         }
         for (Node* e = n->body; e != nullptr; e = e->next) {
-            Type* et = check_expr(e, elem);
-            if (elem == nullptr) {
-                elem = et;
+            Type* want = elem;
+            if (want != nullptr && want->kind == TypeKind::UntypedInt) {
+                want = t_i64();
+            }
+            Type* et = check_expr(e, want);
+            if (elem == nullptr || elem->kind == TypeKind::UntypedInt) {
+                if (et != nullptr && et->kind == TypeKind::UntypedInt) {
+                    elem = t_i64();
+                    coerce(e, et, elem);
+                    e->ty = elem;
+                } else {
+                    elem = et;
+                }
             } else if (!type_eq(et, elem) && !can_widen(et, elem)) {
                 fail_n(e, "lucb.check.type", "array elements must have one type");
             }
@@ -617,6 +632,9 @@ auto Checker::check_array_lit(Node* n, Type* expected) -> Type* {
         if (elem == nullptr) {
             fail_n(n, "lucb.check.type", "cannot infer an empty array literal");
             return t_error();
+        }
+        if (elem->kind == TypeKind::UntypedInt) {
+            elem = t_i64();
         }
         if (expected != nullptr && is_array(expected) && expected->length != count) {
             fail_n(n, "lucb.check.type", "array literal has the wrong length");
@@ -1314,7 +1332,6 @@ auto Checker::check_trap(Node* n) -> Type* {
 
 auto Checker::check_ctor(Node* n, Node* st) -> Type* {
         Type* ty = st->ty;
-        // Mark provided fields.
         for (Node* a = n->body; a != nullptr; a = a->next) {
             if (a->left == nullptr) {
                 continue;
@@ -1336,6 +1353,25 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
             if (!type_eq(at, field->ty) && !can_widen(at, field->ty)) {
                 fail_n(a, "lucb.check.type",
                        "field `" + string(field->text) + "` has type " + type_name(field->ty));
+            }
+        }
+        if (st != nullptr) {
+            for (Node* f = st->body; f != nullptr; f = f->next) {
+                if (f->kind != NodeKind::Field) {
+                    continue;
+                }
+                bool provided = false;
+                for (Node* a = n->body; a != nullptr; a = a->next) {
+                    if (a->text == f->text) {
+                        provided = true;
+                        break;
+                    }
+                }
+                if (provided || f->left != nullptr || is_zeroable(f->ty)) {
+                    continue;
+                }
+                fail_n(n, "lucb.check.type",
+                       "missing field `" + string(f->text) + "`");
             }
         }
         return ty;

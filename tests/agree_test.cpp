@@ -9,6 +9,8 @@
 #include "support/diagnostics.h"
 #include "support/test.h"
 
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 
@@ -77,6 +79,16 @@ static std::string interp_stdout(const EvalResult& r) {
     return s;
 }
 
+static std::string slurp(const char* path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return {};
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
 static bool agrees(const char* text) {
     Both both;
     if (!compile_source(text, &both)) {
@@ -107,6 +119,15 @@ static bool agrees(const char* text) {
         return false;
     }
     return true;
+}
+
+static bool agrees_file(const char* path) {
+    std::string src = slurp(path);
+    if (src.empty()) {
+        std::fprintf(stderr, "    missing %s\n", path);
+        return false;
+    }
+    return agrees(src.c_str());
 }
 
 TEST(agree_hello) {
@@ -811,6 +832,56 @@ TEST(agree_sync_sem) {
                  "    sem.acquire()\n"
                  "    return 1\n"));
 }
+
+TEST(agree_array_infer) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let xs = [1, 2, 3]\n"
+                 "    return xs[0] + xs[2]\n"));
+}
+
+TEST(agree_str_bytes) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let s = \"hi\"\n"
+                 "    return i64(s.bytes[0])\n"));
+}
+
+TEST(agree_field_default) {
+    CHECK(agrees("struct Style:\n"
+                 "    var width: i64 = 1\n"
+                 "    var color: i64 = 2\n"
+                 "pub func answer() -> i64:\n"
+                 "    let s = Style(width = 3)\n"
+                 "    return s.color + s.width\n"));
+}
+
+TEST(agree_conditional_let) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let n = 1 if true else 2\n"
+                 "    return n\n"));
+}
+
+TEST(agree_generic_span) {
+    CHECK(agrees("func largest[T: Comparable](values: const T[]) -> T?:\n"
+                 "    if values.length == 0:\n"
+                 "        return none\n"
+                 "    var best = values[0]\n"
+                 "    for value in values:\n"
+                 "        if value.compare(best) > 0:\n"
+                 "            best = value\n"
+                 "    return best\n"
+                 "pub func answer() -> i64:\n"
+                 "    let numbers = [3, 9, 4]\n"
+                 "    let top = largest(numbers) else 0\n"
+                 "    return top\n"));
+}
+
+TEST(agree_program_ast) { CHECK(agrees_file("testdata/programs/ast.lucb")); }
+
+TEST(agree_program_ring) { CHECK(agrees_file("testdata/programs/ring.lucb")); }
+
+TEST(agree_program_scan) { CHECK(agrees_file("testdata/programs/scan.lucb")); }
+
+TEST(agree_program_table) { CHECK(agrees_file("testdata/programs/table.lucb")); }
 
 TEST(native_asm_add) {
     Both both;

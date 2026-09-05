@@ -18,33 +18,33 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 4.2 | Integer literals | done | `lex_test` numbers |
 | 4.3 | Float literals | done | `lex_test` numbers |
 | 4.4 | Characters, strings, bytes, raw, formatted | done | `lex_test` strings, `parse_formatted_string` |
-| 4.5 | Array literals | done | `parse_array_literal` |
+| 4.5 | Array literals | done | `parse_array_literal`, `agree_array_infer` |
 | 5 | Types as syntax | partial | `parse_pointer_and_span_types`; scalars checked in M5 |
 | 7.3 | No chained comparisons; `not a == b` refused | done | `parse_chained_comparison`, `parse_not_before_comparison` |
 | 7.6 | Indexing and slicing | done | `agree_array_index`, `agree_slice`, `agree_index_oob_traps` |
 | 7.7 | Pointer `*`, `&`, `p+n` | done | `agree_pointer_deref`, `agree_assign_through_pointer` |
-| 8 | Control flow syntax | partial | if/while/for/match/defer/labels in `parse_test` |
+| 8 | Control flow syntax | partial | if/while/for/match/defer/labels in `parse_test`; match expressions interpret (`eval_match_expr`), C emit later |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
 | 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
-| 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
+| 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test`; field defaults `agree_field_default`; no type aliases, `func` values, default args, or `discard` yet |
 | 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
-| 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
+| 21 | Grammar | partial | parser accepts the productions; programs in `testdata/programs/` |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
 | 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` unsupported |
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `check_escape_local`; `T*?` is a nullable pointer |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
-| 5.5 | `str` as a view | partial | `agree_str_length`; `str(bytes)` as `str!` waits on errors |
+| 5.5 | `str` as a view | partial | `agree_str_length`, `agree_str_bytes`; `str(bytes)` as `str!` waits |
 | 5.11 | `sizeof`, `offsetof`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_offsetof_packed`; `alignof` of types works |
 | 6.6 | Address-of and escape | partial | `check_escape_local`; stores into escaped params later |
-| 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`; never-null pointers still require an initialiser |
+| 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`, `check_never_null_zero`; never-null pointers still require an initialiser |
 | 6.2 | `---` uninitialised `var` | done | `agree_uninit` |
 | 6.3 | Module `var` / `thread_local var` | done | `agree_global`, `agree_thread_local` |
 | 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
-| 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var` |
+| 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var`, `check_assign_let` |
 | 7.2 | Checked `+ - *`, wrapping `%`, saturating `|`, `+?` | done | `agree_u8_wrap`, `agree_u8_overflow_traps`, `agree_u8_saturating`, `agree_overflow_optional` |
 | 7.3 | Bits, shifts, `and`/`or`/`not` | done | `agree_bits`, `agree_shift`, `eval_bool_and_or` |
 | 7.5 | Widening, `T(x)`, `(T)x` | done | `agree_widen`, `agree_c_cast_truncates`, `parse_cast_vs_call` |
@@ -70,7 +70,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
-| 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer` |
+| 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer`, `agree_generic_span` |
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
 | 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
