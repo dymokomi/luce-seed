@@ -1,0 +1,304 @@
+// C emitter state. Implementation header for emit/*.cpp.
+
+#pragma once
+
+#include "check/type.h"
+#include "emit/cgen.h"
+#include "parse/ast.h"
+
+#include <cstdio>
+
+namespace lucb {
+
+struct Emitter {
+    string out;
+    int indent = 0;
+    vector<Type*> arrays;
+    vector<Type*> opts;
+    vector<Type*> fails;
+    Node* current_fn = nullptr;
+    int temps = 0;
+    string catch_var;
+
+    struct Scope {
+        vector<Node*> defers;
+        bool loop = false;
+        string_view label;
+        bool restore_alloc = false;
+        string alloc_save;
+    };
+    vector<Scope> scopes;
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    void pad() {
+        for (int i = 0; i < indent; i++) {
+            out += "    ";
+        }
+    }
+
+    void line(const string& s) {
+        pad();
+        out += s;
+        out += '\n';
+    }
+
+    int tmp() { return temps++; }
+
+    bool produces_opt(Node* n);
+    string wrap_opt(Type* t, const string& e);
+    string none_opt(Type* t) { return "((" + opt_c_name(t) + "){ .present = false })"; }
+
+    bool fn_fallible() {
+        return current_fn != nullptr && (current_fn->flags & FlagFallible) != 0;
+    }
+
+    string wrap_ok(const string& e);
+    string wrap_err(const string& code, const string& msg);
+    void run_defers(const vector<Node*>& d);
+    void unwind_scope(const Scope& sc);
+    void run_defers_from(int from);
+    string snapshot_defers();
+    bool is_error_call(Node* n);
+    string emit_enum_value(Node* n);
+    string emit_try(Node* n);
+    string emit_else(Node* n);
+    string emit_catch(Node* n);
+    string emit_expr(Node* n);
+    string emit_expr_inner(Node* n);
+    string emit_literal(Node* n);
+    string emit_unary(Node* n);
+    string emit_helper(const char* name, Type* t, const string& L, const string& R);
+    string emit_binary(Node* n);
+    string emit_enum_check(Type* dest, const string& e);
+    string emit_conv(Node* src, Type* dest, bool checked);
+    string emit_member(Node* n);
+    string emit_index(Node* n);
+    string emit_slice(Node* n);
+    string emit_array_lit(Node* n);
+    string emit_span_make(Node* n);
+    string emit_addr(Node* n);
+    string vt_type_name(Type* iface);
+    string vt_instance_name(Node* st, Node* iface);
+    string emit_display_buf(const string& b, Node* v);
+    string emit_print_formatted(Node* n);
+    string emit_format_call(Node* n);
+    void emit_iface_typedef(Node* iface);
+    void emit_vtable(Node* st, Node* iface_type_node);
+    void emit_ifaces(Node* mod);
+    string emit_args(Node* args);
+    string emit_extern_args(Node* n);
+    string emit_call(Node* n);
+    string emit_ctor(Node* n, Node* st);
+    string emit_exhausted_lit(Type* payload);
+    string emit_allocator(Node* n);
+    string emit_new(Node* n);
+    string emit_alloc(Node* n);
+    void emit_free(Node* n);
+    void emit_with(Node* n);
+    void emit_block(Node* n);
+    void emit_stmt(Node* n);
+    bool any_defers();
+    int loop_scope(string_view label);
+    void emit_return(Node* n);
+    void emit_jump(Node* n);
+    void emit_while(Node* n);
+    void emit_for_range(Node* n);
+    void emit_match(Node* n);
+    void emit_if(Node* n);
+    void emit_sig(Node* fn, Node* owner, bool define);
+    string type_attrs(Node* n);
+    void emit_struct(Node* st);
+    void emit_union(Node* un);
+    void emit_enum(Node* en);
+    void emit_global(Node* g);
+    void note_opt(Type* t);
+    void note_fail(Type* payload);
+    void note_type(Type* t);
+    void walk_types(Node* n);
+    void emit_array_typedefs();
+    void emit_opt_typedefs();
+    void note_fail_fn(Node* fn);
+    void collect_from(Node* mod);
+    void emit_types(Node* mod);
+    void emit_decls(Node* mod);
+    void emit_defs(Node* mod);
+    void emit_test_sig(Node* t, bool define);
+    Node* find_main(Node* mod);
+    Node* find_answer(Node* mod);
+    void emit_answer_unwrap(Node* mod);
+    void emit_c_main(Node* fn);
+    void emit_module(Node* mod);
+    void emit_many(const vector<Node*>& modules, Node* entry);
+    void emit_header_mod(Node* mod);
+};
+
+} // namespace lucb

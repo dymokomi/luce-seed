@@ -28,11 +28,22 @@ set(LUCB_CORE_SOURCES
     src/lex/lexer.cpp
     src/parse/ast.cpp
     src/parse/parser.cpp
+    src/parse/decl.cpp
+    src/parse/stmt.cpp
+    src/parse/expr.cpp
     src/support/literal.cpp
     src/check/type.cpp
     src/check/check.cpp
+    src/check/expr.cpp
+    src/check/stmt.cpp
+    src/check/generic.cpp
     src/interp/interp.cpp
+    src/interp/eval.cpp
+    src/interp/exec.cpp
+    src/emit/cgen.cpp
     src/emit/emit.cpp
+    src/emit/expr.cpp
+    src/emit/stmt.cpp
     src/emit/host.cpp
     src/pkg/package.cpp
 )
