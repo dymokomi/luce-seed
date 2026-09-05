@@ -100,6 +100,15 @@ not land in this tree).
 | 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`, `agree_program_thread_mod`; `import thread` / `import sync`; optional `stack`/`name` out of seed |
 | 15.3 | `sync.Mutex` / `Condition` / `Once` / `Semaphore` | done | `agree_sync_mutex`, `agree_sync_once`, `agree_sync_cond`, `agree_sync_sem`, `agree_program_thread_mod` |
 | 8.9 | `asm` semantics | partial | `eval_asm_rejected`, `native_asm_add`; interpreter rejects (out of seed), C backend emits operands |
+| 7.7 | `container_of` through `(u8*)p - offsetof` | done (binary only) | `spec24_ex05`; the oracle refuses reinterpreted pointers by design (DESIGN.md) |
+| 7.5 | ASCII char literal as `u8` in `== != < <= > >= + -` | done | `agree_probe_strings`, `spec24_ex15` |
+| 8.8 | `defer call catch failure:` suite form | done | `agree_probe_d3` |
+| 9.4 | Arrays and fields of function values | done | `agree_probe_fnptr_table` (through a `type` alias) |
+| 5.4 | Slice of a span, span from pointer | done | `agree_probe_sp1`, `agree_probe_sp2`, `agree_probe_span_ops` |
+| 10.1 | Struct copy is a value copy, array fields included | done | `agree_probe_c1`–`c4`, `agree_probe_value_copy` |
+| 16.5 | `lucb test` calling module functions | done | `eval_tests_probe_t1`, `eval_tests_call_user_func` |
+| 24 | All fifteen example programs | done | `spec24_ex01`–`spec24_ex15` compile under `-Wall -Werror`; ex08 needs SDL3 to link |
+| seed | Three-module mini compiler | done | `examples`, `examples/calc/` |
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
 | 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |
 | 11.3 | `ErrorCode.package` | done | `agree_program_errorcode`, `check_errorcode_package_ok`; integer codes still accepted by `error` |

@@ -1,0 +1,50 @@
+## A string interner: every distinct name gets one small integer, and the
+## bytes live once in an arena. The table is open addressing with linear
+## probing over `hash`, doubling when two thirds full.
+
+pub struct Interner:
+    var arena: Allocator
+    var names: str[]
+    var slots: u32[]
+    var count: usize
+
+    pub static func create(arena: Allocator, capacity: usize) -> Interner!:
+        var interner = Interner(arena = arena, names = try alloc str[capacity] in arena, slots = try alloc u32[capacity * 2] in arena, count = 0)
+        return interner
+
+    func find_slot(slots: const u32[], name: str) -> usize:
+        var index = (usize)(hash(name) % u64(slots.length))
+        while true:
+            let id = slots[index]
+            if id == 0 or self.names[(usize)id - 1] == name:
+                return index
+            index = (index + 1) % slots.length
+
+    mutating func grow() -> !:
+        let fresh = try alloc u32[self.slots.length * 2] in self.arena
+        var i: usize = 0
+        while i < self.count:
+            let where = self.find_slot(fresh, self.names[i])
+            fresh[where] = u32(i + 1)
+            i += 1
+        self.slots = fresh
+        let more = try alloc str[self.names.length * 2] in self.arena
+        memory.copy(more, self.names, self.count)
+        self.names = more
+
+    ## The id of `name`, creating it if new. Ids start at 1 so that 0 means absent.
+    pub mutating func intern(name: str) -> u32!:
+        if self.count == self.names.length or self.count * 3 >= self.slots.length * 2:
+            try self.grow()
+        let where = self.find_slot(self.slots, name)
+        if self.slots[where] != 0:
+            return self.slots[where]
+        let copy = try alloc u8[name.length] in self.arena
+        memory.copy(copy, name.bytes, name.length)
+        self.names[self.count] = (str)copy
+        self.count += 1
+        self.slots[where] = u32(self.count)
+        return u32(self.count)
+
+    pub func lookup(id: u32) -> str:
+        return self.names[(usize)id - 1]

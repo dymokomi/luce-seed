@@ -1,0 +1,123 @@
+## A lexer for a subset of Luce Base, written in Luce Base.
+##
+## It reads bytes, not characters: identifiers and keywords are ASCII, text
+## literals are passed through, and indentation becomes indent/dedent tokens
+## the way base.md §3.2 describes, with a fixed stack of open blocks.
+
+import token
+
+pub let bad_indent: ErrorCode = ErrorCode.package(1)
+pub let unterminated: ErrorCode = ErrorCode.package(2)
+
+pub struct Lexer:
+    var source: const u8[]
+    var offset: usize
+    var line: u32
+    var at_line_start: bool
+    var levels: u32[32]
+    var depth: usize
+    var pending_dedents: usize
+
+    pub static func over(text: str) -> Lexer:
+        var lexer = Lexer(source = text.bytes, offset = 0, line = 1, at_line_start = true, depth = 0, pending_dedents = 0)
+        lexer.levels[0] = 0
+        return lexer
+
+    func peek() -> u8:
+        if self.offset >= self.source.length:
+            return 0
+        return self.source[self.offset]
+
+    func is_letter(c: u8) -> bool:
+        return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
+
+    func is_digit(c: u8) -> bool:
+        return c >= '0' and c <= '9'
+
+    func make(kind: token.Kind, start: usize) -> token.Token:
+        return token.Token(kind = kind, start = start, end = self.offset, line = self.line)
+
+    ## Measure the indentation of the current line and queue indent/dedent tokens.
+    mutating func layout() -> token.Token?!:
+        var column: u32 = 0
+        while self.peek() == ' ':
+            self.offset += 1
+            column += 1
+        if self.peek() == '\n' or self.peek() == '#' or self.peek() == 0:
+            return none
+        self.at_line_start = false
+        let current = self.levels[self.depth]
+        if column > current:
+            if self.depth + 1 >= 32:
+                error(bad_indent, "blocks nest too deeply")
+            self.depth += 1
+            self.levels[self.depth] = column
+            return self.make(token.Kind.indent, self.offset)
+        while column < self.levels[self.depth]:
+            self.depth -= 1
+            self.pending_dedents += 1
+        if column != self.levels[self.depth]:
+            error(bad_indent, "indentation does not match an open block")
+        if self.pending_dedents > 0:
+            self.pending_dedents -= 1
+            return self.make(token.Kind.dedent, self.offset)
+        return none
+
+    pub mutating func next() -> token.Token!:
+        if self.pending_dedents > 0:
+            self.pending_dedents -= 1
+            return self.make(token.Kind.dedent, self.offset)
+        if self.at_line_start:
+            if let layout_token = try self.layout():
+                return layout_token
+        while true:
+            let c = self.peek()
+            if c == ' ':
+                self.offset += 1
+            elif c == '#':
+                while self.peek() != '\n' and self.peek() != 0:
+                    self.offset += 1
+            else:
+                break
+        let start = self.offset
+        let c = self.peek()
+        if c == 0:
+            if self.depth > 0:
+                self.depth -= 1
+                return self.make(token.Kind.dedent, start)
+            return self.make(token.Kind.eof, start)
+        if c == '\n':
+            self.offset += 1
+            let t = self.make(token.Kind.newline, start)
+            self.line += 1
+            self.at_line_start = true
+            return t
+        if self.is_letter(c):
+            while self.is_letter(self.peek()) or self.is_digit(self.peek()):
+                self.offset += 1
+            let word = (str)self.source[start..<self.offset]
+            if token.is_keyword(word):
+                return self.make(token.Kind.keyword, start)
+            return self.make(token.Kind.name, start)
+        if self.is_digit(c):
+            while self.is_digit(self.peek()) or self.peek() == '_':
+                self.offset += 1
+            return self.make(token.Kind.integer, start)
+        if c == '"':
+            self.offset += 1
+            while self.peek() != '"':
+                if self.peek() == 0 or self.peek() == '\n':
+                    error(unterminated, "text literal is not closed")
+                if self.peek() == '\\':
+                    self.offset += 1
+                self.offset += 1
+            self.offset += 1
+            return self.make(token.Kind.text, start)
+        self.offset += 1
+        let two = self.peek()
+        if (c == '-' and two == '>') or (c == '=' and two == '=') or (c == '!' and two == '=') or (c == '<' and two == '=') or (c == '>' and two == '='):
+            self.offset += 1
+        return self.make(token.Kind.operator, start)
+
+    pub func text(t: token.Token) -> str:
+        return (str)self.source[t.start..<t.end]

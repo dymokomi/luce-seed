@@ -1,0 +1,51 @@
+# answer: 40
+## Intern a program's names, declare them across nested scopes, and resolve
+## them the way a checker would. The answer counts what resolved where.
+
+import intern
+import scope
+
+pub func answer() -> i64!:
+    var backing: u8[4096]
+    var arena = FixedBuffer.over(backing)
+    var names = try intern.Interner.create(&arena, 4)
+    var table = try scope.Table.create(64)
+    defer table.destroy()
+
+    let words: str[10] = ["main", "count", "helper", "count", "Point", "x", "y", "count", "main", "zed"]
+    var ids: u32[10]
+    var index: usize = 0
+    while index < 10:
+        ids[index] = try names.intern(words[index])
+        index += 1
+    # "count" and "main" interned once each
+    if names.count != 7:
+        return 1
+
+    # module scope
+    try table.declare(ids[0], scope.Kind.function)
+    try table.declare(ids[4], scope.Kind.type)
+    table.enter()
+    try table.declare(ids[1], scope.Kind.variable)
+    table.enter()
+    try table.declare(ids[5], scope.Kind.variable)
+    try table.declare(ids[1], scope.Kind.variable)   # shadows the outer count
+    var score: i64 = 0
+    if let inner = table.resolve(ids[1]):
+        score += i64(inner.depth) * 10            # 20
+    table.declare(ids[5], scope.Kind.variable) catch failure:
+        if failure.code != scope.duplicate:
+            return 2
+        recover ()
+    table.leave()
+    if let outer = table.resolve(ids[1]):
+        score += i64(outer.depth) * 10            # 10
+    table.leave()
+    if let gone = table.resolve(ids[1]):
+        return 3
+    if let point = table.resolve(ids[4]):
+        if point.kind == scope.Kind.type:
+            score += 10                           # 10
+    if names.lookup(ids[9]) != "zed":
+        return 4
+    return score

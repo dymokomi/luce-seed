@@ -105,8 +105,11 @@ Last. Interpreter rejects `asm` (§8.9); C backend only.
 ## Freeze of luce-seed
 
 This tree is the seed, not a compiler that grows into `luce-base`. The
-freeze gate is `testdata/programs/compile/`: a Base package that writes C
-with a `Writer`, shells out to `cc`, and runs the child.
+freeze gate is three things: `testdata/programs/compile/`, a Base package
+that writes C with a `Writer`, shells out to `cc`, and runs the child;
+`examples/calc/`, a three-module lexer, parser, evaluator, and C
+emitter; and the fifteen §24 programs of the spec, all compiled under
+`-Wall -Werror`.
 
 A new tree, `luce-base`, is written in Base and compiled by `lucb`. Same
 shape as Zig after the C++ compiler could emit C:

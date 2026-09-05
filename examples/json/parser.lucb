@@ -1,0 +1,118 @@
+## A recursive-descent JSON parser over bytes. Strings are views into the
+## input (no escapes decoded, no copying); numbers are integers; errors carry
+## the byte offset in their message through a caller-supplied scratch buffer.
+
+import value
+
+pub let syntax: ErrorCode = ErrorCode.package(1)
+
+pub struct Parser:
+    var input: const u8[]
+    var offset: usize
+    var scratch: u8[]
+
+    pub static func over(text: str, scratch: u8[]) -> Parser:
+        return Parser(input = text.bytes, offset = 0, scratch = scratch)
+
+    func peek() -> u8:
+        if self.offset >= self.input.length:
+            return 0
+        return self.input[self.offset]
+
+    mutating func skip_space():
+        while self.peek() == ' ' or self.peek() == '\n' or self.peek() == '\t' or self.peek() == '\r':
+            self.offset += 1
+
+    func fail(what: str) -> value.Value*!:
+        let message = try format(self.scratch, f"{what} at byte {self.offset}")
+        error(syntax, message)
+
+    mutating func expect(c: u8, what: str) -> !:
+        if self.peek() != c:
+            discard(try self.fail(what))
+        self.offset += 1
+
+    mutating func word(text: str) -> bool:
+        if self.offset + text.length > self.input.length:
+            return false
+        if (str)self.input[self.offset..<self.offset + text.length] != text:
+            return false
+        self.offset += text.length
+        return true
+
+    mutating func string() -> str!:
+        try self.expect('"', "expected a string")
+        let start = self.offset
+        while self.peek() != '"':
+            if self.peek() == 0:
+                discard(try self.fail("unterminated string"))
+            self.offset += 1
+        let s = (str)self.input[start..<self.offset]
+        self.offset += 1
+        return s
+
+    mutating func number() -> i64!:
+        var negative = false
+        if self.peek() == '-':
+            negative = true
+            self.offset += 1
+        if self.peek() < '0' or self.peek() > '9':
+            discard(try self.fail("expected a digit"))
+        var n: i64 = 0
+        while self.peek() >= '0' and self.peek() <= '9':
+            n = n * 10 + i64(self.peek() - '0')
+            self.offset += 1
+        return 0 - n if negative else n
+
+    mutating func members(closing: u8, keyed: bool) -> (value.Member*?, usize)!:
+        var first: value.Member*? = none
+        var last: value.Member*? = none
+        var count: usize = 0
+        self.skip_space()
+        if self.peek() == closing:
+            self.offset += 1
+            return (first, count)
+        while true:
+            self.skip_space()
+            var key: str = ""
+            if keyed:
+                key = try self.string()
+                self.skip_space()
+                try self.expect(':', "expected `:`")
+            let element = try self.parse()
+            let member = try new value.Member(key = key, value = element, next = none)
+            if let tail = last:
+                tail.next = member
+            else:
+                first = member
+            last = member
+            count += 1
+            self.skip_space()
+            if self.peek() == ',':
+                self.offset += 1
+                continue
+            try self.expect(closing, "expected `,` or a closing bracket")
+            return (first, count)
+
+    pub mutating func parse() -> value.Value*!:
+        self.skip_space()
+        let c = self.peek()
+        if c == '{':
+            self.offset += 1
+            let (first, count) = try self.members('}', true)
+            return try new value.Value.object(first = first, count = count)
+        if c == '[':
+            self.offset += 1
+            let (first, count) = try self.members(']', false)
+            return try new value.Value.array(first = first, count = count)
+        if c == '"':
+            return try new value.Value.text(value = try self.string())
+        if c == '-' or (c >= '0' and c <= '9'):
+            return try new value.Value.number(value = try self.number())
+        if self.word("true"):
+            return try new value.Value.boolean(value = true)
+        if self.word("false"):
+            return try new value.Value.boolean(value = false)
+        if self.word("null"):
+            return try new value.Value.null
+        return try self.fail("unexpected input")

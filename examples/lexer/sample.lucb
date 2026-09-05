@@ -1,0 +1,9 @@
+# a sample the lexer example reads
+struct Point:
+    var x: i64
+    var y: i64
+
+pub func length(p: Point) -> i64:
+    if p.x < 0:
+        return 0 - p.x
+    return p.x + p.y * 2  # "not a string"

@@ -1,0 +1,61 @@
+1: newline
+2: keyword `struct`
+2: name `Point`
+2: operator `:`
+2: newline
+3: indent
+3: keyword `var`
+3: name `x`
+3: operator `:`
+3: name `i64`
+3: newline
+4: keyword `var`
+4: name `y`
+4: operator `:`
+4: name `i64`
+4: newline
+5: newline
+6: dedent
+6: keyword `pub`
+6: keyword `func`
+6: name `length`
+6: operator `(`
+6: name `p`
+6: operator `:`
+6: name `Point`
+6: operator `)`
+6: operator `->`
+6: name `i64`
+6: operator `:`
+6: newline
+7: indent
+7: keyword `if`
+7: name `p`
+7: operator `.`
+7: name `x`
+7: operator `<`
+7: integer `0`
+7: operator `:`
+7: newline
+8: indent
+8: keyword `return`
+8: integer `0`
+8: operator `-`
+8: name `p`
+8: operator `.`
+8: name `x`
+8: newline
+9: dedent
+9: keyword `return`
+9: name `p`
+9: operator `.`
+9: name `x`
+9: operator `+`
+9: name `p`
+9: operator `.`
+9: name `y`
+9: operator `*`
+9: integer `2`
+9: newline
+10: dedent
+names=17 keywords=8 integers=3 texts=0 operators=17

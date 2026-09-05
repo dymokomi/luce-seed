@@ -1,0 +1,23 @@
+## Parse a document into an arena, print it back compactly, and sum its
+## numbers; then show a syntax error with its byte offset.
+
+import parser
+import value
+
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    var backing: u8[8192]
+    var arena = FixedBuffer.over(backing)
+    var scratch: u8[128]
+    let source = "{ \"name\": \"luce\", \"versions\": [1, 2, 3], \"seed\": true, \"nested\": { \"depth\": -4, \"none\": null } }"
+    with arena:
+        var p = parser.Parser.over(source, scratch)
+        let document = try p.parse()
+        try value.write(out, document)
+        try out.write(f"\nsum = {value.total(document)}\n")
+        var bad = parser.Parser.over("[1, 2,, 3]", scratch)
+        let broken = bad.parse() catch failure:
+            try out.write(f"error: {failure.message}\n")
+            return 0
+        discard(broken)
+    return 0

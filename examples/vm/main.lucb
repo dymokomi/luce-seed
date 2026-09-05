@@ -1,0 +1,39 @@
+## Assemble a recursive Fibonacci into bytecode and run it: the same program
+## shape a compiler emits, exercised by the machine in code.lucb.
+
+import code
+
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    # fib(n): if n < 2 return n else return fib(n-1) + fib(n-2)
+    var program: code.Op[20] = [
+        code.Op.push(value = 10),                  # 0
+        code.Op.call(target = 3, arity = 1),       # 1
+        code.Op.halt,                              # 2
+        code.Op.load(slot = 0),                    # 3  fib:
+        code.Op.push(value = 2),                   # 4
+        code.Op.less,                              # 5
+        code.Op.branch_false(target = 9),          # 6
+        code.Op.load(slot = 0),                    # 7
+        code.Op.ret,                               # 8
+        code.Op.load(slot = 0),                    # 9
+        code.Op.push(value = 1),                   # 10
+        code.Op.sub,                               # 11
+        code.Op.call(target = 3, arity = 1),       # 12
+        code.Op.load(slot = 0),                    # 13
+        code.Op.push(value = 2),                   # 14
+        code.Op.sub,                               # 15
+        code.Op.call(target = 3, arity = 1),       # 16
+        code.Op.add,                               # 17
+        code.Op.ret,                               # 18
+        code.Op.halt]                              # 19
+    var machine = code.Machine.create()
+    let result = try machine.run(program)
+    try out.write(f"fib(10) = {result} in {machine.steps} steps\n")
+    var broken: code.Op[2] = [code.Op.add, code.Op.halt]
+    var again = code.Machine.create()
+    let fault = again.run(broken) catch failure:
+        try out.write(f"fault: {failure.message}\n")
+        recover -1
+    try out.write(f"fault result {fault}\n")
+    return 0

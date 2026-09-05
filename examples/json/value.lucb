@@ -1,0 +1,77 @@
+## A JSON document as a tree of arena-allocated nodes. Objects and arrays
+## are singly linked lists of members, which needs no growable storage and
+## keeps the tree a plain value graph over one allocator.
+
+pub enum Value:
+    null
+    boolean(value: bool)
+    number(value: i64)
+    text(value: str)
+    array(first: Member*?, count: usize)
+    object(first: Member*?, count: usize)
+
+pub struct Member:
+    var key: str
+    var value: Value*
+    var next: Member*?
+
+## Write `value` back out as compact JSON.
+pub func write(out: Writer, value: Value*) -> !:
+    match *value:
+        .null:
+            try out.write("null")
+        .boolean(b):
+            try out.write("true" if b else "false")
+        .number(n):
+            try out.write(f"{n}")
+        .text(s):
+            try out.write("\"")
+            try out.write(s)
+            try out.write("\"")
+        .array(first, count):
+            try out.write("[")
+            var cursor = first
+            var index: usize = 0
+            while let member = cursor:
+                if index > 0:
+                    try out.write(",")
+                try write(out, member.value)
+                cursor = member.next
+                index += 1
+            try out.write("]")
+        .object(first, count):
+            try out.write("{")
+            var cursor = first
+            var index: usize = 0
+            while let member = cursor:
+                if index > 0:
+                    try out.write(",")
+                try out.write("\"")
+                try out.write(member.key)
+                try out.write("\":")
+                try write(out, member.value)
+                cursor = member.next
+                index += 1
+            try out.write("}")
+
+## Sum every number in the tree: a small structural walk.
+pub func total(value: Value*) -> i64:
+    match *value:
+        .number(n):
+            return n
+        .array(first, count):
+            var sum: i64 = 0
+            var cursor = first
+            while let member = cursor:
+                sum += total(member.value)
+                cursor = member.next
+            return sum
+        .object(first, count):
+            var sum: i64 = 0
+            var cursor = first
+            while let member = cursor:
+                sum += total(member.value)
+                cursor = member.next
+            return sum
+        _:
+            return 0

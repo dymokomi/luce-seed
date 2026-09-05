@@ -1,7 +1,37 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.2**.
+This tree is **luce-seed-0.3**.
+
+## Third audit: emitter ordering, oracle fidelity, spec §24 complete
+
+The C emitter writes typedefs in dependency order: a record, array,
+tuple, optional, result, or function-pointer typedef appears only after
+every type it holds by value, so a struct with an array field, an array
+of function values, or a tuple of records no longer references a name
+declared later. `T[]` and `const T[]` share one C struct; a slice of a
+span indexes in elements, not bytes; a cast keeps its written target when
+the context widens it to `T?`; exported spans and span literals cast their
+data pointer to `void*`; standard-module records (`Handle`, `Mutex`, …)
+come from the runtime header and a user struct with the same name keeps
+its own definition (`FlagBuiltin`). Checked `+ - *` and bounds checks are
+`static inline` in `lucb_rt.h` so `--release` keeps them in registers.
+
+The oracle: an ASCII character literal adapts to a `u8` operand for every
+operator, not only `==`; `defer call catch failure:` parses as the spec
+writes it; a reinterpreted pointer (`(u8*)link - offsetof(...)`) is refused
+with a message rather than mis-modelled; a forwarded `fmt` parameter
+prints its text; `main` returning an error reports `error N: message` like
+the native shim; `lucb eval FILE args…` passes arguments and prints the
+program's stderr.
+
+The spec's §24.15 example gained the `field` and `number` helpers it
+called but never defined, and `load` returns the parsed default instead of
+recovering a `const u8[]` where a `u8[]` was expected.
+
+Evidence: `agree_probe_*` (37 programs), `main_*` (8 programs),
+`examples`, `eval_tests_probe_t1`, `spec24_ex01`–`ex15`, and
+the audit battery in the sibling `luce-seed-review/audit.sh`.
 
 ## Remaining audit items
 

@@ -1,0 +1,115 @@
+## A small stack machine: instructions are a payload enum, a program is a
+## span of them, and `run` executes with an explicit value stack and call
+## frames, trapping on nothing and reporting stack faults as errors.
+
+pub enum Op:
+    push(value: i64)
+    add
+    sub
+    mul
+    less
+    dup
+    swap
+    load(slot: u32)
+    store(slot: u32)
+    jump(target: u32)
+    branch_false(target: u32)
+    call(target: u32, arity: u32)
+    ret
+    halt
+
+pub let underflow: ErrorCode = ErrorCode.package(1)
+pub let overflow: ErrorCode = ErrorCode.package(2)
+
+struct Frame:
+    var return_to: u32
+    var base: usize
+
+pub struct Machine:
+    var stack: i64[256]
+    var top: usize
+    var frames: Frame[32]
+    var frame_count: usize
+    var steps: u64
+
+    pub static func create() -> Machine:
+        return Machine(top = 0, frame_count = 0, steps = 0)
+
+    mutating func push(value: i64) -> !:
+        if self.top >= 256:
+            error(overflow, "value stack overflow")
+        self.stack[self.top] = value
+        self.top += 1
+
+    mutating func pop() -> i64!:
+        if self.top == 0:
+            error(underflow, "value stack underflow")
+        self.top -= 1
+        return self.stack[self.top]
+
+    func base() -> usize:
+        if self.frame_count == 0:
+            return 0
+        return self.frames[self.frame_count - 1].base
+
+    pub mutating func run(program: const Op[]) -> i64!:
+        var pc: u32 = 0
+        while true:
+            if (usize)pc >= program.length:
+                error(overflow, "ran off the end of the program")
+            self.steps += 1
+            let op = program[(usize)pc]
+            pc += 1
+            match op:
+                .push(value):
+                    try self.push(value)
+                .add:
+                    let b = try self.pop()
+                    let a = try self.pop()
+                    try self.push(a + b)
+                .sub:
+                    let b = try self.pop()
+                    let a = try self.pop()
+                    try self.push(a - b)
+                .mul:
+                    let b = try self.pop()
+                    let a = try self.pop()
+                    try self.push(a * b)
+                .less:
+                    let b = try self.pop()
+                    let a = try self.pop()
+                    try self.push(1 if a < b else 0)
+                .dup:
+                    let a = try self.pop()
+                    try self.push(a)
+                    try self.push(a)
+                .swap:
+                    let b = try self.pop()
+                    let a = try self.pop()
+                    try self.push(b)
+                    try self.push(a)
+                .load(slot):
+                    try self.push(self.stack[self.base() + (usize)slot])
+                .store(slot):
+                    let v = try self.pop()
+                    self.stack[self.base() + (usize)slot] = v
+                .jump(target):
+                    pc = target
+                .branch_false(target):
+                    if try self.pop() == 0:
+                        pc = target
+                .call(target, arity):
+                    if self.frame_count >= 32:
+                        error(overflow, "call stack overflow")
+                    self.frames[self.frame_count] = Frame(return_to = pc, base = self.top - (usize)arity)
+                    self.frame_count += 1
+                    pc = target
+                .ret:
+                    let result = try self.pop()
+                    let frame = self.frames[self.frame_count - 1]
+                    self.frame_count -= 1
+                    self.top = frame.base
+                    try self.push(result)
+                    pc = frame.return_to
+                .halt:
+                    return try self.pop()

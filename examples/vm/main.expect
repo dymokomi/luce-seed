@@ -1,0 +1,3 @@
+fib(10) = 55 in 1769 steps
+fault: value stack underflow
+fault result -1

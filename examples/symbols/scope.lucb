@@ -1,0 +1,56 @@
+## A block-structured symbol table over interned names: a stack of scopes,
+## each a list of (name id, kind) pairs; lookup walks from the innermost out.
+
+
+pub enum Kind as u8:
+    variable = 1
+    function = 2
+    type = 3
+
+pub struct Symbol:
+    var name: u32
+    var kind: Kind
+    var depth: u32
+
+pub let duplicate: ErrorCode = ErrorCode.package(1)
+
+pub struct Table:
+    var symbols: Symbol[]
+    var count: usize
+    var marks: usize[16]
+    var depth: u32
+
+    pub static func create(capacity: usize) -> Table!:
+        return Table(symbols = try alloc Symbol[capacity], count = 0, depth = 0)
+
+    pub mutating func enter():
+        self.marks[(usize)self.depth] = self.count
+        self.depth += 1
+
+    pub mutating func leave():
+        self.depth -= 1
+        self.count = self.marks[(usize)self.depth]
+
+    ## Declare in the innermost scope; a repeat in the same scope is an error.
+    pub mutating func declare(name: u32, kind: Kind) -> !:
+        var i = self.count
+        let floor = (usize)0 if self.depth == 0 else self.marks[(usize)self.depth - 1]
+        while i > floor:
+            i -= 1
+            if self.symbols[i].name == name:
+                error(duplicate, "already declared in this scope")
+        if self.count == self.symbols.length:
+            error(memory.exhausted, "symbol table is full")
+        self.symbols[self.count] = Symbol(name = name, kind = kind, depth = self.depth)
+        self.count += 1
+
+    pub func resolve(name: u32) -> Symbol?:
+        var i = self.count
+        while i > 0:
+            i -= 1
+            if self.symbols[i].name == name:
+                return self.symbols[i]
+        return none
+
+    pub mutating func destroy():
+        free(self.symbols)

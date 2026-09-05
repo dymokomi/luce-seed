@@ -1,0 +1,29 @@
+# args: examples/lexer/sample.lucb
+## Tokenize a file and print one line per token, then a count per kind.
+
+import lexer
+import token
+
+pub func main(arguments: cstr[]) -> i32!:
+    let out = io.stdout()
+    if arguments.length < 2:
+        try io.stderr().write("usage: lexer FILE\n")
+        return 2
+    let bytes = try files.read(arguments[1])
+    defer free(bytes)
+    let source = try str(bytes)
+    var lx = lexer.Lexer.over(source)
+    var counts: u32[10]
+    while true:
+        let t = try lx.next()
+        counts[(usize)t.kind] += 1
+        if t.kind == token.Kind.eof:
+            break
+        if t.kind == token.Kind.newline:
+            try out.write(f"{t.line}: newline\n")
+        elif t.kind == token.Kind.indent or t.kind == token.Kind.dedent:
+            try out.write(f"{t.line}: {t.label()}\n")
+        else:
+            try out.write(f"{t.line}: {t.label()} `{lx.text(t)}`\n")
+    try out.write(f"names={counts[1]} keywords={counts[2]} integers={counts[3]} texts={counts[4]} operators={counts[5]}\n")
+    return 0

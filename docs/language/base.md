@@ -2341,17 +2341,43 @@ struct Config:
     var name: str
     var threads: u32
 
+func field(text: str, key: str) -> str?:
+    let bytes = text.bytes
+    var start: usize = 0
+    while start < bytes.length:
+        var end = start
+        while end < bytes.length and bytes[end] != '\n':
+            end += 1
+        let line = bytes[start..<end]
+        if line.length > key.length and (str)line[..<key.length] == key:
+            var value = line[key.length..]
+            while value.length > 0 and (value[0] == ' ' or value[0] == '='):
+                value = value[1..]
+            return (str)value
+        start = end + 1
+    return none
+
+func number(text: str) -> u32!:
+    if text.length == 0:
+        error(missing_field, "empty number")
+    var value: u32 = 0
+    for byte in text.bytes:
+        if byte < '0' or byte > '9':
+            error(missing_field, "not a digit")
+        value = value * 10 + u32(byte - '0')
+    return value
+
 func parse(text: str, scratch: u8[]) -> Config!:
     let name = field(text, "name") else error(missing_field, "name")
     let threads = field(text, "threads") else error(missing_field, "threads")
-    let count = u32(threads) catch failure:
+    let count = number(threads) catch failure:
         error(failure.code, try format(scratch, f"threads: {failure.message}"))
     return Config(name = name, threads = count)
 
 func load(path: cstr, scratch: u8[]) -> Config!:
     let bytes = files.read(path) catch failure:
         if failure.code == files.missing:
-            recover "name = default\nthreads = 4".bytes
+            return try parse("name = default\nthreads = 4", scratch)
         error(failure.code, failure.message)
     defer free(bytes)
     return try parse(try str(bytes), scratch)

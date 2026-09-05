@@ -1,0 +1,39 @@
+## Token kinds and the keyword table of the Luce Base subset this lexer knows.
+
+pub enum Kind as u8:
+    name = 1
+    keyword = 2
+    integer = 3
+    text = 4
+    operator = 5
+    newline = 6
+    indent = 7
+    dedent = 8
+    eof = 9
+
+pub struct Token:
+    var kind: Kind
+    var start: usize
+    var end: usize
+    var line: u32
+
+    ## The kind as it prints in a token dump.
+    pub func label() -> str:
+        match self.kind:
+            .name: return "name"
+            .keyword: return "keyword"
+            .integer: return "integer"
+            .text: return "text"
+            .operator: return "operator"
+            .newline: return "newline"
+            .indent: return "indent"
+            .dedent: return "dedent"
+            _: return "eof"
+
+pub let keywords: str[12] = ["func", "let", "var", "if", "elif", "else", "while", "for", "in", "return", "struct", "pub"]
+
+pub func is_keyword(word: str) -> bool:
+    for k in keywords:
+        if k == word:
+            return true
+    return false
