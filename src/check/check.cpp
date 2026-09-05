@@ -8,8 +8,7 @@
 namespace lucb {
 namespace {
 
-const uint32_t k_type_flags_unsupported =
-    FlagFallible | FlagAtomic | FlagFuncType | FlagTupleType;
+const uint32_t k_type_flags_unsupported = FlagAtomic | FlagFuncType | FlagTupleType;
 
 struct Binding {
     string_view name;
@@ -44,12 +43,17 @@ struct Checker {
     Type* ty_str = nullptr;
     Type* ty_untyped = nullptr;
     Type* ty_void = nullptr;
+    Type* ty_err = nullptr;
     vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
     Node* current_fn = nullptr;
     Node* current_struct = nullptr;
     Type* return_type = nullptr;
+    bool fallible_fn = false;
+    bool in_catch = false;
+    Type* catch_type = nullptr;
+    vector<string_view> loop_labels;
 
     Type* t_error() { return ty_error; }
     Type* t_never() { return ty_never; }
@@ -157,6 +161,37 @@ struct Checker {
         Type* t = make_type(TypeKind::Array, {});
         t->elem = elem;
         t->length = n;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+    Type* intern_opt(Type* elem) {
+        if (is_ptr(elem) && !elem->is_nullable) {
+            return intern_ptr(elem->elem, elem->is_const, elem->is_volatile, true);
+        }
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Optional && t->elem == elem) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Optional, {});
+        t->elem = elem;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+    Type* intern_fail(Type* elem) {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Fallible && t->elem == elem) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Fallible, {});
+        t->elem = elem;
         t->name = keep(type_name(t));
         interned.push_back(t);
         return t;
@@ -281,14 +316,24 @@ struct Checker {
             n->ty = t_error();
             return n->ty;
         }
+        if (n->flags & FlagFallible) {
+            Type* inner = t_unit();
+            if (n->left != nullptr) {
+                inner = resolve_type(n->left);
+            } else if (n->text == "unit" || n->text.empty()) {
+                inner = t_unit();
+            } else {
+                inner = named_scalar(n->text);
+                if (inner == nullptr) {
+                    inner = t_unit();
+                }
+            }
+            n->ty = intern_fail(inner);
+            return n->ty;
+        }
         if (n->flags & FlagOptional) {
             Type* inner = resolve_type(n->left);
-            if (is_ptr(inner) && !inner->is_nullable) {
-                n->ty = intern_ptr(inner->elem, inner->is_const, inner->is_volatile, true);
-                return n->ty;
-            }
-            fail_n(n, "lucb.check.unsupported", "optionals other than `T*?` are not in this slice");
-            n->ty = t_error();
+            n->ty = intern_opt(inner);
             return n->ty;
         }
         if (n->flags & FlagStar) {
@@ -394,6 +439,16 @@ struct Checker {
         case NodeKind::Cast:
             t = check_cast(n, false);
             break;
+        case NodeKind::Else:
+            t = check_else(n, expected);
+            break;
+        case NodeKind::Catch:
+            t = check_catch(n, expected);
+            break;
+        case NodeKind::Match:
+        case NodeKind::MatchExpr:
+            t = check_match(n, expected);
+            break;
         case NodeKind::Index:
             t = check_index(n);
             break;
@@ -455,23 +510,26 @@ struct Checker {
             if (expected == nullptr) {
                 return t_untyped();
             }
-            Type* dest = is_int(expected) ? expected : t_i64();
+            Type* dest = expected;
+            if (is_opt(expected)) {
+                dest = expected->elem;
+            }
+            if (dest == nullptr || !is_int(dest)) {
+                fail_n(n, "lucb.check.type",
+                       "expected `" + type_name(expected) + "`, got an integer literal");
+                return t_error();
+            }
             ParsedInt p = parse_int_literal(n->text);
             if (!p.ok) {
                 fail_n(n, "lucb.check.number", "invalid integer literal");
                 return t_error();
             }
-            if (is_int(expected) && !int_fits(p.value, false, dest)) {
+            if (!int_fits(p.value, false, dest)) {
                 fail_n(n, "lucb.check.number",
                        "integer literal does not fit in `" + type_name(dest) + "`");
                 return t_error();
             }
-            if (!is_int(expected)) {
-                fail_n(n, "lucb.check.type",
-                       "expected `" + type_name(expected) + "`, got an integer literal");
-                return t_error();
-            }
-            return dest;
+            return is_opt(expected) ? expected : dest;
         }
         if (expected == nullptr) {
             return got;
@@ -480,6 +538,10 @@ struct Checker {
             if (is_array(got) && is_span(expected)) {
                 mark_local(n);
             }
+            return expected;
+        }
+        if (is_opt(expected) &&
+            (type_eq(got, expected->elem) || can_widen(got, expected->elem))) {
             return expected;
         }
         if (got->kind == TypeKind::Char && expected->kind == TypeKind::U8 &&
@@ -565,7 +627,10 @@ struct Checker {
             if (expected != nullptr && is_ptr(expected) && expected->is_nullable) {
                 return expected;
             }
-            fail_n(n, "lucb.check.type", "`none` needs a nullable pointer type");
+            if (expected != nullptr && is_opt(expected)) {
+                return expected;
+            }
+            fail_n(n, "lucb.check.type", "`none` needs an optional type");
             return t_error();
         }
         if (n->op == TokenKind::KwTrue || n->op == TokenKind::KwFalse) {
@@ -659,6 +724,18 @@ struct Checker {
     }
 
     Type* check_unary(Node* n, Type* expected) {
+        if (n->op == TokenKind::KwTry) {
+            Type* inner = check_expr(n->left, nullptr);
+            if (!is_fail(inner)) {
+                fail_n(n, "lucb.check.type", "`try` needs a fallible expression");
+                return t_error();
+            }
+            if (!fallible_fn) {
+                fail_n(n, "lucb.check.type", "`try` is only valid in a fallible function");
+                return t_error();
+            }
+            return inner->elem != nullptr ? inner->elem : t_unit();
+        }
         if (n->op == TokenKind::KwNot) {
             Type* inner = check_expr(n->left, t_bool());
             if (!type_eq(inner, t_bool())) {
@@ -858,7 +935,8 @@ struct Checker {
                op == TokenKind::PlusPercent || op == TokenKind::MinusPercent ||
                op == TokenKind::StarPercent || op == TokenKind::PlusPipe ||
                op == TokenKind::MinusPipe || op == TokenKind::StarPipe ||
-               op == TokenKind::Slash;
+               op == TokenKind::Slash || op == TokenKind::PlusQuestion ||
+               op == TokenKind::MinusQuestion || op == TokenKind::StarQuestion;
     }
 
     bool is_bit(TokenKind op) {
@@ -868,11 +946,6 @@ struct Checker {
 
     Type* check_binary(Node* n, Type* expected) {
         TokenKind op = n->op;
-        if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
-            op == TokenKind::StarQuestion) {
-            fail_n(n, "lucb.check.unsupported", "`+?` needs optionals, which are not in this slice");
-            return t_error();
-        }
         if (op == TokenKind::KwAnd || op == TokenKind::KwOr) {
             Type* L = check_expr(n->left, t_bool());
             Type* R = check_expr(n->right, t_bool());
@@ -979,6 +1052,10 @@ struct Checker {
                 return n->left->ty != nullptr ? n->left->ty : u;
             }
             (void)expected;
+            if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+                op == TokenKind::StarQuestion) {
+                return intern_opt(u);
+            }
             return u;
         }
         fail_n(n, "lucb.check.unsupported", "this operator is not in the scalar core yet");
@@ -1001,6 +1078,9 @@ struct Checker {
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             return check_trap(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "error") {
+            return check_error(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "sizeof") {
             return check_sizeof(n);
@@ -1180,6 +1260,129 @@ struct Checker {
         return t_unit();
     }
 
+    Type* check_error(Node* n) {
+        if (!fallible_fn && !in_catch) {
+            fail_n(n, "lucb.check.type", "`error` is only valid in a fallible function or catch");
+        }
+        int count = count_args(n->body);
+        if (count != 2) {
+            fail_n(n, "lucb.check.call", "`error` takes a code and a message");
+        } else {
+            check_expr(n->body->left, nullptr);
+            Type* msg = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_str());
+            if (!type_eq(msg, t_str())) {
+                fail_n(n, "lucb.check.type", "`error` message must be `str`");
+            }
+        }
+        return t_never();
+    }
+
+    Type* check_else(Node* n, Type* expected) {
+        Type* left = check_expr(n->left, nullptr);
+        if (is_opt(left)) {
+            Type* fb = check_expr(n->right, expected != nullptr ? expected : left->elem);
+            if (!type_eq(fb, left->elem) && !can_widen(fb, left->elem) &&
+                !type_eq(fb, t_never())) {
+                fail_n(n, "lucb.check.type", "`else` fallback must match the optional payload");
+            }
+            return left->elem;
+        }
+        if (is_ptr(left) && left->is_nullable) {
+            Type* inner = intern_ptr(left->elem, left->is_const, left->is_volatile, false);
+            Type* fb = check_expr(n->right, expected != nullptr ? expected : inner);
+            (void)fb;
+            return inner;
+        }
+        fail_n(n, "lucb.check.type", "`else` needs an optional");
+        return t_error();
+    }
+
+    Type* check_catch(Node* n, Type* expected) {
+        Type* left = check_expr(n->left, nullptr);
+        if (!is_fail(left)) {
+            fail_n(n, "lucb.check.type", "`catch` needs a fallible expression");
+            return t_error();
+        }
+        Type* payload = left->elem != nullptr ? left->elem : t_unit();
+        bool saved = in_catch;
+        Type* saved_ct = catch_type;
+        in_catch = true;
+        catch_type = payload;
+        push_scope();
+        if (!n->text.empty()) {
+            bind(n->text, ty_err, false, n);
+        }
+        check_stmt(n->body);
+        pop_scope();
+        in_catch = saved;
+        catch_type = saved_ct;
+        (void)expected;
+        return payload;
+    }
+
+    bool pattern_covers_rest(Node* pat) {
+        return pat != nullptr && pat->text == "_";
+    }
+
+    Type* check_match(Node* n, Type* expected) {
+        Type* scrut = check_expr(n->left, nullptr);
+        Type* result = expected;
+        bool saw_rest = false;
+        bool saw_true = false;
+        bool saw_false = false;
+        bool saw_none = false;
+        bool saw_some = false;
+        for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+            push_scope();
+            for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                if (pat->text == "_") {
+                    saw_rest = true;
+                } else if (pat->text == "none") {
+                    saw_none = true;
+                } else if (pat->text == "some") {
+                    saw_some = true;
+                    if (pat->body != nullptr && !pat->body->text.empty() && is_opt(scrut)) {
+                        bind(pat->body->text, scrut->elem, false, pat);
+                    }
+                } else if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
+                    if (pat->left->op == TokenKind::KwTrue) {
+                        saw_true = true;
+                    }
+                    if (pat->left->op == TokenKind::KwFalse) {
+                        saw_false = true;
+                    }
+                    check_expr(pat->left, scrut);
+                }
+            }
+            if (arm->type != nullptr) {
+                Type* g = check_expr(arm->type, t_bool());
+                if (!type_eq(g, t_bool())) {
+                    fail_n(arm, "lucb.check.type", "a match guard must be `bool`");
+                }
+            }
+            if (n->kind == NodeKind::MatchExpr) {
+                Type* bt = check_expr(arm->body, expected);
+                if (result == nullptr) {
+                    result = bt;
+                }
+            } else {
+                check_stmt(arm->body);
+            }
+            pop_scope();
+        }
+        if (scrut != nullptr && scrut->kind == TypeKind::Bool && !saw_rest &&
+            !(saw_true && saw_false)) {
+            fail_n(n, "lucb.check.match", "`match` on `bool` is not exhaustive");
+        }
+        if (is_opt(scrut) && !saw_rest && !(saw_none && saw_some)) {
+            fail_n(n, "lucb.check.match", "`match` on an optional is not exhaustive");
+        }
+        if (is_int(scrut) && !saw_rest) {
+            fail_n(n, "lucb.check.match", "`match` on an integer needs a `_` arm");
+        }
+        return result != nullptr ? result : t_unit();
+    }
+
     Type* check_trap(Node* n) {
         int count = count_args(n->body);
         if (count != 1) {
@@ -1255,6 +1458,9 @@ struct Checker {
         Type* result = fn->ty;
         if (result == nullptr) {
             result = t_unit();
+        }
+        if ((fn->flags & FlagFallible) != 0) {
+            return intern_fail(result);
         }
         return result;
     }
@@ -1466,24 +1672,58 @@ struct Checker {
             break;
         }
         case NodeKind::If: {
-            Type* c = check_expr(n->left, t_bool());
-            if (n->left != nullptr && n->left->kind == NodeKind::Let) {
-                fail_n(n, "lucb.check.unsupported", "`if let` is not in the scalar core yet");
-            } else if (!type_eq(c, t_bool())) {
-                fail_n(n, "lucb.check.type", "a condition must be `bool`");
+            if (n->flags & FlagIfLet) {
+                Node* let = n->left;
+                Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
+                if (!is_opt(ot) && !(is_ptr(ot) && ot->is_nullable)) {
+                    fail_n(n, "lucb.check.type", "`if let` needs an optional");
+                }
+                Type* payload = is_opt(ot) ? ot->elem
+                                           : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
+                push_scope();
+                if (let != nullptr) {
+                    bind(let->text, payload, false, let);
+                }
+                check_stmt(n->body);
+                pop_scope();
+            } else {
+                Type* c = check_expr(n->left, t_bool());
+                if (!type_eq(c, t_bool())) {
+                    fail_n(n, "lucb.check.type", "a condition must be `bool`");
+                }
+                check_stmt(n->body);
             }
-            check_stmt(n->body);
             if (n->right != nullptr) {
                 check_stmt(n->right);
             }
             break;
         }
         case NodeKind::While: {
-            Type* c = check_expr(n->left, t_bool());
-            if (!type_eq(c, t_bool())) {
-                fail_n(n, "lucb.check.type", "a condition must be `bool`");
+            if (n->flags & FlagIfLet) {
+                Node* let = n->left;
+                Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
+                if (!is_opt(ot) && !(is_ptr(ot) && ot->is_nullable)) {
+                    fail_n(n, "lucb.check.type", "`while let` needs an optional");
+                }
+                Type* payload = is_opt(ot) ? ot->elem
+                                           : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
+                loop_labels.push_back(n->text);
+                push_scope();
+                if (let != nullptr) {
+                    bind(let->text, payload, false, let);
+                }
+                check_stmt(n->body);
+                pop_scope();
+                loop_labels.pop_back();
+            } else {
+                Type* c = check_expr(n->left, t_bool());
+                if (!type_eq(c, t_bool())) {
+                    fail_n(n, "lucb.check.type", "a condition must be `bool`");
+                }
+                loop_labels.push_back(n->text);
+                check_stmt(n->body);
+                loop_labels.pop_back();
             }
-            check_stmt(n->body);
             break;
         }
         case NodeKind::Return: {
@@ -1504,9 +1744,36 @@ struct Checker {
             break;
         }
         case NodeKind::For: {
-            Type* it = check_expr(n->right, nullptr);
+            Type* it = n->right != nullptr && n->right->kind == NodeKind::Binary &&
+                               (n->right->op == TokenKind::DotDotLt ||
+                                n->right->op == TokenKind::DotDotEq)
+                           ? nullptr
+                           : check_expr(n->right, nullptr);
             Type* elem = nullptr;
-            if (n->flags & FlagByPtr) {
+            if (n->right != nullptr && n->right->kind == NodeKind::Binary &&
+                (n->right->op == TokenKind::DotDotLt || n->right->op == TokenKind::DotDotEq)) {
+                Type* a = check_expr(n->right->left, nullptr);
+                Type* b = check_expr(n->right->right, nullptr);
+                Type* u = unify_int(a, b);
+                if (u == nullptr || (!is_int(u) && a->kind == TypeKind::UntypedInt &&
+                                     b->kind == TypeKind::UntypedInt)) {
+                    u = t_usize();
+                    if (a->kind == TypeKind::UntypedInt) {
+                        n->right->left->ty = coerce(n->right->left, a, u);
+                    }
+                    if (b->kind == TypeKind::UntypedInt) {
+                        n->right->right->ty = coerce(n->right->right, b, u);
+                    }
+                }
+                if (a->kind == TypeKind::UntypedInt) {
+                    n->right->left->ty = coerce(n->right->left, a, u != nullptr && is_int(u) ? u : t_usize());
+                }
+                if (b->kind == TypeKind::UntypedInt) {
+                    n->right->right->ty = coerce(n->right->right, b, u != nullptr && is_int(u) ? u : t_usize());
+                }
+                elem = (u != nullptr && is_int(u)) ? u : t_usize();
+                n->right->ty = elem;
+            } else if (n->flags & FlagByPtr) {
                 if (is_array(it)) {
                     elem = intern_ptr(it->elem, !is_mut_place(n->right), false, false);
                 } else if (is_span(it)) {
@@ -1530,15 +1797,59 @@ struct Checker {
                 elem = want;
             }
             n->ty = elem;
+            loop_labels.push_back(n->text);
             push_scope();
             bind(n->text, elem, false, n);
             check_stmt(n->body);
             pop_scope();
+            loop_labels.pop_back();
             break;
         }
-        case NodeKind::ExprStmt:
+        case NodeKind::Break:
+        case NodeKind::Continue: {
+            if (loop_labels.empty()) {
+                fail_n(n, "lucb.check.type", "`break`/`continue` needs a loop");
+            } else if (!n->text.empty()) {
+                bool found = false;
+                for (size_t i = 0; i < loop_labels.size(); i++) {
+                    if (loop_labels[i] == n->text) {
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    fail_n(n, "lucb.check.name", "unknown loop label `" + string(n->text) + "`");
+                }
+            }
+            break;
+        }
+        case NodeKind::Defer:
+            check_expr(n->left);
+            if (n->body != nullptr) {
+                check_stmt(n->body);
+            }
+            break;
+        case NodeKind::Errdefer:
+            if (!fallible_fn) {
+                fail_n(n, "lucb.check.type", "`errdefer` is only valid in a fallible function");
+            }
             check_expr(n->left);
             break;
+        case NodeKind::Recover:
+            if (!in_catch) {
+                fail_n(n, "lucb.check.type", "`recover` is only valid in a `catch` handler");
+            }
+            check_expr(n->left, catch_type != nullptr ? catch_type : return_type);
+            break;
+        case NodeKind::Match:
+            check_match(n, nullptr);
+            break;
+        case NodeKind::ExprStmt: {
+            Type* t = check_expr(n->left);
+            if (is_fail(t)) {
+                fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
+            }
+            break;
+        }
         default:
             fail_n(n, "lucb.check.unsupported", "this statement is not in the scalar core yet");
             break;
@@ -1552,6 +1863,16 @@ struct Checker {
         switch (n->kind) {
         case NodeKind::Return:
             return true;
+        case NodeKind::Recover:
+            return true;
+        case NodeKind::ExprStmt:
+            if (n->left != nullptr && n->left->kind == NodeKind::Call && n->left->left != nullptr &&
+                n->left->left->kind == NodeKind::Name &&
+                (n->left->left->text == "trap" || n->left->left->text == "error")) {
+                return true;
+            }
+            return n->left != nullptr && n->left->ty != nullptr &&
+                   n->left->ty->kind == TypeKind::Never;
         case NodeKind::Block: {
             bool r = false;
             for (Node* s = n->body; s != nullptr; s = s->next) {
@@ -1561,6 +1882,17 @@ struct Checker {
         }
         case NodeKind::If:
             return always_returns(n->body) && always_returns(n->right);
+        case NodeKind::Match: {
+            if (n->body == nullptr) {
+                return false;
+            }
+            for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+                if (!always_returns(arm->body)) {
+                    return false;
+                }
+            }
+            return true;
+        }
         default:
             return false;
         }
@@ -1585,13 +1917,19 @@ struct Checker {
         if (fn->type != nullptr) {
             result = resolve_type(fn->type);
         }
+        if (is_fail(result)) {
+            fn->flags |= FlagFallible;
+            result = result->elem != nullptr ? result->elem : t_unit();
+        }
         fn->ty = result;
         Node* saved_fn = current_fn;
         Node* saved_st = current_struct;
         Type* saved_ret = return_type;
+        bool saved_fail = fallible_fn;
         current_fn = fn;
         current_struct = owner;
         return_type = result;
+        fallible_fn = (fn->flags & FlagFallible) != 0;
         push_scope();
         if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
             bool mut = (fn->flags & FlagMutating) != 0;
@@ -1606,6 +1944,7 @@ struct Checker {
         current_fn = saved_fn;
         current_struct = saved_st;
         return_type = saved_ret;
+        fallible_fn = saved_fail;
     }
 
     void check_struct(Node* st) {
@@ -1691,6 +2030,10 @@ struct Checker {
         if (fn->type != nullptr) {
             result = resolve_type(fn->type);
         }
+        if (is_fail(result)) {
+            fn->flags |= FlagFallible;
+            result = result->elem != nullptr ? result->elem : t_unit();
+        }
         fn->ty = result;
         for (Node* p = fn->right; p != nullptr; p = p->next) {
             p->ty = resolve_type(p->type);
@@ -1744,6 +2087,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_str = c.make_type(TypeKind::Str, "str");
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
+    c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
     c.check_module(module);
     return diagnostics.empty();
 }

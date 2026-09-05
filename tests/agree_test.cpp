@@ -293,3 +293,88 @@ TEST(agree_assign_through_pointer) {
                  "    *p = 9\n"
                  "    return n\n"));
 }
+
+TEST(agree_optional_else) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let x: i64? = none\n"
+                 "    return x else 7\n"));
+}
+
+TEST(agree_if_let) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let x: i64? = 3\n"
+                 "    if let n = x:\n"
+                 "        return n\n"
+                 "    return 0\n"));
+}
+
+TEST(agree_overflow_optional) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let x: u8 = 250\n"
+                 "    return i64(x +? 10 else 0)\n"));
+}
+
+TEST(agree_try_catch) {
+    CHECK(agrees("func boom() -> i64!:\n"
+                 "    error(1, \"nope\")\n"
+                 "    return 0\n"
+                 "pub func answer() -> i64:\n"
+                 "    return boom() catch e:\n"
+                 "        recover 9\n"));
+}
+
+TEST(agree_try_ok) {
+    CHECK(agrees("func id(n: i64) -> i64!:\n"
+                 "    return n\n"
+                 "func inner() -> i64!:\n"
+                 "    return try id(4)\n"
+                 "pub func answer() -> i64:\n"
+                 "    return inner() catch e:\n"
+                 "        recover 0\n"));
+}
+
+TEST(agree_for_range) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 0\n"
+                 "    for i in 0..<5:\n"
+                 "        n += i\n"
+                 "    return n\n"));
+}
+
+TEST(agree_match_int) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let x = 2\n"
+                 "    match x:\n"
+                 "        1:\n"
+                 "            return 10\n"
+                 "        2:\n"
+                 "            return 20\n"
+                 "        _:\n"
+                 "            return 0\n"));
+}
+
+TEST(agree_break) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 0\n"
+                 "    while true:\n"
+                 "        n += 1\n"
+                 "        if n == 3:\n"
+                 "            break\n"
+                 "    return n\n"));
+}
+
+TEST(agree_defer) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    defer print(7)\n"
+                 "    return 1\n"));
+}
+
+TEST(agree_labeled_break) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 0\n"
+                 "    outer: while true:\n"
+                 "        n += 1\n"
+                 "        if n == 2:\n"
+                 "            break outer\n"
+                 "    return n\n"));
+}

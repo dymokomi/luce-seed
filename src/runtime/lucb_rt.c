@@ -155,6 +155,77 @@ uint64_t lb_mod_u(uint64_t a, uint64_t b, int bits) {
     return a % b;
 }
 
+int lb_qadd_s(int64_t a, int64_t b, int bits, int64_t* out) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_add_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        return 0;
+    }
+    *out = r;
+    return 1;
+}
+
+int lb_qadd_u(uint64_t a, uint64_t b, int bits, uint64_t* out) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (bits >= 64) {
+        if (a > UINT64_MAX - b) {
+            return 0;
+        }
+        *out = a + b;
+        return 1;
+    }
+    uint64_t r = a + b;
+    if (r > mask_bits(bits)) {
+        return 0;
+    }
+    *out = r;
+    return 1;
+}
+
+int lb_qsub_s(int64_t a, int64_t b, int bits, int64_t* out) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_sub_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        return 0;
+    }
+    *out = r;
+    return 1;
+}
+
+int lb_qsub_u(uint64_t a, uint64_t b, int bits, uint64_t* out) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (a < b) {
+        return 0;
+    }
+    *out = a - b;
+    return 1;
+}
+
+int lb_qmul_s(int64_t a, int64_t b, int bits, int64_t* out) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_mul_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        return 0;
+    }
+    *out = r;
+    return 1;
+}
+
+int lb_qmul_u(uint64_t a, uint64_t b, int bits, uint64_t* out) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (b != 0 && a > mask_bits(bits) / b) {
+        return 0;
+    }
+    *out = zext(a * b, bits);
+    return 1;
+}
+
 int64_t lb_neg_s(int64_t a, int bits) {
     a = sext(a, bits);
     if (a == smin(bits)) {

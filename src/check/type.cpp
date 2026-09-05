@@ -78,6 +78,12 @@ string type_name(const Type* t) {
         s += "[]";
         return s;
     }
+    case TypeKind::Optional:
+        return type_name(t->elem) + "?";
+    case TypeKind::Fallible:
+        return type_name(t->elem) + "!";
+    case TypeKind::ErrorVal:
+        return "Error";
     }
     return "<unknown>";
 }
@@ -168,6 +174,14 @@ Type* elem_of(const Type* t) {
         return nullptr;
     }
     return t->elem;
+}
+
+bool is_opt(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Optional;
+}
+
+bool is_fail(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Fallible;
 }
 
 int int_bits(const Type* t) {
@@ -323,6 +337,12 @@ int type_size(const Type* t) {
         return static_cast<int>(sizeof(void*));
     case TypeKind::Span:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
+    case TypeKind::Optional:
+        return type_size(t->elem) + 1;
+    case TypeKind::Fallible:
+        return type_size(t->elem) + static_cast<int>(sizeof(void*) * 2 + 1);
+    case TypeKind::ErrorVal:
+        return static_cast<int>(sizeof(int32_t) + sizeof(void*) + sizeof(size_t));
     case TypeKind::Array:
         return type_size(t->elem) * static_cast<int>(t->length);
     case TypeKind::Void:
@@ -396,6 +416,12 @@ const char* c_type_name(const Type* t) {
         return "void*";
     case TypeKind::Span:
         return t->is_const ? "lb_cspan" : "lb_span";
+    case TypeKind::ErrorVal:
+        return "lb_error";
+    case TypeKind::Optional:
+        return "lb_opt";
+    case TypeKind::Fallible:
+        return "lb_res";
     case TypeKind::Array:
         return "void";
     case TypeKind::Void:
@@ -422,6 +448,9 @@ bool is_zeroable(const Type* t) {
     }
     if (is_array(t)) {
         return is_zeroable(t->elem);
+    }
+    if (is_opt(t) || t->kind == TypeKind::ErrorVal) {
+        return true;
     }
     if (t->kind != TypeKind::Struct || t->decl == nullptr) {
         return false;

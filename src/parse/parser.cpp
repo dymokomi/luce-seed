@@ -195,6 +195,19 @@ struct Parser {
         return false;
     }
 
+    // `catch` and `match` consume their terminating newline via the suite.
+    bool ends_with_suite(Node* n) {
+        return n != nullptr && (n->kind == NodeKind::Catch || n->kind == NodeKind::Match ||
+                                n->kind == NodeKind::MatchExpr);
+    }
+
+    void expect_stmt_newline(Node* expr) {
+        if (ends_with_suite(expr)) {
+            return;
+        }
+        expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    }
+
     Span span_from(Token start) const {
         Span s = start.span;
         Token last = peek(-1);
@@ -1241,7 +1254,7 @@ struct Parser {
             if (!at(TokenKind::Newline) && !at(TokenKind::Dedent) && !at(TokenKind::EndOfFile)) {
                 n->left = parse_expression();
             }
-            expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+            expect_stmt_newline(n->left);
             n->span = span_from(start);
             return n;
         }
@@ -1304,14 +1317,14 @@ struct Parser {
             take();
             n->left = left;
             n->right = parse_expression();
-            expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+            expect_stmt_newline(n->right);
             n->span = span_from(start);
             return n;
         }
         Node* expr = finish_expression(left);
         Node* n = make(NodeKind::ExprStmt, start.span);
         n->left = expr;
-        expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+        expect_stmt_newline(expr);
         n->span = span_from(start);
         return n;
     }
@@ -1350,7 +1363,7 @@ struct Parser {
         } else if (is_let) {
             fail("lucb.parse.expect", "a let binding requires an initialiser");
         }
-        expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+        expect_stmt_newline(n->left);
         n->span = span_from(start);
         return n;
     }

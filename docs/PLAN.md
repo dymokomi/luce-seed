@@ -60,6 +60,7 @@ pointer arithmetic, `T[N]`, `T[]`, checked index/slice, `str` as a view,
 
 `T?`, `if let`/`while let`, `T!`, `try`/`error`/`catch`/`recover`/`errdefer`.
 Exhaustive `match`. Ranges. Labeled `break`/`continue`. `defer`.
+**Landed.** (`errdefer` is interpreted; C emit of `errdefer` waits.)
 
 ## M8 — Enums, unions, zeros, globals, layout
 

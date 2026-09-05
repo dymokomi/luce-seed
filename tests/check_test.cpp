@@ -102,8 +102,14 @@ TEST(check_pointer_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n    var n: i64 = 1\n    let p = &n\n    return *p\n"));
 }
 
-TEST(check_optional_non_pointer_unsupported) {
-    CHECK(check_has("pub func answer() -> i64?:\n    return 0\n", "lucb.check.unsupported"));
+TEST(check_optional_ok) {
+    CHECK(check_ok("pub func answer() -> i64?:\n    return 0\n"));
+}
+
+TEST(check_try_needs_fallible) {
+    CHECK(check_has("func f() -> i64!:\n    return 1\n"
+                    "pub func answer() -> i64:\n    return try f()\n",
+                    "lucb.check.type"));
 }
 
 TEST(check_escape_local) {

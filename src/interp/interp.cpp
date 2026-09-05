@@ -23,6 +23,10 @@ struct Value {
     vector<Value> fields;
     Value* ptr = nullptr;
     size_t length = 0;
+    bool present = true;
+    bool failed = false;
+    int32_t err_code = 0;
+    string_view err_msg;
 };
 
 Value v_unit() {
@@ -147,7 +151,20 @@ struct Interp {
     bool trapped = false;
     string trap;
     bool returning = false;
+    bool breaking = false;
+    bool continuing = false;
+    string_view jump_label;
+    bool in_catch = false;
+    bool recovered = false;
+    Value recover_val;
+    Node* current_fn = nullptr;
     Value ret;
+    string err_storage;
+    struct Deferred {
+        Node* n = nullptr;
+        bool err_only = false;
+    };
+    vector<vector<Deferred>> defers;
 
     void fail(const string& message) {
         trapped = true;
@@ -339,9 +356,14 @@ struct Interp {
             }
             if (n->op == TokenKind::KwNone) {
                 Value v;
-                v.kind = TypeKind::Pointer;
                 v.type = n->ty;
-                v.ptr = nullptr;
+                v.present = false;
+                if (n->ty != nullptr && is_ptr(n->ty)) {
+                    v.kind = TypeKind::Pointer;
+                    v.ptr = nullptr;
+                } else {
+                    v.kind = TypeKind::Optional;
+                }
                 return v;
             }
             if (n->op == TokenKind::StringLit) {
@@ -353,6 +375,13 @@ struct Interp {
             if (n->op == TokenKind::IntLit) {
                 ParsedInt p = parse_int_literal(n->text);
                 Type* t = n->ty;
+                if (t != nullptr && is_opt(t) && is_int(t->elem)) {
+                    Value v = v_int(t->elem, p.value);
+                    v.kind = TypeKind::Optional;
+                    v.type = t;
+                    v.present = true;
+                    return v;
+                }
                 if (t == nullptr || !is_int(t)) {
                     return v_i64(static_cast<int64_t>(p.value));
                 }
@@ -405,6 +434,13 @@ struct Interp {
             return eval_span_make(n);
         case NodeKind::Cast:
             return eval_conv(n->left, n->ty, false);
+        case NodeKind::Else:
+            return eval_else(n);
+        case NodeKind::Catch:
+            return eval_catch(n);
+        case NodeKind::Match:
+        case NodeKind::MatchExpr:
+            return eval_match(n);
         case NodeKind::Conditional: {
             Value c = eval(n->type);
             if (c.b) {
@@ -590,6 +626,16 @@ struct Interp {
         Value x = eval(n->left);
         if (trapped) {
             return v_unit();
+        }
+        if (n->op == TokenKind::KwTry) {
+            if (x.failed) {
+                ret = x;
+                returning = true;
+                return v_unit();
+            }
+            x.kind = n->ty != nullptr ? n->ty->kind : x.kind;
+            x.type = n->ty;
+            return x;
         }
         if (n->op == TokenKind::KwNot) {
             return v_bool(!x.b);
@@ -926,7 +972,165 @@ struct Interp {
             Type* ct = L.type != nullptr ? L.type : R.type;
             return v_bool(cmp_num(L, R, ct, op));
         }
-        return arith(t != nullptr ? t : L.type, L, R, op);
+        Type* at = t != nullptr ? t : L.type;
+        if (is_opt(at)) {
+            at = at->elem;
+        }
+        Value r = arith(at, L, R, op);
+        if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+            op == TokenKind::StarQuestion) {
+            if (trapped) {
+                trapped = false;
+                trap = {};
+                Value none;
+                none.kind = TypeKind::Optional;
+                none.type = t;
+                none.present = false;
+                return none;
+            }
+            r.present = true;
+            r.kind = TypeKind::Optional;
+            r.type = t;
+        }
+        return r;
+    }
+
+    Value eval_else(Node* n) {
+        Value v = eval(n->left);
+        if (trapped) {
+            return v_unit();
+        }
+        bool some = v.present && !(v.kind == TypeKind::Pointer && v.ptr == nullptr) &&
+                    !(v.kind == TypeKind::Optional && !v.present);
+        if (v.kind == TypeKind::Optional) {
+            some = v.present;
+        }
+        if (is_ptr(n->left != nullptr ? n->left->ty : nullptr) &&
+            n->left->ty->is_nullable) {
+            some = v.ptr != nullptr;
+        }
+        if (some) {
+            if (v.kind == TypeKind::Optional && n->ty != nullptr) {
+                v.kind = n->ty->kind;
+                v.type = n->ty;
+            }
+            return v;
+        }
+        return eval(n->right);
+    }
+
+    void run_catch_handler(Node* n, const Value& errv) {
+        bool saved = in_catch;
+        in_catch = true;
+        Slot err;
+        err.name = n->text;
+        err.value.kind = TypeKind::ErrorVal;
+        err.value.u = static_cast<uint64_t>(errv.err_code);
+        err.value.str = errv.err_msg;
+        if (!frames.empty()) {
+            frames.back().slots.push_back(err);
+        }
+        recover_val = v_unit();
+        recovered = false;
+        exec(n->body);
+        if (!frames.empty()) {
+            frames.back().slots.pop_back();
+        }
+        in_catch = saved;
+        if (recovered) {
+            returning = false;
+        }
+    }
+
+    Value eval_catch(Node* n) {
+        Value v = eval(n->left);
+        if (trapped) {
+            return v_unit();
+        }
+        if (!v.failed) {
+            if (n->ty != nullptr) {
+                v.kind = n->ty->kind;
+                v.type = n->ty;
+            }
+            return v;
+        }
+        run_catch_handler(n, v);
+        return recover_val;
+    }
+
+    bool match_pat(Node* pat, const Value& scrut, Type* st) {
+        if (pat == nullptr) {
+            return false;
+        }
+        if (pat->text == "_") {
+            return true;
+        }
+        if (pat->text == "none") {
+            if (scrut.kind == TypeKind::Optional) {
+                return !scrut.present;
+            }
+            return scrut.ptr == nullptr;
+        }
+        if (pat->text == "some") {
+            if (scrut.kind == TypeKind::Optional && scrut.present) {
+                if (pat->body != nullptr && !pat->body->text.empty()) {
+                    Slot s;
+                    s.name = pat->body->text;
+                    s.value = scrut;
+                    s.value.kind = st != nullptr && st->elem != nullptr ? st->elem->kind : scrut.kind;
+                    s.value.type = st != nullptr ? st->elem : scrut.type;
+                    frames.back().slots.push_back(s);
+                }
+                return true;
+            }
+            return false;
+        }
+        if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
+            Value lit = eval(pat->left);
+            if (lit.kind == TypeKind::Bool) {
+                return lit.b == scrut.b;
+            }
+            return as_u(lit, lit.type) == as_u(scrut, scrut.type);
+        }
+        return false;
+    }
+
+    Value eval_match(Node* n) {
+        Value scrut = eval(n->left);
+        if (trapped) {
+            return v_unit();
+        }
+        for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+            size_t mark = frames.empty() ? 0 : frames.back().slots.size();
+            bool hit = false;
+            for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                if (match_pat(pat, scrut, n->left != nullptr ? n->left->ty : nullptr)) {
+                    hit = true;
+                    break;
+                }
+            }
+            if (hit && arm->type != nullptr) {
+                Value g = eval(arm->type);
+                hit = g.b;
+            }
+            if (hit) {
+                Value r = v_unit();
+                if (n->kind == NodeKind::MatchExpr) {
+                    r = eval(arm->body);
+                } else {
+                    exec(arm->body);
+                }
+                while (!frames.empty() && frames.back().slots.size() > mark) {
+                    frames.back().slots.pop_back();
+                }
+                return r;
+            }
+            while (!frames.empty() && frames.back().slots.size() > mark) {
+                frames.back().slots.pop_back();
+            }
+        }
+        fail("non-exhaustive match");
+        return v_unit();
     }
 
     Value eval_conv(Node* srcn, Type* dest, bool checked) {
@@ -1077,6 +1281,10 @@ struct Interp {
         Value result = returning ? ret : v_unit();
         returning = false;
         frames.pop_back();
+        if ((fn->flags & FlagFallible) != 0 && !result.failed) {
+            result.failed = false;
+            result.kind = TypeKind::Fallible;
+        }
         return result;
     }
 
@@ -1093,6 +1301,18 @@ struct Interp {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             Value a = eval(n->body != nullptr ? n->body->left : nullptr);
             fail(show(a));
+            return v_unit();
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "error") {
+            Value code = eval(n->body != nullptr ? n->body->left : nullptr);
+            Value msg = eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                           : nullptr);
+            ret.failed = true;
+            ret.kind = TypeKind::Fallible;
+            ret.err_code = static_cast<int32_t>(as_s(code, code.type));
+            err_storage = msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg);
+            ret.err_msg = err_storage;
+            returning = true;
             return v_unit();
         }
         if (callee != nullptr && callee->kind == NodeKind::Name &&
@@ -1160,10 +1380,28 @@ struct Interp {
         }
         switch (n->kind) {
         case NodeKind::Block:
+            defers.emplace_back();
             for (Node* s = n->body; s != nullptr; s = s->next) {
                 exec(s);
-                if (trapped || returning) {
-                    return;
+                if (trapped || returning || breaking || continuing) {
+                    break;
+                }
+            }
+            if (!defers.empty()) {
+                vector<Deferred> d = defers.back();
+                defers.pop_back();
+                if (!trapped) {
+                    bool failing = returning && ret.failed;
+                    for (int i = static_cast<int>(d.size()) - 1; i >= 0; i--) {
+                        if (d[static_cast<size_t>(i)].err_only && !failing) {
+                            continue;
+                        }
+                        Node* dn = d[static_cast<size_t>(i)].n;
+                        Value dv = eval(dn->left);
+                        if (dv.failed && dn->body != nullptr) {
+                            run_catch_handler(dn, dv);
+                        }
+                    }
                 }
             }
             break;
@@ -1263,31 +1501,154 @@ struct Interp {
             break;
         }
         case NodeKind::If: {
-            Value c = eval(n->left);
-            if (trapped) {
-                return;
-            }
-            if (c.b) {
-                exec(n->body);
+            if (n->flags & FlagIfLet) {
+                Node* let = n->left;
+                Value v = eval(let != nullptr ? let->left : nullptr);
+                if (trapped) {
+                    return;
+                }
+                bool some = v.kind == TypeKind::Optional ? v.present : v.ptr != nullptr;
+                if (some) {
+                    Slot s;
+                    s.name = let != nullptr ? let->text : string_view{};
+                    s.value = v;
+                    if (v.kind == TypeKind::Optional && v.type != nullptr && v.type->elem != nullptr) {
+                        s.value.kind = v.type->elem->kind;
+                        s.value.type = v.type->elem;
+                    }
+                    frames.back().slots.push_back(s);
+                    exec(n->body);
+                    frames.back().slots.pop_back();
+                } else {
+                    exec(n->right);
+                }
             } else {
-                exec(n->right);
+                Value c = eval(n->left);
+                if (trapped) {
+                    return;
+                }
+                if (c.b) {
+                    exec(n->body);
+                } else {
+                    exec(n->right);
+                }
             }
             break;
         }
         case NodeKind::While:
-            while (!trapped && !returning) {
-                Value c = eval(n->left);
-                if (trapped || !c.b) {
+            while (!trapped && !returning && !breaking) {
+                continuing = false;
+                if (n->flags & FlagIfLet) {
+                    Node* let = n->left;
+                    Value v = eval(let != nullptr ? let->left : nullptr);
+                    if (trapped) {
+                        return;
+                    }
+                    bool some = v.kind == TypeKind::Optional ? v.present : v.ptr != nullptr;
+                    if (!some) {
+                        break;
+                    }
+                    Slot s;
+                    s.name = let != nullptr ? let->text : string_view{};
+                    s.value = v;
+                    if (v.kind == TypeKind::Optional && v.type != nullptr && v.type->elem != nullptr) {
+                        s.value.kind = v.type->elem->kind;
+                        s.value.type = v.type->elem;
+                    }
+                    frames.back().slots.push_back(s);
+                    exec(n->body);
+                    frames.back().slots.pop_back();
+                } else {
+                    Value c = eval(n->left);
+                    if (trapped || !c.b) {
+                        break;
+                    }
+                    exec(n->body);
+                }
+                if (breaking) {
+                    if (jump_label.empty() || jump_label == n->text) {
+                        breaking = false;
+                    }
                     break;
                 }
-                exec(n->body);
+                if (continuing) {
+                    if (jump_label.empty() || jump_label == n->text) {
+                        continuing = false;
+                        continue;
+                    }
+                    break;
+                }
             }
             break;
         case NodeKind::Return:
             ret = n->left != nullptr ? eval(n->left) : v_unit();
             returning = true;
             break;
+        case NodeKind::Break:
+            breaking = true;
+            jump_label = n->text;
+            break;
+        case NodeKind::Continue:
+            continuing = true;
+            jump_label = n->text;
+            break;
+        case NodeKind::Defer:
+        case NodeKind::Errdefer: {
+            Deferred d;
+            d.n = n;
+            d.err_only = n->kind == NodeKind::Errdefer;
+            if (!defers.empty()) {
+                defers.back().push_back(d);
+            } else {
+                eval(n->left);
+            }
+            break;
+        }
+        case NodeKind::Recover:
+            recover_val = n->left != nullptr ? eval(n->left) : v_unit();
+            recovered = true;
+            returning = true;
+            break;
+        case NodeKind::Match:
+            eval_match(n);
+            break;
         case NodeKind::For: {
+            if (n->right != nullptr && n->right->kind == NodeKind::Binary &&
+                (n->right->op == TokenKind::DotDotLt || n->right->op == TokenKind::DotDotEq)) {
+                Value a = eval(n->right->left);
+                Value b = eval(n->right->right);
+                if (trapped) {
+                    return;
+                }
+                int64_t start = as_s(a, a.type);
+                int64_t end = as_s(b, b.type);
+                bool closed = n->right->op == TokenKind::DotDotEq;
+                for (int64_t i = start; !trapped && !returning && !breaking &&
+                                        (closed ? i <= end : i < end);
+                     i++) {
+                    continuing = false;
+                    Slot s;
+                    s.name = n->text;
+                    s.value = v_int(n->ty, static_cast<uint64_t>(i));
+                    frames.back().slots.push_back(s);
+                    exec(n->body);
+                    frames.back().slots.pop_back();
+                    if (breaking) {
+                        if (jump_label.empty() || jump_label == n->text) {
+                            breaking = false;
+                        }
+                        break;
+                    }
+                    if (continuing) {
+                        if (jump_label.empty() || jump_label == n->text) {
+                            continuing = false;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
             Value it = eval(n->right);
             if (trapped) {
                 return;
@@ -1376,8 +1737,14 @@ EvalResult eval_module(Node* module) {
         result.trap = ip.trap;
         return result;
     }
+    if (v.failed) {
+        result.trapped = true;
+        result.trap = string(v.err_msg);
+        return result;
+    }
     result.ok = true;
-    if (v.kind == TypeKind::I64 || (v.type != nullptr && v.type->kind == TypeKind::I64)) {
+    if (v.kind == TypeKind::I64 || v.kind == TypeKind::Fallible ||
+        (v.type != nullptr && (v.type->kind == TypeKind::I64 || is_fail(v.type)))) {
         result.has_answer = true;
         result.answer = as_s(v, v.type);
     }

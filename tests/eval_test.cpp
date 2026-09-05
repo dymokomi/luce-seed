@@ -294,3 +294,119 @@ TEST(eval_assign_through_pointer) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 9);
 }
+
+TEST(eval_optional_else) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let x: i64? = none\n"
+                       "    return x else 7\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 7);
+}
+
+TEST(eval_if_let) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let x: i64? = 3\n"
+                       "    if let n = x:\n"
+                       "        return n\n"
+                       "    return 0\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 3);
+}
+
+TEST(eval_overflow_optional) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let x: u8 = 250\n"
+                       "    return i64(x +? 10 else 0)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 0);
+}
+
+TEST(eval_try_catch) {
+    EvalResult r = run("func boom() -> i64!:\n"
+                       "    error(1, \"nope\")\n"
+                       "    return 0\n"
+                       "pub func answer() -> i64:\n"
+                       "    return boom() catch e:\n"
+                       "        recover 9\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 9);
+}
+
+TEST(eval_try_ok) {
+    EvalResult r = run("func id(n: i64) -> i64!:\n"
+                       "    return n\n"
+                       "pub func answer() -> i64!:\n"
+                       "    return try id(4)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_for_range) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = 0\n"
+                       "    for i in 0..<5:\n"
+                       "        n += i\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 10);
+}
+
+TEST(eval_match_int) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let x = 2\n"
+                       "    match x:\n"
+                       "        1:\n"
+                       "            return 10\n"
+                       "        2:\n"
+                       "            return 20\n"
+                       "        _:\n"
+                       "            return 0\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 20);
+}
+
+TEST(eval_break) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = 0\n"
+                       "    while true:\n"
+                       "        n += 1\n"
+                       "        if n == 3:\n"
+                       "            break\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 3);
+}
+
+TEST(eval_defer) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    defer print(7)\n"
+                       "    return 1\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+    CHECK_STREQ(r.output, "7\n");
+}
+
+TEST(eval_errdefer) {
+    EvalResult r = run("func boom() -> i64!:\n"
+                       "    errdefer print(3)\n"
+                       "    error(1, \"nope\")\n"
+                       "    return 0\n"
+                       "pub func answer() -> i64:\n"
+                       "    return boom() catch e:\n"
+                       "        recover 2\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+    CHECK_STREQ(r.output, "3\n");
+}
+
+TEST(eval_labeled_break) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = 0\n"
+                       "    outer: while true:\n"
+                       "        n += 1\n"
+                       "        if n == 2:\n"
+                       "            break outer\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}

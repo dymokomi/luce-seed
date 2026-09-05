@@ -79,6 +79,36 @@ void lb_print_str(lb_str value);
 void lb_print_f64(double value);
 void lb_check_index(uint64_t i, uint64_t n);
 
+typedef struct lb_error {
+    int32_t code;
+    lb_str message;
+} lb_error;
+
+#define LB_OPT(T, name)                                                                            \
+    typedef struct name {                                                                          \
+        T value;                                                                                   \
+        bool present;                                                                              \
+    } name
+
+#define LB_RES(T, name)                                                                            \
+    typedef struct name {                                                                          \
+        T value;                                                                                   \
+        lb_error error;                                                                            \
+        bool failed;                                                                               \
+    } name
+
+typedef struct lb_r_unit {
+    lb_error error;
+    bool failed;
+} lb_r_unit;
+
+int lb_qadd_s(int64_t a, int64_t b, int bits, int64_t* out);
+int lb_qadd_u(uint64_t a, uint64_t b, int bits, uint64_t* out);
+int lb_qsub_s(int64_t a, int64_t b, int bits, int64_t* out);
+int lb_qsub_u(uint64_t a, uint64_t b, int bits, uint64_t* out);
+int lb_qmul_s(int64_t a, int64_t b, int bits, int64_t* out);
+int lb_qmul_u(uint64_t a, uint64_t b, int bits, uint64_t* out);
+
 /* Compatibility with the scalar-core helpers. */
 int64_t lb_add_i64(int64_t a, int64_t b);
 int64_t lb_sub_i64(int64_t a, int64_t b);

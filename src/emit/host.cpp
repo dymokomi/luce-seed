@@ -73,7 +73,7 @@ bool compile_c(const string& c_source, const string& exe_path, string* error) {
     out.close();
 
     string rt = runtime_dir();
-    string cmd = host_cc() + " -std=c11 -O0 -I " + shell_quote(rt) + " " + shell_quote(src_path) +
+    string cmd = host_cc() + " -std=gnu11 -O0 -I " + shell_quote(rt) + " " + shell_quote(src_path) +
                  " " + shell_quote(rt + "/lucb_rt.c") + " " + shell_quote(rt + "/start.c") +
                  " -lm -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());

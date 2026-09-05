@@ -44,6 +44,21 @@ string array_c_name(Type* t) {
     return "lb_a_" + sanitize_type_name(type_name(t));
 }
 
+string opt_c_name(Type* t) {
+    Type* e = t != nullptr && is_opt(t) ? t->elem : t;
+    return "lb_o_" + sanitize_type_name(type_name(e));
+}
+
+string fail_c_name(Type* t) {
+    if (is_fail(t)) {
+        t = t->elem;
+    }
+    if (t == nullptr || t->kind == TypeKind::Unit || t->kind == TypeKind::Never) {
+        return "lb_r_unit";
+    }
+    return "lb_r_" + sanitize_type_name(type_name(t));
+}
+
 string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
@@ -60,7 +75,23 @@ string c_type(Type* t) {
     if (t->kind == TypeKind::Pointer) {
         return c_type_spelling(t);
     }
+    if (is_opt(t)) {
+        return opt_c_name(t);
+    }
+    if (is_fail(t)) {
+        return fail_c_name(t);
+    }
     return c_type_name(t);
+}
+
+string fn_c_ret(Node* fn) {
+    if (fn != nullptr && (fn->flags & FlagFallible) != 0) {
+        return fail_c_name(fn->ty);
+    }
+    if (fn != nullptr && fn->ty != nullptr && fn->ty->kind == TypeKind::Unit) {
+        return "void";
+    }
+    return c_type(fn != nullptr ? fn->ty : nullptr);
 }
 
 string word_cast(Type* t, const string& e) {
@@ -126,6 +157,18 @@ struct Emitter {
     string out;
     int indent = 0;
     vector<Type*> arrays;
+    vector<Type*> opts;
+    vector<Type*> fails;
+    Node* current_fn = nullptr;
+    int temps = 0;
+    string catch_var;
+
+    struct Scope {
+        vector<Node*> defers;
+        bool loop = false;
+        string_view label;
+    };
+    vector<Scope> scopes;
 
     void pad() {
         for (int i = 0; i < indent; i++) {
@@ -139,10 +182,173 @@ struct Emitter {
         out += '\n';
     }
 
+    int tmp() { return temps++; }
+
+    bool produces_opt(Node* n) {
+        if (n == nullptr || !is_opt(n->ty)) {
+            return false;
+        }
+        if (n->kind == NodeKind::Group) {
+            return produces_opt(n->left);
+        }
+        if (n->kind == NodeKind::Literal && n->op == TokenKind::KwNone) {
+            return true;
+        }
+        if (n->kind == NodeKind::Binary &&
+            (n->op == TokenKind::PlusQuestion || n->op == TokenKind::MinusQuestion ||
+             n->op == TokenKind::StarQuestion)) {
+            return true;
+        }
+        if ((n->kind == NodeKind::Name || n->kind == NodeKind::Member ||
+             n->kind == NodeKind::Call) &&
+            n->resolved != nullptr && is_opt(n->resolved->ty)) {
+            return true;
+        }
+        return false;
+    }
+
+    string wrap_opt(Type* t, const string& e) {
+        Type* elem = t != nullptr ? t->elem : nullptr;
+        return "((" + opt_c_name(t) + "){ .value = (" + c_type(elem) + ")(" + e +
+               "), .present = true })";
+    }
+
+    string none_opt(Type* t) { return "((" + opt_c_name(t) + "){ .present = false })"; }
+
+    bool fn_fallible() {
+        return current_fn != nullptr && (current_fn->flags & FlagFallible) != 0;
+    }
+
+    string wrap_ok(const string& e) {
+        Type* t = current_fn != nullptr ? current_fn->ty : nullptr;
+        string rty = fail_c_name(t);
+        if (t == nullptr || t->kind == TypeKind::Unit) {
+            return "((" + rty + "){ .failed = false })";
+        }
+        return "((" + rty + "){ .value = (" + e + "), .failed = false })";
+    }
+
+    string wrap_err(const string& code, const string& msg) {
+        string rty = fail_c_name(current_fn != nullptr ? current_fn->ty : nullptr);
+        return "((" + rty + "){ .error = { .code = (int32_t)(" + code + "), .message = " + msg +
+               " }, .failed = true })";
+    }
+
+    void run_defers(const vector<Node*>& d) {
+        for (int i = static_cast<int>(d.size()) - 1; i >= 0; i--) {
+            Node* dn = d[static_cast<size_t>(i)];
+            if (dn->kind == NodeKind::Errdefer) {
+                continue;
+            }
+            line(emit_expr(dn->left) + ";");
+        }
+    }
+
+    void run_defers_from(int from) {
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= from; i--) {
+            run_defers(scopes[static_cast<size_t>(i)].defers);
+        }
+    }
+
+    string snapshot_defers() {
+        string saved = out;
+        int saved_indent = indent;
+        out = {};
+        indent = 0;
+        run_defers_from(0);
+        string s = out;
+        out = saved;
+        indent = saved_indent;
+        return s;
+    }
+
+    bool is_error_call(Node* n) {
+        return n != nullptr && n->kind == NodeKind::Call && n->left != nullptr &&
+               n->left->kind == NodeKind::Name && n->left->text == "error";
+    }
+
+    string emit_try(Node* n) {
+        int id = tmp();
+        string rn = "_lb_r" + std::to_string(id);
+        Type* ft = n->left != nullptr ? n->left->ty : nullptr;
+        string rty = fail_c_name(ft);
+        Type* payload = is_fail(ft) ? ft->elem : ft;
+        string s = "({ ";
+        s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
+        s += "if (" + rn + ".failed) { " + snapshot_defers() + "return " + rn + "; } ";
+        if (payload == nullptr || payload->kind == TypeKind::Unit) {
+            s += "(void)0; })";
+        } else {
+            s += rn + ".value; })";
+        }
+        return s;
+    }
+
+    string emit_else(Node* n) {
+        int id = tmp();
+        string on = "_lb_o" + std::to_string(id);
+        Type* lt = n->left != nullptr ? n->left->ty : nullptr;
+        string s = "({ ";
+        s += c_type(lt) + " " + on + " = " + emit_expr(n->left) + "; ";
+        if (is_opt(lt)) {
+            s += on + ".present ? " + on + ".value : (" + emit_expr(n->right) + "); })";
+        } else {
+            s += on + " ? " + on + " : (" + emit_expr(n->right) + "); })";
+        }
+        return s;
+    }
+
+    string emit_catch(Node* n) {
+        int id = tmp();
+        string rn = "_lb_r" + std::to_string(id);
+        string vn = "_lb_v" + std::to_string(id);
+        Type* ft = n->left != nullptr ? n->left->ty : nullptr;
+        string rty = fail_c_name(ft);
+        string vty = c_type(n->ty);
+        if (vty == "void") {
+            vty = "int";
+        }
+        string saved_catch = catch_var;
+        string saved_out = out;
+        int saved_indent = indent;
+        catch_var = vn;
+        out = {};
+        indent = 0;
+        emit_stmt(n->body);
+        string body = out;
+        out = saved_out;
+        indent = saved_indent;
+        catch_var = saved_catch;
+        Type* payload = is_fail(ft) ? ft->elem : nullptr;
+        string s = "({ ";
+        s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
+        s += vty + " " + vn + "; ";
+        s += "if (" + rn + ".failed) { ";
+        if (!n->text.empty()) {
+            s += "lb_error " + ident("lb_", n->text) + " = " + rn + ".error; ";
+        }
+        s += body;
+        s += " } else { ";
+        if (payload != nullptr && payload->kind != TypeKind::Unit) {
+            s += vn + " = " + rn + ".value; ";
+        }
+        s += "} ";
+        s += vn + "; })";
+        return s;
+    }
+
     string emit_expr(Node* n) {
         if (n == nullptr) {
             return "0";
         }
+        string e = emit_expr_inner(n);
+        if (is_opt(n->ty) && !produces_opt(n)) {
+            return wrap_opt(n->ty, e);
+        }
+        return e;
+    }
+
+    string emit_expr_inner(Node* n) {
         switch (n->kind) {
         case NodeKind::Literal:
             return emit_literal(n);
@@ -182,6 +388,13 @@ struct Emitter {
             return emit_array_lit(n);
         case NodeKind::SpanMake:
             return emit_span_make(n);
+        case NodeKind::Else:
+            return emit_else(n);
+        case NodeKind::Catch:
+            return emit_catch(n);
+        case NodeKind::Match:
+        case NodeKind::MatchExpr:
+            return "/* match-expr */ 0";
         default:
             return "/* unsupported expr */ 0";
         }
@@ -201,6 +414,9 @@ struct Emitter {
             return "((lb_str){" + c_escape(d) + ", " + buf + "})";
         }
         if (n->op == TokenKind::KwNone) {
+            if (is_opt(n->ty)) {
+                return none_opt(n->ty);
+            }
             return "((void*)0)";
         }
         if (n->op == TokenKind::CharLit) {
@@ -231,6 +447,9 @@ struct Emitter {
     }
 
     string emit_unary(Node* n) {
+        if (n->op == TokenKind::KwTry) {
+            return emit_try(n);
+        }
         if (n->op == TokenKind::KwNot) {
             return "(!" + emit_expr(n->left) + ")";
         }
@@ -298,6 +517,11 @@ struct Emitter {
             return "(" + L + " || " + R + ")";
         }
         Type* t = n->ty;
+        Type* result = t;
+        if (is_opt(t) && op != TokenKind::PlusQuestion && op != TokenKind::MinusQuestion &&
+            op != TokenKind::StarQuestion) {
+            t = t->elem;
+        }
         Type* lt = n->left != nullptr ? n->left->ty : nullptr;
         Type* rt = n->right != nullptr ? n->right->ty : nullptr;
         if (is_ptr(lt) || is_ptr(rt)) {
@@ -378,6 +602,27 @@ struct Emitter {
             helper = "shl";
         } else if (op == TokenKind::GtGt) {
             helper = "shr";
+        } else if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+                   op == TokenKind::StarQuestion) {
+            Type* et = result != nullptr && is_opt(result) ? result->elem : result;
+            const char* q = op == TokenKind::PlusQuestion    ? "qadd"
+                            : op == TokenKind::MinusQuestion ? "qsub"
+                                                             : "qmul";
+            string h = "lb_";
+            h += q;
+            h += is_signed_int(et) ? "_s" : "_u";
+            int id = tmp();
+            string o = "_lb_qo" + std::to_string(id);
+            string r = "_lb_qr" + std::to_string(id);
+            string oty = is_signed_int(et) ? "int64_t" : "uint64_t";
+            string s = "({ ";
+            s += oty + " " + o + "; ";
+            s += opt_c_name(result) + " " + r + "; ";
+            s += r + ".present = " + h + "(" + word_cast(et, L) + ", " + word_cast(et, R) + ", " +
+                 bits_lit(et) + ", &" + o + "); ";
+            s += r + ".value = (" + c_type(et) + ")(" + o + "); ";
+            s += r + "; })";
+            return s;
         }
         if (helper != nullptr) {
             return emit_helper(helper, t, L, R);
@@ -394,10 +639,9 @@ struct Emitter {
         int mode = checked ? 0 : 1;
         if (is_float(st) && is_int(dest)) {
             const char* h = is_signed_int(dest) ? "lb_f_to_s" : "lb_f_to_u";
-            char buf[256];
-            snprintf(buf, sizeof(buf), "%s((double)(%s), %d, %d)", h, e.c_str(), int_bits(dest),
-                     mode);
-            return down_cast(dest, buf);
+            string call = string(h) + "((double)(" + e + "), " + bits_lit(dest) + ", " +
+                          std::to_string(mode) + ")";
+            return down_cast(dest, call);
         }
         if (is_int(st) && is_float(dest)) {
             string w = is_signed_int(st) ? "(int64_t)(" + e + ")" : "(uint64_t)(" + e + ")";
@@ -418,13 +662,13 @@ struct Emitter {
             int fs = from->kind == TypeKind::Char ? 0 : (is_signed_int(from) ? 1 : 0);
             int ts = dest->kind == TypeKind::Char ? 0 : (is_signed_int(dest) ? 1 : 0);
             const char* h = fs ? "lb_conv_s" : "lb_conv_u";
-            char buf[256];
-            snprintf(buf, sizeof(buf), "%s(%s, %d, %d, %d, %d, %d)", h, word_cast(from, e).c_str(),
-                     fb, fs, tb, ts, mode);
+            string call = string(h) + "(" + word_cast(from, e) + ", " + std::to_string(fb) + ", " +
+                          std::to_string(fs) + ", " + std::to_string(tb) + ", " +
+                          std::to_string(ts) + ", " + std::to_string(mode) + ")";
             if (dest->kind == TypeKind::Char) {
-                return "(uint32_t)(" + string(buf) + ")";
+                return "(uint32_t)(" + call + ")";
             }
-            return down_cast(dest, buf);
+            return down_cast(dest, call);
         }
         return "(" + c_type(dest) + ")(" + e + ")";
     }
@@ -596,6 +840,12 @@ struct Emitter {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
             return "lb_trap((" + emit_expr(arg) + ").data)";
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "error") {
+            Node* code = n->body != nullptr ? n->body->left : nullptr;
+            Node* msg = n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                      : nullptr;
+            return wrap_err(emit_expr(code), emit_expr(msg));
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name &&
             (callee->text == "sizeof" || callee->text == "alignof")) {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
@@ -658,10 +908,15 @@ struct Emitter {
     void emit_block(Node* n) {
         line("{");
         indent++;
+        scopes.push_back(Scope{});
         if (n != nullptr) {
             for (Node* s = n->kind == NodeKind::Block ? n->body : n; s != nullptr; s = s->next) {
                 emit_stmt(s);
             }
+        }
+        if (!scopes.empty()) {
+            run_defers(scopes.back().defers);
+            scopes.pop_back();
         }
         indent--;
         line("}");
@@ -691,7 +946,7 @@ struct Emitter {
                 }
             } else if (n->ty != nullptr &&
                        (n->ty->kind == TypeKind::Struct || is_array(n->ty) || is_span(n->ty) ||
-                        n->ty->kind == TypeKind::Str)) {
+                        n->ty->kind == TypeKind::Str || is_opt(n->ty))) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";
@@ -762,30 +1017,44 @@ struct Emitter {
             emit_if(n);
             break;
         case NodeKind::While:
-            pad();
-            out += "while (" + emit_expr(n->left) + ") ";
-            if (n->body != nullptr && n->body->kind == NodeKind::Block) {
-                out += '\n';
-                emit_block(n->body);
-            } else {
-                out += "{\n";
-                indent++;
-                emit_stmt(n->body);
-                indent--;
-                line("}");
-            }
+            emit_while(n);
             break;
         case NodeKind::Return:
-            if (n->left == nullptr) {
-                line("return;");
-            } else if (n->left->kind == NodeKind::Call && n->left->left != nullptr &&
-                       n->left->left->kind == NodeKind::Name && n->left->left->text == "trap") {
-                line(emit_expr(n->left) + ";");
+            emit_return(n);
+            break;
+        case NodeKind::Break:
+        case NodeKind::Continue:
+            emit_jump(n);
+            break;
+        case NodeKind::Defer:
+        case NodeKind::Errdefer:
+            if (!scopes.empty()) {
+                scopes.back().defers.push_back(n);
             } else {
-                line("return " + emit_expr(n->left) + ";");
+                line(emit_expr(n->left) + ";");
             }
             break;
+        case NodeKind::Recover:
+            if (!catch_var.empty()) {
+                line(catch_var + " = " + emit_expr(n->left) + ";");
+            } else {
+                string e = emit_expr(n->left);
+                if (fn_fallible()) {
+                    e = wrap_ok(e);
+                }
+                run_defers_from(0);
+                line("return " + e + ";");
+            }
+            break;
+        case NodeKind::Match:
+            emit_match(n);
+            break;
         case NodeKind::For: {
+            if (n->right != nullptr && n->right->kind == NodeKind::Binary &&
+                (n->right->op == TokenKind::DotDotLt || n->right->op == TokenKind::DotDotEq)) {
+                emit_for_range(n);
+                break;
+            }
             Type* it = n->right != nullptr ? n->right->ty : nullptr;
             string seq = emit_expr(n->right);
             string idx = ident("lb_i_", n->text);
@@ -811,6 +1080,9 @@ struct Emitter {
                 }
                 elem_e = "((" + et + "*)" + seq + ".data)[" + idx + "]";
             }
+            Scope sc;
+            sc.loop = true;
+            scopes.push_back(sc);
             line("for (size_t " + idx + " = 0; " + idx + " < " + len + "; " + idx + "++) {");
             indent++;
             if (n->flags & FlagByPtr) {
@@ -821,10 +1093,19 @@ struct Emitter {
             emit_stmt(n->body);
             indent--;
             line("}");
+            if (!scopes.empty()) {
+                run_defers(scopes.back().defers);
+                scopes.pop_back();
+            }
             break;
         }
         case NodeKind::ExprStmt:
-            line(emit_expr(n->left) + ";");
+            if (is_error_call(n->left)) {
+                run_defers_from(0);
+                line("return " + emit_expr(n->left) + ";");
+            } else {
+                line(emit_expr(n->left) + ";");
+            }
             break;
         default:
             line("/* unsupported stmt */");
@@ -832,7 +1113,251 @@ struct Emitter {
         }
     }
 
+    bool any_defers() {
+        for (size_t i = 0; i < scopes.size(); i++) {
+            if (!scopes[i].defers.empty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    int loop_scope(string_view label) {
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; i--) {
+            if (scopes[static_cast<size_t>(i)].loop &&
+                (label.empty() || scopes[static_cast<size_t>(i)].label == label)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    void emit_return(Node* n) {
+        if (n->left != nullptr && n->left->kind == NodeKind::Call && n->left->left != nullptr &&
+            n->left->left->kind == NodeKind::Name && n->left->left->text == "trap") {
+            line(emit_expr(n->left) + ";");
+            return;
+        }
+        if (is_error_call(n->left)) {
+            string e = emit_expr(n->left);
+            if (any_defers()) {
+                int id = tmp();
+                string t = "_lb_ret" + std::to_string(id);
+                line(fn_c_ret(current_fn) + " " + t + " = " + e + ";");
+                run_defers_from(0);
+                line("return " + t + ";");
+            } else {
+                line("return " + e + ";");
+            }
+            return;
+        }
+        if (n->left == nullptr) {
+            run_defers_from(0);
+            if (fn_fallible()) {
+                line("return " + wrap_ok("0") + ";");
+            } else {
+                line("return;");
+            }
+            return;
+        }
+        string e = emit_expr(n->left);
+        if (fn_fallible()) {
+            e = wrap_ok(e);
+        }
+        if (any_defers()) {
+            int id = tmp();
+            string t = "_lb_ret" + std::to_string(id);
+            line(fn_c_ret(current_fn) + " " + t + " = " + e + ";");
+            run_defers_from(0);
+            line("return " + t + ";");
+        } else {
+            line("return " + e + ";");
+        }
+    }
+
+    void emit_jump(Node* n) {
+        int from = loop_scope(n->text);
+        run_defers_from(from);
+        if (n->text.empty()) {
+            line(n->kind == NodeKind::Break ? "break;" : "continue;");
+            return;
+        }
+        string lab = n->kind == NodeKind::Break ? "lb_brk_" : "lb_cont_";
+        lab += string(n->text);
+        line("goto " + lab + ";");
+    }
+
+    void emit_while(Node* n) {
+        Scope sc;
+        sc.loop = true;
+        sc.label = n->text;
+        scopes.push_back(sc);
+        if (n->flags & FlagIfLet) {
+            Node* let = n->left;
+            line("while (1) {");
+            indent++;
+            int id = tmp();
+            string on = "_lb_o" + std::to_string(id);
+            Type* ot = let != nullptr && let->left != nullptr ? let->left->ty : nullptr;
+            line(c_type(ot) + " " + on + " = " + emit_expr(let != nullptr ? let->left : nullptr) +
+                 ";");
+            string cond = is_opt(ot) ? on + ".present" : on + " != ((void*)0)";
+            line("if (!(" + cond + ")) break;");
+            if (let != nullptr && !let->text.empty()) {
+                if (is_opt(ot) && ot->elem != nullptr) {
+                    line(c_type(ot->elem) + " " + ident("lb_", let->text) + " = " + on + ".value;");
+                } else {
+                    line(c_type(ot) + " " + ident("lb_", let->text) + " = " + on + ";");
+                }
+            }
+            emit_stmt(n->body);
+            if (!n->text.empty()) {
+                line("lb_cont_" + string(n->text) + ": ;");
+            }
+            indent--;
+            line("}");
+        } else {
+            pad();
+            out += "while (" + emit_expr(n->left) + ") {\n";
+            indent++;
+            emit_stmt(n->body);
+            if (!n->text.empty()) {
+                line("lb_cont_" + string(n->text) + ": ;");
+            }
+            indent--;
+            line("}");
+        }
+        if (!scopes.empty()) {
+            run_defers(scopes.back().defers);
+            scopes.pop_back();
+        }
+        if (!n->text.empty()) {
+            line("lb_brk_" + string(n->text) + ": ;");
+        }
+    }
+
+    void emit_for_range(Node* n) {
+        Scope sc;
+        sc.loop = true;
+        scopes.push_back(sc);
+        string ty = c_type(n->ty);
+        string name = ident("lb_", n->text);
+        string a = emit_expr(n->right->left);
+        string b = emit_expr(n->right->right);
+        string cmp = n->right->op == TokenKind::DotDotEq ? " <= " : " < ";
+        line("for (" + ty + " " + name + " = (" + ty + ")(" + a + "); " + name + cmp + "(" + ty +
+             ")(" + b + "); " + name + "++) {");
+        indent++;
+        emit_stmt(n->body);
+        indent--;
+        line("}");
+        if (!scopes.empty()) {
+            run_defers(scopes.back().defers);
+            scopes.pop_back();
+        }
+    }
+
+    void emit_match(Node* n) {
+        Type* st = n->left != nullptr ? n->left->ty : nullptr;
+        int id = tmp();
+        string sv = "_lb_m" + std::to_string(id);
+        line(c_type(st) + " " + sv + " = " + emit_expr(n->left) + ";");
+        if (is_int(st) || (st != nullptr && st->kind == TypeKind::Bool)) {
+            line("switch ((int64_t)(" + sv + ")) {");
+            indent++;
+            for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+                for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                    if (pat->text == "_") {
+                        line("default:");
+                    } else if (pat->left != nullptr) {
+                        line("case " + emit_expr(pat->left) + ":");
+                    }
+                }
+                line("{");
+                indent++;
+                emit_stmt(arm->body);
+                line("break;");
+                indent--;
+                line("}");
+            }
+            indent--;
+            line("}");
+            return;
+        }
+        if (is_opt(st)) {
+            bool first = true;
+            for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+                string cond = "0";
+                string bind;
+                for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                    if (pat->text == "_") {
+                        cond = "1";
+                    } else if (pat->text == "none") {
+                        cond = "(!" + sv + ".present)";
+                    } else if (pat->text == "some") {
+                        cond = sv + ".present";
+                        if (pat->body != nullptr && !pat->body->text.empty() && st->elem != nullptr) {
+                            bind = c_type(st->elem) + " " + ident("lb_", pat->body->text) + " = " +
+                                   sv + ".value;";
+                        }
+                    }
+                }
+                pad();
+                out += first ? "if (" : "else if (";
+                out += cond + ") {\n";
+                first = false;
+                indent++;
+                if (!bind.empty()) {
+                    line(bind);
+                }
+                emit_stmt(arm->body);
+                indent--;
+                line("}");
+            }
+        }
+    }
+
     void emit_if(Node* n) {
+        if (n->flags & FlagIfLet) {
+            Node* let = n->left;
+            int id = tmp();
+            string on = "_lb_o" + std::to_string(id);
+            Type* ot = let != nullptr && let->left != nullptr ? let->left->ty : nullptr;
+            line(c_type(ot) + " " + on + " = " + emit_expr(let != nullptr ? let->left : nullptr) +
+                 ";");
+            string cond = is_opt(ot) ? on + ".present" : on + " != ((void*)0)";
+            pad();
+            out += "if (" + cond + ") {\n";
+            indent++;
+            if (let != nullptr && !let->text.empty()) {
+                if (is_opt(ot) && ot->elem != nullptr) {
+                    line(c_type(ot->elem) + " " + ident("lb_", let->text) + " = " + on + ".value;");
+                } else {
+                    line(c_type(ot) + " " + ident("lb_", let->text) + " = " + on + ";");
+                }
+            }
+            emit_stmt(n->body);
+            indent--;
+            line("}");
+            if (n->right != nullptr) {
+                pad();
+                out += "else ";
+                if (n->right->kind == NodeKind::If) {
+                    out += '\n';
+                    emit_if(n->right);
+                } else if (n->right->kind == NodeKind::Block) {
+                    out += '\n';
+                    emit_block(n->right);
+                } else {
+                    out += "{\n";
+                    indent++;
+                    emit_stmt(n->right);
+                    indent--;
+                    line("}");
+                }
+            }
+            return;
+        }
         pad();
         out += "if (" + emit_expr(n->left) + ") ";
         if (n->body != nullptr && n->body->kind == NodeKind::Block) {
@@ -875,10 +1400,7 @@ struct Emitter {
     }
 
     void emit_sig(Node* fn, Node* owner, bool define) {
-        string ret = c_type(fn->ty);
-        if (fn->ty != nullptr && fn->ty->kind == TypeKind::Unit) {
-            ret = "void";
-        }
+        string ret = fn_c_ret(fn);
         string name = func_ident(fn, owner);
         string sig = ret + " " + name + "(";
         bool first = true;
@@ -907,6 +1429,9 @@ struct Emitter {
         }
         line(sig + " {");
         indent++;
+        Node* saved_fn = current_fn;
+        current_fn = fn;
+        scopes.push_back(Scope{});
         if (fn->body != nullptr && fn->body->kind == NodeKind::Block) {
             for (Node* s = fn->body->body; s != nullptr; s = s->next) {
                 emit_stmt(s);
@@ -914,6 +1439,11 @@ struct Emitter {
         } else {
             emit_stmt(fn->body);
         }
+        if (!scopes.empty()) {
+            run_defers(scopes.back().defers);
+            scopes.pop_back();
+        }
+        current_fn = saved_fn;
         indent--;
         line("}");
         out += '\n';
@@ -937,6 +1467,31 @@ struct Emitter {
         out += '\n';
     }
 
+    void note_opt(Type* t) {
+        if (t == nullptr) {
+            return;
+        }
+        for (size_t i = 0; i < opts.size(); i++) {
+            if (opts[i] == t) {
+                return;
+            }
+        }
+        opts.push_back(t);
+    }
+
+    void note_fail(Type* payload) {
+        if (payload == nullptr || payload->kind == TypeKind::Unit ||
+            payload->kind == TypeKind::Never) {
+            return;
+        }
+        for (size_t i = 0; i < fails.size(); i++) {
+            if (fails[i] == payload) {
+                return;
+            }
+        }
+        fails.push_back(payload);
+    }
+
     void note_type(Type* t) {
         if (t == nullptr) {
             return;
@@ -949,6 +1504,16 @@ struct Emitter {
                 }
             }
             arrays.push_back(t);
+            return;
+        }
+        if (is_opt(t)) {
+            note_type(t->elem);
+            note_opt(t);
+            return;
+        }
+        if (is_fail(t)) {
+            note_type(t->elem);
+            note_fail(t->elem);
             return;
         }
         if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span) {
@@ -986,12 +1551,46 @@ struct Emitter {
         }
     }
 
+    void emit_opt_typedefs() {
+        for (size_t i = 0; i < opts.size(); i++) {
+            Type* t = opts[i];
+            line("LB_OPT(" + c_type(t->elem) + ", " + opt_c_name(t) + ");");
+        }
+        for (size_t i = 0; i < fails.size(); i++) {
+            Type* t = fails[i];
+            line("LB_RES(" + c_type(t) + ", " + fail_c_name(t) + ");");
+        }
+        if (!opts.empty() || !fails.empty()) {
+            out += '\n';
+        }
+    }
+
+    void note_fail_fn(Node* fn) {
+        if (fn != nullptr && (fn->flags & FlagFallible) != 0) {
+            note_fail(fn->ty);
+        }
+    }
+
     void emit_module(Node* mod) {
         out += "/* generated by lucb */\n";
         out += "#include \"lucb_rt.h\"\n\n";
         arrays.clear();
+        opts.clear();
+        fails.clear();
         walk_types(mod);
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func) {
+                note_fail_fn(d);
+            } else if (d->kind == NodeKind::Struct) {
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind == NodeKind::Func) {
+                        note_fail_fn(m);
+                    }
+                }
+            }
+        }
         emit_array_typedefs();
+        emit_opt_typedefs();
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
                 emit_struct(d);

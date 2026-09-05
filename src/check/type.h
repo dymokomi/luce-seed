@@ -31,6 +31,9 @@ enum class TypeKind : uint8_t {
     Pointer,
     Array,
     Span,
+    Optional,
+    Fallible,
+    ErrorVal,
 };
 
 struct Type {
@@ -69,6 +72,8 @@ bool is_ptr(const Type* t);
 bool is_array(const Type* t);
 bool is_span(const Type* t);
 bool is_void_ptr(const Type* t);
+bool is_opt(const Type* t);
+bool is_fail(const Type* t);
 Type* elem_of(const Type* t);
 
 const char* c_type_name(const Type* t);

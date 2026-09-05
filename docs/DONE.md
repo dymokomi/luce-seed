@@ -13,6 +13,15 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M7 — Optionals, errors, match, ranges, defer
+
+`T?` with `none` / `else` / `if let` / `while let`. `T!` with `try`,
+`error`, `catch`, `recover`. Exhaustive `match` on integers, bools, and
+optionals. `for` over `0..<n` / `1..=n`. Labeled `break`/`continue`.
+`defer` LIFO on scope exit. `+?` overflow yields `none`. Interpreter and
+C backend agree. `errdefer` runs in the interpreter. Evidence:
+`tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M6 — Pointers, arrays, spans, `str`
 
 `T*` never-null pointers, `&` / `*`, auto-deref, `T[N]` values, `T[]` spans
