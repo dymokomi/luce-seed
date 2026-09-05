@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   support/literal - Literal decoding
+//
+//   DESCRIPTION:
+//       Integer spellings with radix and separators, float spellings, character escapes, and
+//       string escapes, decoded once for the checker, oracle, and emitter (base.md §4).
+//
+//==============================================================================================
+
 #include "support/literal.h"
 
 #include <cstdlib>
@@ -21,7 +31,8 @@ ParsedInt parse_int_literal(string_view text) {
     }
     int base = 10;
     size_t i = 0;
-    if (text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'o' || text[1] == 'b')) {
+    if (text.size() >= 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'o' || text[1] == 'b')) {
         if (text[1] == 'x') {
             base = 16;
         } else if (text[1] == 'o') {

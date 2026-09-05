@@ -1,4 +1,14 @@
-// Checker state. Implementation header for check/*.cpp. base.md §§5–17.
+//==============================================================================================
+//
+//   check/checker - Checker state shared by check/*.cpp
+//
+//   DESCRIPTION:
+//       The `Checker` struct: scopes and bindings, the interned type table, the current
+//       function's result and effect flags, and the declarations of every checking routine,
+//       grouped by the unit that defines them. Implementation header; not included outside
+//       check/.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -55,6 +65,13 @@ struct Checker {
     Type* ty_writer = nullptr;
     Type* ty_location = nullptr;
     Type* ty_c_mod = nullptr;
+    struct BuiltinBinding {
+        const char* name;
+        Type* type;
+        Node* decl;
+    };
+    vector<BuiltinBinding> builtin_bindings; // replayed for every module after the first
+    void bind_builtin(const char* name, Type* type, Node* decl);
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
@@ -83,292 +100,37 @@ struct Checker {
     vector<uint32_t> package_codes;
     vector<string_view> loop_labels;
 
-    
-    
-    
-    
-    
-    
-    
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    Type* t_error() { return ty_error; }
-
-    Type* t_never() { return ty_never; }
-
-    Type* t_unit() { return ty_unit; }
-
-    Type* t_bool() { return ty_bool; }
-
-    Type* t_i64() { return ty_i64; }
-
-    Type* t_str() { return ty_str; }
-
-    Type* t_usize() { return ty_usize; }
-
-    Type* t_untyped() { return ty_untyped; }
+    Type* t_error() {
+        return ty_error;
+    }
+
+    Type* t_never() {
+        return ty_never;
+    }
+
+    Type* t_unit() {
+        return ty_unit;
+    }
+
+    Type* t_bool() {
+        return ty_bool;
+    }
+
+    Type* t_i64() {
+        return ty_i64;
+    }
+
+    Type* t_str() {
+        return ty_str;
+    }
+
+    Type* t_usize() {
+        return ty_usize;
+    }
+
+    Type* t_untyped() {
+        return ty_untyped;
+    }
 
     Type* named_scalar(string_view name);
     Type* c_alias(string_view name);
@@ -438,7 +200,9 @@ struct Checker {
     bool is_local(Node* n);
     void fail(Span span, const char* code, const string& message);
     void fail_n(Node* n, const char* code, const string& message);
-    void push_scope() { depth++; }
+    void push_scope() {
+        depth++;
+    }
 
     void pop_scope();
     Binding* lookup(string_view name);
@@ -510,6 +274,7 @@ struct Checker {
     bool imported_owner(Node* st);
     void check_stmt(Node* n);
     bool always_returns(Node* n);
+    bool contains_break(Node* n);
     void check_params(Node* fn);
     void check_func(Node* fn, Node* owner);
     void check_struct(Node* st);

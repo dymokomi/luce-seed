@@ -1,4 +1,14 @@
-// Resolved types. Interned so pointer equality is type equality.
+//==============================================================================================
+//
+//   check/type - Resolved types
+//
+//   DESCRIPTION:
+//       A `Type` is interned, so pointer equality is type equality. Scalars, pointers with
+//       qualifiers and the null niche, arrays, spans, `str`, tuples, optionals, results,
+//       functions, atomics, nominal structs/enums/unions/interfaces, and the checker-only
+//       kinds (untyped integer, module, generic parameter).
+//
+//==============================================================================================
 
 #pragma once
 
@@ -71,7 +81,9 @@ enum {
     BoundHashable = 8u,
 };
 
-inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }
+inline int pointer_bits() {
+    return static_cast<int>(sizeof(void*) * 8);
+}
 
 string type_name(const Type* t);
 bool type_eq(const Type* a, const Type* b);

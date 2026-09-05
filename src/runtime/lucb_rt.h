@@ -1,4 +1,13 @@
-/* Runtime for the C backend. Linked into every lucb build. base.md §7. */
+//==============================================================================================
+//
+//   runtime/lucb_rt - Runtime interface for generated C
+//
+//   DESCRIPTION:
+//       The types generated code uses (`lb_str`, `lb_span`, `lb_iface`, optionals and results
+//       through `LB_OPT`/`LB_RES`), the inline checked arithmetic and bounds checks, and the
+//       prototypes of everything in lucb_rt.c.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -44,12 +53,107 @@ void lb_once_wait(lb_Once* o);
 void lb_sem_acquire(lb_Sem* s);
 void lb_sem_release(lb_Sem* s);
 
-int64_t lb_add_s(int64_t a, int64_t b, int bits);
-uint64_t lb_add_u(uint64_t a, uint64_t b, int bits);
-int64_t lb_sub_s(int64_t a, int64_t b, int bits);
-uint64_t lb_sub_u(uint64_t a, uint64_t b, int bits);
-int64_t lb_mul_s(int64_t a, int64_t b, int bits);
-uint64_t lb_mul_u(uint64_t a, uint64_t b, int bits);
+/* Checked arithmetic is inline so that `a + b` costs one instruction and one
+   predicted branch after the host C compiler optimises (base.md §1, §7.2). */
+static inline uint64_t mask_bits(int bits) {
+    if (bits >= 64) {
+        return ~(uint64_t)0;
+    }
+    if (bits <= 0) {
+        return 0;
+    }
+    return ((uint64_t)1 << bits) - 1;
+}
+static inline int64_t smin(int bits) {
+    if (bits >= 64) {
+        return INT64_MIN;
+    }
+    return -((int64_t)1 << (bits - 1));
+}
+static inline int64_t smax(int bits) {
+    if (bits >= 64) {
+        return INT64_MAX;
+    }
+    return ((int64_t)1 << (bits - 1)) - 1;
+}
+static inline int64_t sext(int64_t a, int bits) {
+    if (bits >= 64) {
+        return a;
+    }
+    uint64_t u = (uint64_t)a & mask_bits(bits);
+    if (u & ((uint64_t)1 << (bits - 1))) {
+        return (int64_t)(u | ~mask_bits(bits));
+    }
+    return (int64_t)u;
+}
+static inline uint64_t zext(uint64_t a, int bits) {
+    return a & mask_bits(bits);
+}
+
+static inline int64_t lb_add_s(int64_t a, int64_t b, int bits) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_add_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        lb_trap("integer overflow");
+    }
+    return r;
+}
+
+static inline uint64_t lb_add_u(uint64_t a, uint64_t b, int bits) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (bits >= 64) {
+        if (a > UINT64_MAX - b) {
+            lb_trap("integer overflow");
+        }
+        return a + b;
+    }
+    uint64_t r = a + b;
+    if (r > mask_bits(bits)) {
+        lb_trap("integer overflow");
+    }
+    return r;
+}
+
+static inline int64_t lb_sub_s(int64_t a, int64_t b, int bits) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_sub_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        lb_trap("integer overflow");
+    }
+    return r;
+}
+
+static inline uint64_t lb_sub_u(uint64_t a, uint64_t b, int bits) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (a < b) {
+        lb_trap("integer overflow");
+    }
+    return a - b;
+}
+
+static inline int64_t lb_mul_s(int64_t a, int64_t b, int bits) {
+    a = sext(a, bits);
+    b = sext(b, bits);
+    int64_t r;
+    if (__builtin_mul_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
+        lb_trap("integer overflow");
+    }
+    return r;
+}
+
+static inline uint64_t lb_mul_u(uint64_t a, uint64_t b, int bits) {
+    a = zext(a, bits);
+    b = zext(b, bits);
+    if (b != 0 && a > mask_bits(bits) / b) {
+        lb_trap("integer overflow");
+    }
+    return zext(a * b, bits);
+}
+
 int64_t lb_div_s(int64_t a, int64_t b, int bits);
 uint64_t lb_div_u(uint64_t a, uint64_t b, int bits);
 int64_t lb_mod_s(int64_t a, int64_t b, int bits);
@@ -80,7 +184,8 @@ uint64_t lb_not_u(uint64_t a, int bits);
 
 /* mode 0 = checked T(x), mode 1 = C cast (truncate / bit-reinterpret). */
 int64_t lb_conv_s(int64_t a, int from_bits, int from_signed, int to_bits, int to_signed, int mode);
-uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int to_signed, int mode);
+uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int to_signed,
+                   int mode);
 
 int64_t lb_f_to_s(double a, int bits, int mode);
 uint64_t lb_f_to_u(double a, int bits, int mode);
@@ -97,17 +202,21 @@ typedef struct lb_span {
     size_t length;
 } lb_span;
 
-typedef struct lb_cspan {
-    const void* data;
-    size_t length;
-} lb_cspan;
+/* A const span has the same representation as a span; constness is a Base
+   fact the checker enforced, so one C struct serves both and no adapter
+   is needed where a `T[]` meets a `const T[]`. */
+typedef lb_span lb_cspan;
 
 void lb_print_i64(int64_t value);
 void lb_print_u64(uint64_t value);
 void lb_print_bool(bool value);
 void lb_print_str(lb_str value);
 void lb_print_f64(double value);
-void lb_check_index(uint64_t i, uint64_t n);
+static inline void lb_check_index(uint64_t i, uint64_t n) {
+    if (i >= n) {
+        lb_trap("index out of bounds");
+    }
+}
 void lb_check_utf8(const char* s, size_t n);
 
 typedef struct lb_iface {

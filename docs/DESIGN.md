@@ -183,22 +183,46 @@ When they disagree, the stage between them is wrong. Frontend tests pin
 diagnostic **codes**, not wording. Language tests pin trap reason, stdout
 bytes, and exit status.
 
+### What the oracle does not model
+
+The interpreter stores memory as typed values, not bytes. Three things are
+therefore proved by the compiled artifact alone, and the oracle says so
+instead of guessing:
+
+- `asm` blocks (base.md §8.9).
+- Pointer reinterpretation followed by arithmetic or access, such as the
+  `container_of` idiom `(Task*)((u8*)link - offsetof(Task, link))` in
+  §24.5. The cast is allowed; using the result traps with "pointer
+  reinterpretation is not modelled by the interpreter; build it".
+- Speed. The oracle runs roughly ten microseconds per statement; it is
+  for programs of test size. `luce-base`'s own test suite runs on the
+  binary.
+
+The oracle buffers stdout and stderr separately, so a test compares the
+two streams separately rather than their interleaving.
+
 ## Layers
 
 The language library (`lex` through `emit`) never opens files. The driver
 hands it source buffers. Same seam as the Zig stage-0 compiler.
 
-| Layer | Owns |
-| --- | --- |
-| `support/` | arena, diagnostics, the test harness |
-| `source/` | UTF-8, BOM, positions, file identity |
-| `lex/` | tokens and layout (`INDENT`/`DEDENT`) |
-| `parse/` | untyped arena AST, full grammar of §21 |
-| `check/` | names, types, effects; records HIR |
-| `hir/` | typed nodes |
-| `interp/` | HIR interpreter |
-| `emit/` | HIR → C |
-| `runtime/` | C startup shim, trap reporter, checked helpers |
+| Layer | Units | Owns |
+| --- | --- | --- |
+| `support/` | arena, diagnostics, literal, common, test | allocation, diagnostics with stable codes, literal decoding, the test harness |
+| `source/` | source | UTF-8 bytes, the encoding gate of §3.1, positions |
+| `lex/` | token, lexer | tokens and layout (`INDENT`/`DEDENT`) |
+| `parse/` | parser, decl, stmt, expr, ast | the untyped arena tree, full grammar of §21 |
+| `check/` | check, resolve, builtins, memory, expr, call, convert, intrinsics, stmt, generic, type | names, types, effects, recorded on the same tree |
+| `interp/` | interp, exec, eval, ops, call, memory, value | the oracle: a typed-value walker |
+| `emit/` | emit, types, stmt, expr, call, memory, text, cgen, host | the product: checked tree → C → host `cc` |
+| `runtime/` | lucb_rt, start | the C linked into every program: traps, checked helpers, the standard modules |
+| `pkg/` | package | `luce.toml`, imports, module order |
+
+Every file opens with a banner saying what it owns; the implementation
+headers (`checker.h`, `parser_impl.h`, `interp_impl.h`, `emitter.h`) group
+their declarations by unit, so the banner and the header agree on the seams.
+`tools/split_units.py` is the script that moved functions between units;
+it is kept so the operation is reproducible.
 
 Parse the whole grammar once. Typecheck, interpret, and emit grow by slices.
 

@@ -1,6 +1,12 @@
-// Untyped syntax tree. Nodes are arena-allocated; lists are sibling
-// chains through `next`. Fields used by each kind are noted below.
-// base.md §21.
+//==============================================================================================
+//
+//   parse/ast - The untyped syntax tree
+//
+//   DESCRIPTION:
+//       Arena-allocated nodes with sibling lists. The checker records resolved types and
+//       declarations on the same nodes, so there is one tree from parsing through emission.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -104,9 +110,9 @@ enum {
     FlagOut = 1u << 14,
     FlagBlocking = 1u << 15,
     FlagVariadic = 1u << 16,
-    FlagStar = 1u << 17,   // type: pointer suffix
-    FlagSpan = 1u << 18,   // type: T[]
-    FlagArray = 1u << 19,  // type: T[N]
+    FlagStar = 1u << 17,  // type: pointer suffix
+    FlagSpan = 1u << 18,  // type: T[]
+    FlagArray = 1u << 19, // type: T[N]
     FlagFuncType = 1u << 20,
     FlagVoid = 1u << 21,
     FlagTupleType = 1u << 22,
@@ -117,7 +123,8 @@ enum {
     FlagNaked = 1u << 27,
     FlagUsed = 1u << 28,
     FlagWeakAttr = 1u << 29,
-    FlagLocal = 1u << 30, // pointer/span/str derived from a local
+    FlagBuiltin = 1u << 30, // synthesized by the checker for a standard module
+    FlagLocal = 1u << 30,   // pointer/span/str derived from a local
     FlagImportUsed = 1u << 31,
 };
 
@@ -133,8 +140,8 @@ struct Node {
     Node* type = nullptr;
     Node* next = nullptr;
     // Filled by check:
-    struct Type* ty = nullptr;   // resolved type of this node
-    Node* resolved = nullptr;    // declaration a name/call refers to
+    struct Type* ty = nullptr; // resolved type of this node
+    Node* resolved = nullptr;  // declaration a name/call refers to
 };
 
 // Field map, by kind:

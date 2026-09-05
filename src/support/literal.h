@@ -1,4 +1,11 @@
-// Decode integer, float, and character literal spellings. base.md §4.
+//==============================================================================================
+//
+//   support/literal - Decode literal spellings
+//
+//   DESCRIPTION:
+//       The decoders for integer, float, character, and string literals.
+//
+//==============================================================================================
 
 #pragma once
 

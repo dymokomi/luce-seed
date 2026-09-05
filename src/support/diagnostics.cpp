@@ -1,3 +1,12 @@
+//==============================================================================================
+//
+//   support/diagnostics - Diagnostic formatting
+//
+//   DESCRIPTION:
+//       `path:line:column: message [code]`, the shape every stage reports.
+//
+//==============================================================================================
+
 #include "support/diagnostics.h"
 
 namespace lucb {

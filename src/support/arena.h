@@ -1,5 +1,12 @@
-// Chunked bump allocator. Pointers stay valid for the arena's life.
-// Allocated objects are not destroyed.
+//==============================================================================================
+//
+//   support/arena - Arena allocation
+//
+//   DESCRIPTION:
+//       `Arena::make<T>` constructs into chunked storage whose pointers stay valid for the
+//       arena's life.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -21,9 +28,11 @@ struct Arena {
         return p;
     }
 
-    size_t bytes_allocated() const { return used_; }
+    size_t bytes_allocated() const {
+        return used_;
+    }
 
-private:
+  private:
     struct Chunk {
         vector<uint8_t> data;
         size_t used = 0;

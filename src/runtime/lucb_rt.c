@@ -1,3 +1,17 @@
+//==============================================================================================
+//
+//   runtime/lucb_rt - The C runtime linked into every Base program
+//
+//   DESCRIPTION:
+//       Traps with their reason, the wrapping and saturating arithmetic families,
+//       conversions, the heap and fixed-buffer allocators behind `memory`, formatted display
+//       of scalars, UTF-8 validation, hashing, `files`, `process`, threads over pthreads, and
+//       the `sync` primitives over atomic wait/wake. Base has no runtime of its own (base.md
+//       §1.3); this is the startup shim, trap reporter, and standard modules the seed
+//       supplies.
+//
+//==============================================================================================
+
 #include "lucb_rt.h"
 
 #include <dirent.h>
@@ -109,7 +123,9 @@ lb_iface lb_get_alloc(void) {
     return lb_current_alloc;
 }
 
-void lb_set_alloc(lb_iface a) { lb_current_alloc = a; }
+void lb_set_alloc(lb_iface a) {
+    lb_current_alloc = a;
+}
 
 lb_span_opt lb_alloc_call(lb_iface a, size_t size, size_t alignment) {
     if (a.vtable == NULL) {
@@ -374,7 +390,9 @@ void lb_cond_signal(lb_Cond* c) {
     atomic_fetch_add(&c->seq, 1u);
 }
 
-void lb_cond_broadcast(lb_Cond* c) { lb_cond_signal(c); }
+void lb_cond_broadcast(lb_Cond* c) {
+    lb_cond_signal(c);
+}
 
 int lb_once_begin(lb_Once* o) {
     if (o == NULL) {
@@ -425,7 +443,9 @@ void lb_sem_release(lb_Sem* s) {
     atomic_fetch_add(&s->count, 1u);
 }
 
-int64_t* lb_null_probe(void) { return NULL; }
+int64_t* lb_null_probe(void) {
+    return NULL;
+}
 
 int lb_utf8_ok(const char* s, size_t n) {
     size_t i = 0;
@@ -854,109 +874,6 @@ int lb_fmtbuf_bin(lb_fmtbuf* b, uint64_t v) {
     return lb_fmtbuf_put(b, s.data, s.length);
 }
 
-static uint64_t mask_bits(int bits) {
-    if (bits >= 64) {
-        return ~(uint64_t)0;
-    }
-    if (bits <= 0) {
-        return 0;
-    }
-    return ((uint64_t)1 << bits) - 1;
-}
-
-static int64_t smin(int bits) {
-    if (bits >= 64) {
-        return INT64_MIN;
-    }
-    return -((int64_t)1 << (bits - 1));
-}
-
-static int64_t smax(int bits) {
-    if (bits >= 64) {
-        return INT64_MAX;
-    }
-    return ((int64_t)1 << (bits - 1)) - 1;
-}
-
-static int64_t sext(int64_t a, int bits) {
-    if (bits >= 64) {
-        return a;
-    }
-    uint64_t u = (uint64_t)a & mask_bits(bits);
-    if (u & ((uint64_t)1 << (bits - 1))) {
-        return (int64_t)(u | ~mask_bits(bits));
-    }
-    return (int64_t)u;
-}
-
-static uint64_t zext(uint64_t a, int bits) {
-    return a & mask_bits(bits);
-}
-
-int64_t lb_add_s(int64_t a, int64_t b, int bits) {
-    a = sext(a, bits);
-    b = sext(b, bits);
-    int64_t r;
-    if (__builtin_add_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
-        lb_trap("integer overflow");
-    }
-    return r;
-}
-
-uint64_t lb_add_u(uint64_t a, uint64_t b, int bits) {
-    a = zext(a, bits);
-    b = zext(b, bits);
-    if (bits >= 64) {
-        if (a > UINT64_MAX - b) {
-            lb_trap("integer overflow");
-        }
-        return a + b;
-    }
-    uint64_t r = a + b;
-    if (r > mask_bits(bits)) {
-        lb_trap("integer overflow");
-    }
-    return r;
-}
-
-int64_t lb_sub_s(int64_t a, int64_t b, int bits) {
-    a = sext(a, bits);
-    b = sext(b, bits);
-    int64_t r;
-    if (__builtin_sub_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
-        lb_trap("integer overflow");
-    }
-    return r;
-}
-
-uint64_t lb_sub_u(uint64_t a, uint64_t b, int bits) {
-    a = zext(a, bits);
-    b = zext(b, bits);
-    if (a < b) {
-        lb_trap("integer overflow");
-    }
-    return a - b;
-}
-
-int64_t lb_mul_s(int64_t a, int64_t b, int bits) {
-    a = sext(a, bits);
-    b = sext(b, bits);
-    int64_t r;
-    if (__builtin_mul_overflow(a, b, &r) || r < smin(bits) || r > smax(bits)) {
-        lb_trap("integer overflow");
-    }
-    return r;
-}
-
-uint64_t lb_mul_u(uint64_t a, uint64_t b, int bits) {
-    a = zext(a, bits);
-    b = zext(b, bits);
-    if (b != 0 && a > mask_bits(bits) / b) {
-        lb_trap("integer overflow");
-    }
-    return zext(a * b, bits);
-}
-
 int64_t lb_div_s(int64_t a, int64_t b, int bits) {
     a = sext(a, bits);
     b = sext(b, bits);
@@ -1247,7 +1164,8 @@ int64_t lb_conv_s(int64_t a, int from_bits, int from_signed, int to_bits, int to
     return (int64_t)bits;
 }
 
-uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int to_signed, int mode) {
+uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int to_signed,
+                   int mode) {
     int64_t s = from_signed ? sext((int64_t)a, from_bits) : (int64_t)zext(a, from_bits);
     if (mode == 0) {
         if (to_signed) {
@@ -1325,12 +1243,6 @@ void lb_print_bool(bool value) {
 
 void lb_print_str(lb_str value) {
     printf("%.*s\n", (int)value.length, value.data != NULL ? value.data : "");
-}
-
-void lb_check_index(uint64_t i, uint64_t n) {
-    if (i >= n) {
-        lb_trap("index out of bounds");
-    }
 }
 
 void lb_print_f64(double value) {

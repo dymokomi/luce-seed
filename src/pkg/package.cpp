@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   pkg/package - Packages and modules
+//
+//   DESCRIPTION:
+//       Reads `luce.toml`, resolves `import` paths under the package root, loads every
+//       reachable `.lucb` once, and orders modules so dependencies check first (base.md §16).
+//
+//==============================================================================================
+
 #include "pkg/package.h"
 
 #include "lex/lexer.h"
@@ -68,8 +78,8 @@ string trim(string_view s) {
 }
 
 string unquote(const string& s) {
-    if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
-                          (s.front() == '\'' && s.back() == '\''))) {
+    if (s.size() >= 2 &&
+        ((s.front() == '"' && s.back() == '"') || (s.front() == '\'' && s.back() == '\''))) {
         return s.substr(1, s.size() - 2);
     }
     return s;

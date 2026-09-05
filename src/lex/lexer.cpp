@@ -1,3 +1,16 @@
+//==============================================================================================
+//
+//   lex/lexer - Tokens and layout
+//
+//   DESCRIPTION:
+//       Source text to tokens: names and keywords, integer, float, character, string, byte,
+//       raw, triple-quoted, and formatted literals with nested fields, operators
+//       longest-first, comments and doc comments, raw `asm` lines, and the layout pass that
+//       turns indentation into INDENT/DEDENT and knows that delimiters make newlines spacing
+//       (base.md §3, §4, §21).
+//
+//==============================================================================================
+
 #include "lex/lexer.h"
 
 #include <utility>
@@ -90,7 +103,7 @@ struct SymbolMatch {
 };
 
 class Tokenizer {
-public:
+  public:
     Tokenizer(const Source& source, DiagnosticBag& diagnostics)
         : source_(source), diagnostics_(diagnostics), bytes_(source.bytes()) {
         pos_ = source.scan_start();
@@ -117,7 +130,7 @@ public:
         return std::move(tokens_);
     }
 
-private:
+  private:
     const Source& source_;
     DiagnosticBag& diagnostics_;
     std::string_view bytes_;
@@ -136,7 +149,9 @@ private:
     bool raw_suite_ = false;
     bool raw_started_ = false;
 
-    bool at_end() const { return pos_ >= bytes_.size(); }
+    bool at_end() const {
+        return pos_ >= bytes_.size();
+    }
 
     char peek_byte(size_t offset = 0) const {
         if (pos_ + offset >= bytes_.size()) {
@@ -152,7 +167,9 @@ private:
         return bytes_.substr(pos_, text.size()) == text;
     }
 
-    uint32_t column() const { return static_cast<uint32_t>(pos_ - line_start_ + 1); }
+    uint32_t column() const {
+        return static_cast<uint32_t>(pos_ - line_start_ + 1);
+    }
 
     std::string_view slice(size_t start, size_t end) const {
         if (end < start || end > bytes_.size()) {
@@ -467,7 +484,8 @@ private:
         emit_at(kind, start, pos_, start_line, start_column);
     }
 
-    void scan_string_literal(size_t start, uint32_t start_line, uint32_t start_column, char prefix) {
+    void scan_string_literal(size_t start, uint32_t start_line, uint32_t start_column,
+                             char prefix) {
         if (prefix != 0) {
             pos_ += 1;
         }
@@ -747,7 +765,8 @@ private:
             suffix = scan_numeric_suffix();
             if (is_float_suffix(suffix)) {
                 kind = TokenKind::FloatLit;
-            } else if (!suffix.empty() && (kind == TokenKind::FloatLit || !is_integer_suffix(suffix))) {
+            } else if (!suffix.empty() &&
+                       (kind == TokenKind::FloatLit || !is_integer_suffix(suffix))) {
                 error_at(start_line, start_column, start, "lucb.lex.number",
                          "invalid numeric literal suffix");
                 return;

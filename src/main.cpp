@@ -1,4 +1,13 @@
-// lucb: the Luce Base bootstrap compiler driver.
+//==============================================================================================
+//
+//   main - The lucb command
+//
+//   DESCRIPTION:
+//       The driver: `check`, `lex`, `dump`, `eval`, `build` (with `--emit=c` and
+//       `--release`), `header`, and `test`. It loads a program, runs the pipeline, prints
+//       diagnostics, and maps outcomes to exit codes.
+//
+//==============================================================================================
 
 #include "check/check.h"
 #include "emit/emit.h"
@@ -23,7 +32,7 @@ using namespace std;
 
 namespace {
 
-const char* k_version = "0.2";
+const char* k_version = "0.3";
 
 void print_help(ostream& out) {
     out << "lucb " << k_version << " — luce-seed, the Luce Base bootstrap compiler\n"
@@ -34,7 +43,7 @@ void print_help(ostream& out) {
         << "  lucb check <file.lucb>     lex, parse, and typecheck\n"
         << "  lucb lex   <file.lucb>     print tokens\n"
         << "  lucb dump  <file.lucb>     print the parse tree\n"
-        << "  lucb eval  <file.lucb>     run `answer()` or `main` in the interpreter\n"
+        << "  lucb eval  <file.lucb> [args]  run `answer()` or `main` in the interpreter\n"
         << "  lucb build <file.lucb> -o <exe>   emit C and compile\n"
         << "  lucb build <file.lucb> --release -o <exe>\n"
         << "  lucb build <file.lucb> --emit=c -o <file.c>\n"
@@ -123,7 +132,7 @@ int cmd_check(const string& path) {
     return print_diagnostics(diagnostics);
 }
 
-int cmd_eval(const string& path) {
+int cmd_eval(const string& path, const vector<string>& args) {
     lucb::DiagnosticBag diagnostics;
     lucb::Arena arena;
     lucb::Program program;
@@ -136,7 +145,7 @@ int cmd_eval(const string& path) {
     }
     lucb::Node* entry = program.entry();
     if (has_func(entry, "answer")) {
-        lucb::EvalResult result = lucb::eval_module(entry);
+        lucb::EvalResult result = lucb::eval_module(entry, mods);
         cout << result.output;
         if (result.trapped) {
             cerr << "trap: " << result.trap << '\n';
@@ -148,8 +157,14 @@ int cmd_eval(const string& path) {
         return result.ok ? 0 : 1;
     }
     lucb::EvalResult result;
-    int32_t code = lucb::eval_main(mods, entry, {path}, &result);
+    vector<string> argv_list;
+    argv_list.push_back(path);
+    for (size_t i = 0; i < args.size(); i++) {
+        argv_list.push_back(args[i]);
+    }
+    int32_t code = lucb::eval_main(mods, entry, argv_list, &result);
     cout << result.output;
+    cerr << result.err;
     if (result.trapped) {
         cerr << "trap: " << result.trap << '\n';
         return 1;
@@ -350,7 +365,11 @@ int main(int argc, char** argv) {
         return cmd_dump(path);
     }
     if (arg1 == "eval") {
-        return cmd_eval(path);
+        vector<string> args;
+        for (int i = 3; i < argc; i++) {
+            args.push_back(argv[i]);
+        }
+        return cmd_eval(path, args);
     }
     if (arg1 == "test") {
         return cmd_test(path);

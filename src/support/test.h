@@ -1,4 +1,12 @@
-// Tiny assertion harness. No gtest. Tests register themselves with TEST().
+//==============================================================================================
+//
+//   support/test - The test harness
+//
+//   DESCRIPTION:
+//       `TEST`, `CHECK`, `CHECK_EQ`, and `CHECK_STREQ`; tests register themselves and
+//       `run_all` runs them. No third-party framework.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -26,7 +34,9 @@ inline int& failures() {
 }
 
 struct Register {
-    Register(const char* name, void (*fn)()) { registry().push_back(Case{name, fn}); }
+    Register(const char* name, void (*fn)()) {
+        registry().push_back(Case{name, fn});
+    }
 };
 
 int run_all();
@@ -63,7 +73,7 @@ int run_all();
         std::string _sa = (a);                                                                     \
         std::string _sb = (b);                                                                     \
         if (_sa != _sb) {                                                                          \
-            std::fprintf(stderr, "  %s:%d: CHECK_STREQ failed:\n    left:  %s\n    right: %s\n",    \
+            std::fprintf(stderr, "  %s:%d: CHECK_STREQ failed:\n    left:  %s\n    right: %s\n",   \
                          __FILE__, __LINE__, _sa.c_str(), _sb.c_str());                            \
             ::lucb::test::failures()++;                                                            \
         }                                                                                          \

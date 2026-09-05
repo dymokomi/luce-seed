@@ -1,3 +1,14 @@
+//==============================================================================================
+//
+//   source/source - Source text and positions
+//
+//   DESCRIPTION:
+//       Loads bytes, normalises a leading BOM and CRLF, rejects NUL, invalid UTF-8, and
+//       bidirectional controls (base.md §3.1), and maps byte offsets to lines and columns for
+//       diagnostics.
+//
+//==============================================================================================
+
 #include "source/source.h"
 
 #include "support/diagnostics.h"
@@ -87,8 +98,8 @@ const char* confusable_hint(char32_t c) {
         c == 0x3000) {
         return "a Unicode space; write an ordinary space";
     }
-    if (c == 0x00AD || c == 0x034F || (c >= 0x200B && c <= 0x200D) || (c >= 0x2060 && c <= 0x2064) ||
-        c == 0xFEFF) {
+    if (c == 0x00AD || c == 0x034F || (c >= 0x200B && c <= 0x200D) ||
+        (c >= 0x2060 && c <= 0x2064) || c == 0xFEFF) {
         return "an invisible character; delete it";
     }
     if (c == 0x00AB || c == 0x00BB || (c >= 0x2018 && c <= 0x201F)) {

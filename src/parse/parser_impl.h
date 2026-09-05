@@ -1,9 +1,17 @@
-// Parser state. Implementation header for parse/*.cpp. base.md §21.
+//==============================================================================================
+//
+//   parse/parser_impl - Parser state shared by parse/*.cpp
+//
+//   DESCRIPTION:
+//       The `Parser` struct and the declarations of every production, grouped by unit.
+//       Implementation header.
+//
+//==============================================================================================
 
 #pragma once
 
-#include "parse/parser.h"
 #include "lex/lexer.h"
+#include "parse/parser.h"
 
 namespace lucb {
 
@@ -146,160 +154,7 @@ struct Parser {
     DiagnosticBag* diag = nullptr;
     int nest = 0;
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     // `catch` and `match` consume their terminating newline via the suite.
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 
     Token cur() const {
         if (pos >= n) {
@@ -333,7 +188,9 @@ struct Parser {
         return tok[i].text;
     }
 
-    bool at(TokenKind k) const { return cur().kind == k; }
+    bool at(TokenKind k) const {
+        return cur().kind == k;
+    }
 
     bool at_name(const char* s) const {
         return cur().kind == TokenKind::Name && cur().text == s;

@@ -1,4 +1,13 @@
-// Interpreter state. Implementation header for interp/*.cpp.
+//==============================================================================================
+//
+//   interp/interp_impl - Interpreter state shared by interp/*.cpp
+//
+//   DESCRIPTION:
+//       The `Interp` struct: frames and slots, storage for allocated values, the current
+//       allocator, output and error streams, control-flow flags, and the declarations of
+//       every evaluation routine grouped by unit. Implementation header.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -41,102 +50,6 @@ struct Interp {
         bool err_only = false;
     };
     vector<vector<Deferred>> defers;
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 
     void init_memory() {
         current_alloc.kind = TypeKind::Allocator;

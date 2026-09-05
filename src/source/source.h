@@ -1,4 +1,11 @@
-// Source text: UTF-8 bytes, positions, and the encoding gate of base.md §3.1.
+//==============================================================================================
+//
+//   source/source - Source text
+//
+//   DESCRIPTION:
+//       A `Source` owns the bytes of one file and answers position queries.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -9,7 +16,7 @@ namespace lucb {
 struct DiagnosticBag;
 
 struct Span {
-    uint32_t start = 0;  // byte offset into original bytes
+    uint32_t start = 0; // byte offset into original bytes
     uint32_t end = 0;
     uint32_t line = 1;   // 1-based
     uint32_t column = 1; // 1-based, BOM not counted
@@ -20,15 +27,25 @@ struct Source {
 
     static Source from_bytes(string path, string bytes, DiagnosticBag& diagnostics);
 
-    string_view path() const { return path_; }
-    string_view bytes() const { return bytes_; }
-    size_t size() const { return bytes_.size(); }
-    bool ok() const { return ok_; }
-    size_t scan_start() const { return scan_start_; }
+    string_view path() const {
+        return path_;
+    }
+    string_view bytes() const {
+        return bytes_;
+    }
+    size_t size() const {
+        return bytes_.size();
+    }
+    bool ok() const {
+        return ok_;
+    }
+    size_t scan_start() const {
+        return scan_start_;
+    }
 
     Span span_at(size_t byte, size_t end_byte) const;
 
-private:
+  private:
     string path_;
     string bytes_;
     size_t scan_start_ = 0;

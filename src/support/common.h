@@ -1,6 +1,11 @@
-// Names we actually use from the standard library, brought into `lucb`.
-// Headers then write `string` not `std::string`. Do not `using namespace std`
-// in a header — that leaks into every file that includes it.
+//==============================================================================================
+//
+//   support/common - Standard-library names used throughout
+//
+//   DESCRIPTION:
+//       The few `std` names brought into `lucb` so headers read `string`, not `std::string`.
+//
+//==============================================================================================
 
 #pragma once
 

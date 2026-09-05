@@ -1,3 +1,15 @@
+//==============================================================================================
+//
+//   check/type - Type predicates, layout, and equality
+//
+//   DESCRIPTION:
+//       The questions asked of a resolved type: integer width and signedness, zeroability, C
+//       representability, target layout (`sizeof`, `alignof`, `offsetof` with `packed` and
+//       `align(N)`), structural equality, and the printable name used in diagnostics (base.md
+//       §5.11).
+//
+//==============================================================================================
+
 #include "check/type.h"
 
 #include "support/literal.h"
@@ -36,7 +48,6 @@ int pad_to(int off, int align) {
 }
 
 } // namespace
-
 
 string type_name(const Type* t) {
     if (t == nullptr) {

@@ -1,5 +1,12 @@
-// Package loading: luce.toml, module paths, and import resolution.
-// base.md §16.
+//==============================================================================================
+//
+//   pkg/package - Package loading
+//
+//   DESCRIPTION:
+//       `load_program` turns a file or package directory into the modules the checker and
+//       emitter consume.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -29,7 +36,9 @@ struct Program {
     Arena* arena = nullptr;
     vector<LoadedModule> files;
 
-    Node* entry() const { return files.empty() ? nullptr : files[0].module; }
+    Node* entry() const {
+        return files.empty() ? nullptr : files[0].module;
+    }
 };
 
 bool parse_manifest_text(const string& text, const string& root, Manifest* out, string* error);

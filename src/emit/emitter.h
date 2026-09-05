@@ -1,4 +1,13 @@
-// C emitter state. Implementation header for emit/*.cpp.
+//==============================================================================================
+//
+//   emit/emitter - Emitter state shared by emit/*.cpp
+//
+//   DESCRIPTION:
+//       The `Emitter` struct: the output text, the collected type lists and typedefs already
+//       written, the scope stack that runs `defer` on every exit, temporaries, and the
+//       declarations of every emission routine grouped by unit. Implementation header.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -40,176 +49,6 @@ struct Emitter {
     };
     vector<Scope> scopes;
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     void pad() {
         for (int i = 0; i < indent; i++) {
             out += "    ";
@@ -222,11 +61,15 @@ struct Emitter {
         out += '\n';
     }
 
-    int tmp() { return temps++; }
+    int tmp() {
+        return temps++;
+    }
 
     bool produces_opt(Node* n);
     string wrap_opt(Type* t, const string& e);
-    string none_opt(Type* t) { return "((" + c_type(t) + "){ .present = false })"; }
+    string none_opt(Type* t) {
+        return "((" + c_type(t) + "){ .present = false })";
+    }
 
     bool fn_fallible() {
         return current_fn != nullptr && (current_fn->flags & FlagFallible) != 0;
@@ -308,14 +151,19 @@ struct Emitter {
     void emit_type_forwards(Node* mod);
     bool array_elem_is_record(Type* t);
     void emit_array_def(Type* t);
-    void emit_arrays_of_decl(Node* st);
-    void emit_array_typedefs(bool funcs, bool records = false);
-    void emit_tup_typedefs();
-    void emit_fn_typedefs();
-    void emit_opt_typedefs();
     void note_fail_fn(Node* fn);
     void collect_from(Node* mod);
-    void emit_types(Node* mod);
+    // Dependency-ordered type definitions: a typedef is written only after
+    // every type it holds by value, so field order and module order never
+    // matter. `typedefs_done` names the C typedefs already written.
+    vector<string> typedefs_done;
+    vector<Node*> decls_done;
+    vector<Node*> decls_busy;
+    bool typedef_done(const string& name);
+    void define_type(Type* t);
+    void define_fail(Type* payload);
+    void define_decl(Node* d);
+    void emit_type_defs(const vector<Node*>& modules);
     void emit_decls(Node* mod);
     void emit_defs(Node* mod);
     void emit_test_sig(Node* t, bool define);

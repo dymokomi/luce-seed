@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   parse/ast - Syntax tree printing
+//
+//   DESCRIPTION:
+//       The s-expression dump behind `lucb dump`, and the node-kind names used by the parser
+//       tests.
+//
+//==============================================================================================
+
 #include "parse/ast.h"
 
 namespace lucb {

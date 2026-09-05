@@ -1,5 +1,12 @@
-// Tokens. A token is a kind plus a span into the source; literals keep their
-// exact spelling. base.md §3, §4, §21.
+//==============================================================================================
+//
+//   lex/token - Tokens
+//
+//   DESCRIPTION:
+//       A token is a kind and a span into the source; literals keep their spelling for the
+//       literal decoder.
+//
+//==============================================================================================
 
 #pragma once
 

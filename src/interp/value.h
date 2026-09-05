@@ -1,4 +1,13 @@
-// Interpreter values. Implementation header for interp/*.cpp.
+//==============================================================================================
+//
+//   interp/value - Interpreter values
+//
+//   DESCRIPTION:
+//       One tagged `Value` for every Base type, with constructors and the width-aware integer
+//       readers. Pointers are `Value*` into deque storage, so they survive growth; a
+//       reinterpreted pointer is marked and refused rather than mis-modelled.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -26,6 +35,10 @@ struct Value {
     bool failed = false;
     int32_t err_code = 0;
     string_view err_msg;
+    // A pointer reinterpreted to another pointee type. The interpreter models
+    // memory as typed values, not bytes, so arithmetic or access through such
+    // a pointer is refused rather than mis-modelled; the C backend is exact.
+    bool punned = false;
 };
 
 inline Value v_unit() {

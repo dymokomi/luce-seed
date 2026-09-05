@@ -1,4 +1,12 @@
-// Checked AST → C for the scalar core.
+//==============================================================================================
+//
+//   emit/emit - Public entry points of the C backend
+//
+//   DESCRIPTION:
+//       A checked module or program becomes one C translation unit; an exported module
+//       becomes a C11 header.
+//
+//==============================================================================================
 
 #pragma once
 

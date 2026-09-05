@@ -1,4 +1,12 @@
-// Host C compiler: write generated C, compile with runtime, run the exe.
+//==============================================================================================
+//
+//   emit/host - Compile and run through the host toolchain
+//
+//   DESCRIPTION:
+//       `compile_c` links an executable, `compile_c_object` type-checks generated C without
+//       linking, `run_exe` captures a program's streams and exit status.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -11,8 +19,6 @@ struct RunResult {
     string out;
     string err;
 };
-
-string runtime_dir();
 
 bool compile_c(const string& c_source, const string& exe_path, string* error,
                bool link_answer_start = true, bool release = false);

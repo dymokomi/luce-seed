@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   lex/token - Token kinds, keywords, and spellings
+//
+//   DESCRIPTION:
+//       The keyword table of base.md §3.6, the operator table, and the printable names of
+//       token kinds for `lucb lex` and diagnostics.
+//
+//==============================================================================================
+
 #include "lex/token.h"
 
 #include <cstring>

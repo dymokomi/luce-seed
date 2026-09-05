@@ -1,4 +1,12 @@
-// Source text into tokens, including layout. base.md §3, §4, §21.
+//==============================================================================================
+//
+//   lex/lexer - Public entry point of the lexer
+//
+//   DESCRIPTION:
+//       `tokenize` turns a `Source` into the token stream the parser consumes, reporting
+//       encoding and lexical diagnostics.
+//
+//==============================================================================================
 
 #pragma once
 

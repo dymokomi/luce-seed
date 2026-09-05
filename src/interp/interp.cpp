@@ -1,3 +1,14 @@
+//==============================================================================================
+//
+//   interp/interp - Entry points of the oracle
+//
+//   DESCRIPTION:
+//       `eval_module` runs `answer()`, `eval_main` runs `main` with arguments, `eval_tests`
+//       runs every `test` declaration. Each returns the program's output, error stream, trap,
+//       and status for the two-execution comparison.
+//
+//==============================================================================================
+
 #include "interp/interp.h"
 #include "interp/interp_impl.h"
 
@@ -6,150 +17,153 @@
 namespace lucb {
 
 auto Interp::find_slot(string_view name, Node* decl) -> Slot* {
-        if (!frames.empty()) {
-            Frame& f = frames.back();
-            for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
-                if (f.slots[static_cast<size_t>(i)].name == name) {
-                    return &f.slots[static_cast<size_t>(i)];
-                }
+    if (!frames.empty()) {
+        Frame& f = frames.back();
+        for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
+            if (f.slots[static_cast<size_t>(i)].name == name) {
+                return &f.slots[static_cast<size_t>(i)];
             }
         }
-        if (decl != nullptr) {
-            for (size_t i = 0; i < globals.slots.size(); i++) {
-                if (globals.slots[i].decl == decl) {
-                    return &globals.slots[i];
-                }
-            }
-        }
-        for (int i = static_cast<int>(globals.slots.size()) - 1; i >= 0; i--) {
-            if (globals.slots[static_cast<size_t>(i)].name == name) {
-                return &globals.slots[static_cast<size_t>(i)];
-            }
-        }
-        return nullptr;
     }
+    if (decl != nullptr) {
+        for (size_t i = 0; i < globals.slots.size(); i++) {
+            if (globals.slots[i].decl == decl) {
+                return &globals.slots[i];
+            }
+        }
+    }
+    for (int i = static_cast<int>(globals.slots.size()) - 1; i >= 0; i--) {
+        if (globals.slots[static_cast<size_t>(i)].name == name) {
+            return &globals.slots[static_cast<size_t>(i)];
+        }
+    }
+    return nullptr;
+}
 
 auto Interp::find_func(string_view name) -> Node* {
-        vector<Node*> mods = all_modules;
-        if (mods.empty() && module != nullptr) {
-            mods.push_back(module);
-        }
-        for (size_t i = 0; i < mods.size(); i++) {
-            if (mods[i] == nullptr) {
-                continue;
-            }
-            for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
-                if (d->kind == NodeKind::Func && d->text == name) {
-                    return d;
-                }
-            }
-        }
-        return nullptr;
+    vector<Node*> mods = all_modules;
+    if (mods.empty() && module != nullptr) {
+        mods.push_back(module);
     }
+    for (size_t i = 0; i < mods.size(); i++) {
+        if (mods[i] == nullptr) {
+            continue;
+        }
+        for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func && d->text == name) {
+                return d;
+            }
+        }
+    }
+    return nullptr;
+}
 
 auto Interp::load_globals() -> void {
-        vector<Node*> mods = all_modules;
-        if (mods.empty() && module != nullptr) {
-            mods.push_back(module);
+    vector<Node*> mods = all_modules;
+    if (mods.empty() && module != nullptr) {
+        mods.push_back(module);
+    }
+    for (size_t i = 0; i < mods.size(); i++) {
+        if (mods[i] == nullptr) {
+            continue;
         }
-        for (size_t i = 0; i < mods.size(); i++) {
-            if (mods[i] == nullptr) {
+        for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
+            if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
                 continue;
             }
-            for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
-                if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
-                    continue;
-                }
-                Slot s;
-                s.name = d->text;
-                s.decl = d;
-                if (d->left != nullptr) {
-                    s.value = eval(d->left);
-                } else {
-                    s.value = zero_of(d->ty);
-                }
-                if (d->ty != nullptr) {
-                    s.value.type = d->ty;
-                    s.value.kind = d->ty->kind;
-                }
-                globals.slots.push_back(s);
+            Slot s;
+            s.name = d->text;
+            s.decl = d;
+            if (d->left != nullptr) {
+                s.value = eval(d->left);
+            } else {
+                s.value = zero_of(d->ty);
             }
+            if (d->ty != nullptr) {
+                s.value.type = d->ty;
+                s.value.kind = d->ty->kind;
+            }
+            globals.slots.push_back(s);
         }
     }
+}
 
 auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
-        if (static_cast<int>(frames.size()) >= k_max_frames) {
-            fail("stack overflow");
+    if (static_cast<int>(frames.size()) >= k_max_frames) {
+        fail("stack overflow");
+        return v_unit();
+    }
+    Frame frame;
+    if (self != nullptr) {
+        Slot s;
+        s.name = "self";
+        s.value = *self;
+        frame.slots.push_back(s);
+    }
+    Node* p = fn->right;
+    Node* a = args;
+    while (p != nullptr && a != nullptr) {
+        Slot s;
+        s.name = p->text;
+        s.value = eval(a->left);
+        if (p->ty != nullptr && is_u8_cspan(p->ty) &&
+            (s.value.kind == TypeKind::Str || s.value.kind == TypeKind::Fmt)) {
+            s.value = as_u8_span(s.value);
+        }
+        if (p->ty != nullptr) {
+            s.value.type = p->ty;
+            s.value.kind = p->ty->kind;
+        }
+        if (trapped) {
             return v_unit();
         }
-        Frame frame;
-        if (self != nullptr) {
-            Slot s;
-            s.name = "self";
-            s.value = *self;
-            frame.slots.push_back(s);
-        }
-        Node* p = fn->right;
-        Node* a = args;
-        while (p != nullptr && a != nullptr) {
-            Slot s;
-            s.name = p->text;
-            s.value = eval(a->left);
-            if (p->ty != nullptr && is_u8_cspan(p->ty) &&
-                (s.value.kind == TypeKind::Str || s.value.kind == TypeKind::Fmt)) {
-                s.value = as_u8_span(s.value);
-            }
-            if (p->ty != nullptr) {
-                s.value.type = p->ty;
-                s.value.kind = p->ty->kind;
-            }
-            if (trapped) {
-                return v_unit();
-            }
-            frame.slots.push_back(s);
-            p = p->next;
-            a = a->next;
-        }
-        frames.push_back(frame);
-        bool saved_ret = returning;
-        Value saved_retv = ret;
-        returning = false;
-        Node* saved_fn = current_fn;
-        current_fn = fn;
-        exec(fn->body);
-        current_fn = saved_fn;
-        if (self != nullptr && !frames.empty()) {
-            Slot* ss = nullptr;
-            Frame& top = frames.back();
-            for (size_t i = 0; i < top.slots.size(); i++) {
-                if (top.slots[i].name == "self") {
-                    ss = &top.slots[i];
-                    break;
-                }
-            }
-            if (ss != nullptr) {
-                *self = ss->value;
-            }
-        }
-        Value result = returning ? ret : v_unit();
-        returning = saved_ret;
-        ret = saved_ret ? saved_retv : ret;
-        frames.pop_back();
-        if ((fn->flags & FlagFallible) != 0 && !result.failed) {
-            result.failed = false;
-            result.kind = TypeKind::Fallible;
-        }
-        return result;
+        frame.slots.push_back(s);
+        p = p->next;
+        a = a->next;
     }
+    frames.push_back(frame);
+    bool saved_ret = returning;
+    Value saved_retv = ret;
+    returning = false;
+    Node* saved_fn = current_fn;
+    current_fn = fn;
+    exec(fn->body);
+    current_fn = saved_fn;
+    if (self != nullptr && !frames.empty()) {
+        Slot* ss = nullptr;
+        Frame& top = frames.back();
+        for (size_t i = 0; i < top.slots.size(); i++) {
+            if (top.slots[i].name == "self") {
+                ss = &top.slots[i];
+                break;
+            }
+        }
+        if (ss != nullptr) {
+            *self = ss->value;
+        }
+    }
+    Value result = returning ? ret : v_unit();
+    returning = saved_ret;
+    ret = saved_ret ? saved_retv : ret;
+    frames.pop_back();
+    if ((fn->flags & FlagFallible) != 0 && !result.failed) {
+        result.failed = false;
+        result.kind = TypeKind::Fallible;
+    }
+    return result;
+}
 
-EvalResult eval_module(Node* module) {
+EvalResult eval_module(Node* module, const vector<Node*>& modules) {
     EvalResult result;
     if (module == nullptr) {
         return result;
     }
     Interp ip;
     ip.module = module;
-    ip.all_modules.push_back(module);
+    ip.all_modules = modules;
+    if (ip.all_modules.empty()) {
+        ip.all_modules.push_back(module);
+    }
     ip.init_memory();
     ip.load_globals();
     Node* answer = ip.find_func("answer");
@@ -283,9 +297,10 @@ int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string
         return 1;
     }
     if (ip.returning && ip.ret.failed) {
+        // `main` returned an error: report it the way the native shim does.
         if (result != nullptr) {
-            result->trapped = true;
-            result->trap = string(ip.ret.err_msg);
+            result->err +=
+                "error " + std::to_string(ip.ret.err_code) + ": " + string(ip.ret.err_msg) + "\n";
         }
         return 1;
     }

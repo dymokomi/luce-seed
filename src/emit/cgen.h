@@ -1,4 +1,11 @@
-// C spelling helpers for the C backend. Implementation header.
+//==============================================================================================
+//
+//   emit/cgen - C spelling helpers
+//
+//   DESCRIPTION:
+//       Declarations of the naming functions the emitter units share. Implementation header.
+//
+//==============================================================================================
 
 #pragma once
 

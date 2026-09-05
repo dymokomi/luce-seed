@@ -1,5 +1,12 @@
-// Recursive-descent parser for base.md §21. Expressions use layered
-// precedence (catch / else / conditional / binary / unary / postfix).
+//==============================================================================================
+//
+//   parse/parser - Public entry point of the parser
+//
+//   DESCRIPTION:
+//       `parse` turns a token stream into a module tree, reporting syntax diagnostics with
+//       stable codes.
+//
+//==============================================================================================
 
 #pragma once
 

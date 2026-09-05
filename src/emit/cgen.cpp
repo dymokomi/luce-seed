@@ -1,3 +1,15 @@
+//==============================================================================================
+//
+//   emit/cgen - C spellings
+//
+//   DESCRIPTION:
+//       How Base names become C names: the `lb_` prefix, exported symbols kept bare, the
+//       typedef names of arrays, tuples, optionals, results, and function pointers, and
+//       `c_type` for every resolved type. Nothing here writes into the output; it only
+//       spells.
+//
+//==============================================================================================
+
 #include "emit/cgen.h"
 
 #include "support/literal.h"
@@ -130,29 +142,35 @@ string fn_c_name(Type* t) {
     return s;
 }
 
+// True for the checker-synthesized records of the standard modules; a user
+// struct that happens to be named `Location` keeps its own C definition.
+static bool builtin_decl(Type* t) {
+    return t->decl == nullptr || (t->decl->flags & FlagBuiltin) != 0;
+}
+
 string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
     }
-    if (t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
+    if (t->kind == TypeKind::Struct && t->name == "FixedBuffer" && builtin_decl(t)) {
         return "lb_fixed";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Location") {
+    if (t->kind == TypeKind::Struct && t->name == "Location" && builtin_decl(t)) {
         return "lb_Location";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Handle") {
+    if (t->kind == TypeKind::Struct && t->name == "Handle" && builtin_decl(t)) {
         return "lb_Handle";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Mutex") {
+    if (t->kind == TypeKind::Struct && t->name == "Mutex" && builtin_decl(t)) {
         return "lb_Mutex";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Condition") {
+    if (t->kind == TypeKind::Struct && t->name == "Condition" && builtin_decl(t)) {
         return "lb_Cond";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Once") {
+    if (t->kind == TypeKind::Struct && t->name == "Once" && builtin_decl(t)) {
         return "lb_Once";
     }
-    if (t->kind == TypeKind::Struct && t->name == "Semaphore") {
+    if (t->kind == TypeKind::Struct && t->name == "Semaphore" && builtin_decl(t)) {
         return "lb_Sem";
     }
     if (t->kind == TypeKind::Atomic) {
@@ -189,9 +207,8 @@ string c_type(Type* t) {
             q += "volatile ";
         }
         Type* e = t->elem;
-        if (e != nullptr &&
-            (e->kind == TypeKind::Struct || e->kind == TypeKind::Union ||
-             (e->kind == TypeKind::Enum && !is_int_enum(e)))) {
+        if (e != nullptr && (e->kind == TypeKind::Struct || e->kind == TypeKind::Union ||
+                             (e->kind == TypeKind::Enum && !is_int_enum(e)))) {
             const char* tag = e->kind == TypeKind::Union ? "union " : "struct ";
             return q + tag + c_type(e) + "*";
         }

@@ -1,4 +1,11 @@
-// Diagnostics with stable codes. Tests pin the code, never the wording.
+//==============================================================================================
+//
+//   support/diagnostics - Diagnostics with stable codes
+//
+//   DESCRIPTION:
+//       Tests pin the code, never the wording, so messages can improve freely.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -21,8 +28,12 @@ struct DiagnosticBag {
     void add(string code, string path, Span span, string message);
     bool has_code(string_view code) const;
     const Diagnostic* first() const;
-    size_t count() const { return items.size(); }
-    bool empty() const { return items.empty(); }
+    size_t count() const {
+        return items.size();
+    }
+    bool empty() const {
+        return items.empty();
+    }
 };
 
 } // namespace lucb

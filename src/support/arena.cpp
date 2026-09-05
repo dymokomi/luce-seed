@@ -1,3 +1,13 @@
+//==============================================================================================
+//
+//   support/arena - Chunked bump allocator
+//
+//   DESCRIPTION:
+//       Objects that live for the whole compilation come from here and are never freed
+//       individually.
+//
+//==============================================================================================
+
 #include "support/arena.h"
 
 #include <cstdlib>

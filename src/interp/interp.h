@@ -1,4 +1,12 @@
-// HIR-less interpreter of a checked module. Scalar core only.
+//==============================================================================================
+//
+//   interp/interp - Public entry points of the oracle
+//
+//   DESCRIPTION:
+//       The interpreter the tests compare against the compiled binary. It runs a checked
+//       module directly from the syntax tree.
+//
+//==============================================================================================
 
 #pragma once
 
@@ -16,7 +24,9 @@ struct EvalResult {
     string err;
 };
 
-EvalResult eval_module(Node* module);
+// Run `answer()` of `module`. `modules` lists every module of the program so
+// their globals load and their functions resolve; empty means one module.
+EvalResult eval_module(Node* module, const vector<Node*>& modules = {});
 
 struct TestRun {
     int passed = 0;

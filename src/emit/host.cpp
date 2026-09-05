@@ -1,3 +1,14 @@
+//==============================================================================================
+//
+//   emit/host - The host C compiler
+//
+//   DESCRIPTION:
+//       Writes the generated C and the embedded runtime into a scratch directory, runs `cc`
+//       with `-Wall -Werror` (and `-O2` for `--release`), and runs the result for the tests.
+//       `CC` in the environment selects another compiler.
+//
+//==============================================================================================
+
 #include "emit/host.h"
 #include "emit/runtime_embed.h"
 
@@ -55,10 +66,6 @@ bool write_text(const string& path, const char* text, string* error) {
 }
 
 } // namespace
-
-string runtime_dir() {
-    return "src/runtime";
-}
 
 bool compile_c(const string& c_source, const string& exe_path, string* error,
                bool link_answer_start, bool release) {
