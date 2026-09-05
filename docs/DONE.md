@@ -13,6 +13,16 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M13 — Calling C
+
+`extern func` / `type` / `var` / `struct` / `union`, `as "name"`, `export`
+with unprefixed C symbols, the `c` module aliases, variadic C calls, the
+one `null_foreign` boundary check, `lucb header`, and `cstr` in foreign
+signatures. Interpreter covers a libc subset (`abs`, `strlen`, `printf`)
+so it can agree with the C backend. `out` parameters, `luce bind`, and
+`[native]` sources wait. Evidence: `tests/agree_test.cpp`,
+`tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M12 — Interfaces, `fmt`, `Writer`
 
 Nominal `implements`, two-word interface views with a vtable, builtin

@@ -31,7 +31,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
 | 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
-| 17 | `extern func` | partial | `parse_extern_func` |
+| 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
 | 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` unsupported |
@@ -65,7 +65,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 16.3 | `import` / `from … import` | done | `load_and_check_import`, `load_from_import` |
 | 16.4 | `luce.toml` | partial | `[package] name`; source roots default to the manifest directory |
 | 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
-| 5.2 | `cstr` | partial | type and `main(arguments: cstr[])`; library `c` module later |
+| 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_alloc_span`, `agree_callocator` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
@@ -76,4 +76,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
 | 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`; user `Display` not yet |
 | 5.5 / 9.1 | `fmt`, `format`, `location()` | done | `agree_format`, `agree_location` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M13–M14 |
+| 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` unsupported |
+| 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
+| 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export later |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M14 |

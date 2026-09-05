@@ -648,3 +648,68 @@ TEST(agree_memory_heap) {
                  "    free(p)\n"
                  "    return n\n"));
 }
+
+TEST(agree_extern_abs) {
+    CHECK(agrees("extern func abs(n: i32) -> i32\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(abs(-40))\n"));
+}
+
+TEST(agree_extern_strlen) {
+    CHECK(agrees("extern func strlen(s: cstr) -> usize\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(strlen(\"hello\"))\n"));
+}
+
+TEST(agree_variadic_printf) {
+    CHECK(agrees("extern func printf(format: cstr, ...) -> i32\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(printf(\"%d\", 40))\n"));
+}
+
+TEST(agree_c_int) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: c.int = 40\n"
+                 "    return i64(n)\n"));
+}
+
+TEST(agree_export_twice) {
+    CHECK(agrees("export func twice(n: i32) -> i32:\n"
+                 "    return n + n\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(twice(20))\n"));
+}
+
+TEST(agree_null_foreign) {
+    CHECK(agrees("extern func lb_null_probe() -> i64*\n"
+                 "pub func answer() -> i64:\n"
+                 "    let p = lb_null_probe()\n"
+                 "    return *p\n"));
+}
+
+TEST(agree_extern_as_name) {
+    CHECK(agrees("extern func labs_of as \"abs\"(n: i32) -> i32\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(labs_of(-7))\n"));
+}
+
+TEST(header_export_func) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb",
+                                       "export func twice(n: i32) -> i32:\n"
+                                       "    return n + n\n"
+                                       "pub func answer() -> i64:\n"
+                                       "    return i64(twice(20))\n",
+                                       diagnostics);
+    CHECK(source.ok());
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    CHECK(diagnostics.empty());
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    CHECK(diagnostics.empty());
+    CHECK(parsed.module != nullptr);
+    CHECK(check_module(parsed.module, arena, diagnostics, "t.lucb"));
+    std::string h = lucb::emit_header(parsed.module);
+    CHECK(h.find("int32_t twice(") != std::string::npos);
+    CHECK(h.find("lb_twice") == std::string::npos);
+}

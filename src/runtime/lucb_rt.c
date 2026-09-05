@@ -163,6 +163,8 @@ void lb_trap(const char* message) {
     exit(1);
 }
 
+int64_t* lb_null_probe(void) { return NULL; }
+
 void lb_check_utf8(const char* s, size_t n) {
     size_t i = 0;
     while (i < n) {

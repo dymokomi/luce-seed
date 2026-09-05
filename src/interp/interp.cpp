@@ -458,6 +458,9 @@ struct Interp {
                 Value v = v_str(n->text);
                 v.length = decode_string(n->text).size();
                 v.type = n->ty;
+                if (n->ty != nullptr && n->ty->kind == TypeKind::CStr) {
+                    v.kind = TypeKind::CStr;
+                }
                 return v;
             }
             if (n->op == TokenKind::IntLit) {
@@ -2005,11 +2008,128 @@ struct Interp {
             }
             return call_func(method, recv, n->body);
         }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::ExternFunc) {
+            return eval_extern(n, n->resolved);
+        }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
             return call_func(n->resolved, nullptr, n->body);
         }
         fail("unknown call");
         return v_unit();
+    }
+
+    string extern_symbol(Node* fn) {
+        if (fn == nullptr) {
+            return {};
+        }
+        if (fn->left != nullptr && fn->left->kind == NodeKind::Literal) {
+            string s = string(fn->left->text);
+            if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+                return s.substr(1, s.size() - 2);
+            }
+            return s;
+        }
+        return string(fn->text);
+    }
+
+    string cstr_text(const Value& v) {
+        if (v.kind == TypeKind::Str || v.kind == TypeKind::CStr) {
+            return decode_string(v.str);
+        }
+        return {};
+    }
+
+    string interp_printf(const string& fmt, const vector<Value>& args) {
+        string out;
+        size_t ai = 0;
+        for (size_t i = 0; i < fmt.size(); i++) {
+            if (fmt[i] != '%' || i + 1 >= fmt.size()) {
+                out += fmt[i];
+                continue;
+            }
+            i++;
+            if (fmt[i] == '%') {
+                out += '%';
+                continue;
+            }
+            while (i < fmt.size() && (fmt[i] == 'l' || fmt[i] == 'z' || fmt[i] == 'h')) {
+                i++;
+            }
+            if (i >= fmt.size() || ai >= args.size()) {
+                break;
+            }
+            const Value& a = args[ai++];
+            char spec = fmt[i];
+            char buf[64];
+            if (spec == 'd' || spec == 'i') {
+                snprintf(buf, sizeof(buf), "%d", static_cast<int>(as_s(a, a.type)));
+                out += buf;
+            } else if (spec == 'u') {
+                snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(as_u(a, a.type)));
+                out += buf;
+            } else if (spec == 's') {
+                out += cstr_text(a);
+            } else if (spec == 'c') {
+                out += static_cast<char>(as_u(a, a.type));
+            } else if (spec == 'f' || spec == 'g') {
+                snprintf(buf, sizeof(buf), "%g", a.f);
+                out += buf;
+            }
+        }
+        return out;
+    }
+
+    Value eval_extern(Node* n, Node* fn) {
+        string name = extern_symbol(fn);
+        vector<Value> args;
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            args.push_back(eval(a->left));
+            if (trapped) {
+                return v_unit();
+            }
+        }
+        Type* rt = n->ty != nullptr ? n->ty : fn->ty;
+        Value r = v_unit();
+        r.type = rt;
+        if (name == "abs") {
+            int64_t v = args.empty() ? 0 : as_s(args[0], args[0].type);
+            if (v < 0) {
+                v = -v;
+            }
+            return v_int(rt, static_cast<uint64_t>(v));
+        }
+        if (name == "strlen") {
+            string s = args.empty() ? string() : cstr_text(args[0]);
+            return v_int(rt, s.size());
+        }
+        if (name == "printf") {
+            string fmt = args.empty() ? string() : cstr_text(args[0]);
+            vector<Value> rest;
+            for (size_t i = 1; i < args.size(); i++) {
+                rest.push_back(args[i]);
+            }
+            string printed = interp_printf(fmt, rest);
+            output += printed;
+            return v_int(rt, printed.size());
+        }
+        if (name == "lb_null_probe") {
+            r.kind = TypeKind::Pointer;
+            r.ptr = nullptr;
+        } else {
+            fail("unknown extern `" + name + "`");
+            return v_unit();
+        }
+        if (needs_null_foreign(rt)) {
+            bool is_null = r.ptr == nullptr;
+            if (rt->kind == TypeKind::CStr) {
+                is_null = r.str.data() == nullptr;
+            }
+            if (is_null) {
+                fail("null_foreign");
+                return v_unit();
+            }
+        }
+        return r;
     }
 
     Value eval_ctor(Node* n, Node* st) {

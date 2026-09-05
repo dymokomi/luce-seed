@@ -7,6 +7,8 @@
 #include "support/diagnostics.h"
 #include "support/test.h"
 
+#include <string>
+
 using lucb::Arena;
 using lucb::DiagnosticBag;
 using lucb::EvalResult;
@@ -547,4 +549,21 @@ TEST(eval_fixed_exhausted) {
                        "        return 0\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_extern_abs) {
+    EvalResult r = run("extern func abs(n: i32) -> i32\n"
+                       "pub func answer() -> i64:\n"
+                       "    return i64(abs(-40))\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40);
+}
+
+TEST(eval_null_foreign) {
+    EvalResult r = run("extern func lb_null_probe() -> i64*\n"
+                       "pub func answer() -> i64:\n"
+                       "    let p = lb_null_probe()\n"
+                       "    return *p\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("null_foreign") != std::string::npos);
 }

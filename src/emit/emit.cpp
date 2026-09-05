@@ -18,13 +18,45 @@ string ident(string_view prefix, string_view name) {
 }
 
 string struct_ident(Node* st, string_view prefix = {}) {
+    if (st != nullptr &&
+        (st->kind == NodeKind::ExternStruct || st->kind == NodeKind::ExternUnion)) {
+        return string(st->text);
+    }
     if (!prefix.empty()) {
         return ident("lb_", prefix) + "_" + string(st->text);
     }
     return ident("lb_", st->text);
 }
 
+string c_symbol(Node* fn) {
+    if (fn == nullptr) {
+        return "lb_unknown";
+    }
+    if (fn->kind == NodeKind::ExternFunc && fn->left != nullptr &&
+        fn->left->kind == NodeKind::Literal) {
+        string s = string(fn->left->text);
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+            return s.substr(1, s.size() - 2);
+        }
+        return s;
+    }
+    if (fn->kind == NodeKind::ExternFunc) {
+        return string(fn->text);
+    }
+    if ((fn->flags & FlagExport) != 0) {
+        return string(fn->text);
+    }
+    return {};
+}
+
 string func_ident(Node* fn, Node* owner, string_view prefix = {}) {
+    string ext = c_symbol(fn);
+    if (!ext.empty() && owner == nullptr) {
+        return ext;
+    }
+    if ((fn != nullptr && (fn->flags & FlagExport) != 0) && owner != nullptr) {
+        return string(owner->text) + "_" + string(fn->text);
+    }
     string p = prefix.empty() ? string() : ident("lb_", prefix) + "_";
     if (p.empty()) {
         p = "lb_";
@@ -492,6 +524,9 @@ struct Emitter {
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
                 return emit_enum_value(n);
             }
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::ExternVar) {
+                return string(n->text);
+            }
             if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
                 string nm = ident("lb_", n->text);
                 char nbuf[32];
@@ -558,6 +593,9 @@ struct Emitter {
         }
         if (n->op == TokenKind::StringLit) {
             string d = decode_lit(n->text);
+            if (n->ty != nullptr && n->ty->kind == TypeKind::CStr) {
+                return c_escape(d);
+            }
             char buf[32];
             snprintf(buf, sizeof(buf), "%zu", d.size());
             return "((lb_str){" + c_escape(d) + ", " + buf + "})";
@@ -1209,6 +1247,32 @@ struct Emitter {
         return s;
     }
 
+    string emit_extern_args(Node* n) {
+        string s;
+        bool first = true;
+        Node* p = n->resolved != nullptr ? n->resolved->right : nullptr;
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            if (!first) {
+                s += ", ";
+            }
+            first = false;
+            Node* v = a->left;
+            Type* pt = p != nullptr && (p->flags & FlagVariadic) == 0 ? p->ty : nullptr;
+            if (v != nullptr && v->kind == NodeKind::Literal && v->op == TokenKind::StringLit &&
+                (pt == nullptr || (pt != nullptr && pt->kind == TypeKind::CStr))) {
+                s += c_escape(decode_lit(v->text));
+            } else if (pt != nullptr && pt->kind == TypeKind::CStr) {
+                s += "(" + emit_expr(v) + ").data";
+            } else {
+                s += emit_expr(v);
+            }
+            if (p != nullptr && (p->flags & FlagVariadic) == 0) {
+                p = p->next;
+            }
+        }
+        return s;
+    }
+
     string emit_call(Node* n) {
         Node* callee = n->left;
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
@@ -1364,10 +1428,22 @@ struct Emitter {
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
             return emit_enum_value(n);
         }
-        if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
+        if (n->resolved != nullptr &&
+            (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
             string name = func_ident(n->resolved, nullptr);
             string args = emit_args(n->body);
-            return name + "(" + args + ")";
+            if (n->resolved->kind == NodeKind::ExternFunc && n->body != nullptr) {
+                args = emit_extern_args(n);
+            }
+            string call = name + "(" + args + ")";
+            Type* rt = n->ty != nullptr ? n->ty : n->resolved->ty;
+            if (n->resolved->kind == NodeKind::ExternFunc && needs_null_foreign(rt)) {
+                int id = tmp();
+                string pn = "_lb_fp" + std::to_string(id);
+                return "({ " + c_type(rt) + " " + pn + " = " + call + "; if (" + pn +
+                       " == NULL) lb_trap(\"null_foreign\"); " + pn + "; })";
+            }
+            return call;
         }
         return "0";
     }
@@ -2132,6 +2208,16 @@ struct Emitter {
         }
         line(sig + " {");
         indent++;
+        if ((fn->flags & FlagExport) != 0) {
+            if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
+                line("if (self == NULL) lb_trap(\"null_foreign\");");
+            }
+            for (Node* p = fn->right; p != nullptr; p = p->next) {
+                if (needs_null_foreign(p->ty)) {
+                    line("if (" + ident("lb_", p->text) + " == NULL) lb_trap(\"null_foreign\");");
+                }
+            }
+        }
         Node* saved_fn = current_fn;
         current_fn = fn;
         scopes.push_back(Scope{});
@@ -2422,9 +2508,9 @@ struct Emitter {
             if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
                 continue;
             }
-            if (d->kind == NodeKind::Struct) {
+            if (d->kind == NodeKind::Struct || d->kind == NodeKind::ExternStruct) {
                 emit_struct(d);
-            } else if (d->kind == NodeKind::Union) {
+            } else if (d->kind == NodeKind::Union || d->kind == NodeKind::ExternUnion) {
                 emit_union(d);
             } else if (d->kind == NodeKind::Enum) {
                 emit_enum(d);
@@ -2445,7 +2531,37 @@ struct Emitter {
             if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
                 continue;
             }
-            if (d->kind == NodeKind::Func) {
+            if (d->kind == NodeKind::ExternFunc) {
+                string ret = d->ty != nullptr && d->ty->kind != TypeKind::Unit ? c_type(d->ty)
+                                                                              : "void";
+                string sig = "extern " + ret + " " + func_ident(d, nullptr) + "(";
+                bool first = true;
+                bool variadic = false;
+                for (Node* p = d->right; p != nullptr; p = p->next) {
+                    if (p->flags & FlagVariadic) {
+                        variadic = true;
+                        break;
+                    }
+                    if (!first) {
+                        sig += ", ";
+                    }
+                    first = false;
+                    sig += c_type(p->ty);
+                }
+                if (variadic) {
+                    if (!first) {
+                        sig += ", ";
+                    }
+                    sig += "...";
+                }
+                if (first && !variadic) {
+                    sig += "void";
+                }
+                sig += ");";
+                line(sig);
+            } else if (d->kind == NodeKind::ExternVar) {
+                line("extern " + c_type(d->ty) + " " + string(d->text) + ";");
+            } else if (d->kind == NodeKind::Func) {
                 emit_sig(d, nullptr, false);
             } else if (d->kind == NodeKind::Struct) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
@@ -2662,6 +2778,29 @@ struct Emitter {
             emit_c_main(main_fn);
         }
     }
+
+    void emit_header_mod(Node* mod) {
+        out += "/* generated by lucb */\n";
+        out += "#pragma once\n";
+        out += "#include <stdbool.h>\n";
+        out += "#include <stddef.h>\n";
+        out += "#include <stdint.h>\n\n";
+        if (mod == nullptr) {
+            return;
+        }
+        emit_types(mod);
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func && (d->flags & FlagExport) != 0) {
+                emit_sig(d, nullptr, false);
+            } else if (d->kind == NodeKind::Struct) {
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind == NodeKind::Func && (m->flags & FlagExport) != 0) {
+                        emit_sig(m, d, false);
+                    }
+                }
+            }
+        }
+    }
 };
 
 } // namespace
@@ -2681,6 +2820,12 @@ string emit_program(const vector<Node*>& modules, Node* entry) {
     } else if (entry != nullptr) {
         e.emit_module(entry);
     }
+    return e.out;
+}
+
+string emit_header(Node* module) {
+    Emitter e;
+    e.emit_header_mod(module);
     return e.out;
 }
 

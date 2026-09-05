@@ -8,5 +8,6 @@ namespace lucb {
 
 string emit_c(Node* module);
 string emit_program(const vector<Node*>& modules, Node* entry);
+string emit_header(Node* module);
 
 } // namespace lucb

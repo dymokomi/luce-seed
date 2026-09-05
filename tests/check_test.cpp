@@ -217,6 +217,41 @@ TEST(check_interface_missing_method) {
                     "lucb.check.type"));
 }
 
+TEST(check_extern_str_rejected) {
+    CHECK(check_has("extern func puts(s: str) -> i32\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_extern_out_unsupported) {
+    CHECK(check_has("extern func get(out n: i32) -> bool\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.unsupported"));
+}
+
+TEST(check_c_int_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    var n: c.int = 40\n"
+                   "    return i64(n)\n"));
+}
+
+TEST(check_extern_handle_ok) {
+    CHECK(check_ok("extern type Window\n"
+                   "extern func SDL_GetError() -> cstr\n"
+                   "pub func answer() -> i64:\n"
+                   "    return 0\n"));
+}
+
+TEST(check_variadic_str_rejected) {
+    CHECK(check_has("extern func printf(format: cstr, ...) -> i32\n"
+                    "pub func answer() -> i64:\n"
+                    "    var s = \"hi\"\n"
+                    "    return i64(printf(\"%s\", s))\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_generic_id_ok) {
     CHECK(check_ok("func id[T](x: T) -> T:\n"
                    "    return x\n"

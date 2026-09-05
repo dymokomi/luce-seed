@@ -37,6 +37,7 @@ void print_help(ostream& out) {
         << "  lucb eval  <file.lucb>     run `answer()` or `main` in the interpreter\n"
         << "  lucb build <file.lucb> -o <exe>   emit C and compile\n"
         << "  lucb build <file.lucb> --emit=c -o <file.c>\n"
+        << "  lucb header <file.lucb> [-o file.h]  write the export header\n"
         << "  lucb test  <file.lucb>     run `test` declarations\n";
 }
 
@@ -217,6 +218,54 @@ int cmd_build(int argc, char** argv) {
     return 0;
 }
 
+int cmd_header(int argc, char** argv) {
+    string in_path;
+    string out_path;
+    for (int i = 2; i < argc; i++) {
+        string_view a = argv[i];
+        if (a == "-o") {
+            if (i + 1 >= argc) {
+                cerr << "lucb: -o needs an argument\n";
+                return 2;
+            }
+            out_path = argv[++i];
+        } else if (in_path.empty() && a.size() > 0 && a[0] != '-') {
+            in_path = argv[i];
+        } else {
+            cerr << "lucb: unexpected argument `" << argv[i] << "`\n";
+            return 2;
+        }
+    }
+    if (in_path.empty()) {
+        cerr << "lucb: missing file argument\n";
+        return 2;
+    }
+
+    lucb::DiagnosticBag diagnostics;
+    lucb::Arena arena;
+    lucb::Program program;
+    if (!lucb::load_program(in_path, program, arena, diagnostics)) {
+        return print_diagnostics(diagnostics);
+    }
+    vector<lucb::Node*> mods = program_modules(program);
+    if (!lucb::check_program(mods, arena, diagnostics, in_path)) {
+        return print_diagnostics(diagnostics);
+    }
+    lucb::Node* entry = program.entry();
+    string h = lucb::emit_header(entry);
+    if (out_path.empty()) {
+        cout << h;
+        return 0;
+    }
+    ofstream out(out_path);
+    if (!out) {
+        cerr << "lucb: cannot write " << out_path << '\n';
+        return 1;
+    }
+    out << h;
+    return 0;
+}
+
 int cmd_test(const string& path) {
     lucb::DiagnosticBag diagnostics;
     lucb::Arena arena;
@@ -281,6 +330,9 @@ int main(int argc, char** argv) {
 
     if (arg1 == "build") {
         return cmd_build(argc, argv);
+    }
+    if (arg1 == "header") {
+        return cmd_header(argc, argv);
     }
 
     const string path = argv[2];

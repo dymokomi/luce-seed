@@ -94,6 +94,7 @@ Nominal `implements`. Two-word views. `print` / `format` / `fmt` / `location()`.
 
 `extern` / `export`, `c` module, variadic calls, the one null-boundary check,
 generated header. `cstr`.
+**Landed.**
 
 ## M14 — Atomics, volatile, threads, `asm`
 

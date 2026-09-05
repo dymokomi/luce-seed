@@ -149,6 +149,61 @@ struct Checker {
         return nullptr;
     }
 
+    Type* c_alias(string_view name) {
+        if (name == "c.int") {
+            return ty_i32;
+        }
+        if (name == "c.uint") {
+            return ty_u32;
+        }
+        if (name == "c.short") {
+            return ty_i16;
+        }
+        if (name == "c.ushort") {
+            return ty_u16;
+        }
+        if (name == "c.schar") {
+            return ty_i8;
+        }
+        if (name == "c.uchar") {
+            return ty_u8;
+        }
+        if (name == "c.longlong") {
+            return ty_i64;
+        }
+        if (name == "c.ulonglong") {
+            return ty_u64;
+        }
+        if (name == "c.float") {
+            return ty_f32;
+        }
+        if (name == "c.double") {
+            return ty_f64;
+        }
+        if (name == "c.bool") {
+            return ty_bool;
+        }
+        if (name == "c.size" || name == "c.uintptr") {
+            return ty_usize;
+        }
+        if (name == "c.ssize" || name == "c.ptrdiff" || name == "c.intptr") {
+            return ty_isize;
+        }
+        if (name == "c.long") {
+            return ty_i64;
+        }
+        if (name == "c.ulong") {
+            return ty_u64;
+        }
+        if (name == "c.char") {
+            return ty_i8;
+        }
+        if (name == "c.wchar") {
+            return ty_u32;
+        }
+        return nullptr;
+    }
+
     Type* make_type(TypeKind kind, string_view name) {
         Type* t = arena->make<Type>();
         t->kind = kind;
@@ -166,8 +221,8 @@ struct Checker {
     Type* intern_ptr(Type* elem, bool is_const, bool is_vol, bool nullable) {
         for (size_t i = 0; i < interned.size(); i++) {
             Type* t = interned[i];
-            if (t->kind == TypeKind::Pointer && t->elem == elem && t->is_const == is_const &&
-                t->is_volatile == is_vol && t->is_nullable == nullable) {
+            if (t->kind == TypeKind::Pointer && t->decl == nullptr && t->elem == elem &&
+                t->is_const == is_const && t->is_volatile == is_vol && t->is_nullable == nullable) {
                 return t;
             }
         }
@@ -1223,12 +1278,20 @@ struct Checker {
             n->ty = named;
             return n->ty;
         }
+        Type* calias = c_alias(n->text);
+        if (calias != nullptr) {
+            n->ty = calias;
+            return n->ty;
+        }
         Binding* b = lookup(n->text);
         if (b != nullptr && b->type != nullptr) {
             bool type_bind = b->decl == nullptr || b->decl->kind == NodeKind::Struct ||
                              b->decl->kind == NodeKind::Enum || b->decl->kind == NodeKind::Union ||
                              b->decl->kind == NodeKind::GenericParam ||
                              b->decl->kind == NodeKind::Interface ||
+                             b->decl->kind == NodeKind::ExternType ||
+                             b->decl->kind == NodeKind::ExternStruct ||
+                             b->decl->kind == NodeKind::ExternUnion ||
                              b->type->kind == TypeKind::Allocator ||
                              b->type->kind == TypeKind::Param ||
                              b->type->kind == TypeKind::Interface;
@@ -1513,6 +1576,10 @@ struct Checker {
                 return expected;
             }
         }
+        if (expected->kind == TypeKind::CStr && got->kind == TypeKind::Str && n != nullptr &&
+            n->kind == NodeKind::Literal && n->op == TokenKind::StringLit) {
+            return expected;
+        }
         if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
             if (is_array(got) && is_span(expected)) {
                 mark_local(n);
@@ -1616,6 +1683,9 @@ struct Checker {
             return t_bool();
         }
         if (n->op == TokenKind::StringLit) {
+            if (expected != nullptr && expected->kind == TypeKind::CStr) {
+                return ty_cstr;
+            }
             return t_str();
         }
         if (n->op == TokenKind::CharLit) {
@@ -2148,6 +2218,9 @@ struct Checker {
             if (b->decl != nullptr && b->decl->kind == NodeKind::Enum && is_int_enum(b->type)) {
                 return check_checked_conv(n, b->type);
             }
+            if (b->decl != nullptr && b->decl->kind == NodeKind::ExternFunc) {
+                return check_extern_call(n, b->decl);
+            }
             if (b->decl != nullptr && b->decl->kind == NodeKind::Func) {
                 if (is_generic_decl(b->decl) || n->type != nullptr) {
                     return check_generic_call(n, b->decl, nullptr);
@@ -2648,6 +2721,148 @@ struct Checker {
         return result;
     }
 
+    bool is_cstr(Type* t) {
+        return t != nullptr && t->kind == TypeKind::CStr;
+    }
+
+    bool extern_arg_ok(Type* at, Type* pt, Node* arg) {
+        if (type_eq(at, pt) || can_widen(at, pt) || can_ptr_convert(at, pt, arg)) {
+            return true;
+        }
+        if (is_cstr(pt) && at != nullptr && at->kind == TypeKind::Str && arg != nullptr &&
+            arg->kind == NodeKind::Literal && arg->op == TokenKind::StringLit) {
+            return true;
+        }
+        return false;
+    }
+
+    Type* check_variadic_arg(Node* a) {
+        Type* t = check_expr(a->left, nullptr);
+        if (t != nullptr && t->kind == TypeKind::UntypedInt) {
+            t = coerce(a->left, t, ty_i32);
+            a->left->ty = t;
+            return t;
+        }
+        if (is_float(t) && t->kind == TypeKind::F32) {
+            a->left->ty = ty_f64;
+            return ty_f64;
+        }
+        if (t != nullptr &&
+            (t->kind == TypeKind::Bool || t->kind == TypeKind::Char || t->kind == TypeKind::I8 ||
+             t->kind == TypeKind::U8 || t->kind == TypeKind::I16 || t->kind == TypeKind::U16)) {
+            return ty_i32;
+        }
+        if (t != nullptr && t->kind == TypeKind::Str) {
+            if (a->left != nullptr && a->left->kind == NodeKind::Literal &&
+                a->left->op == TokenKind::StringLit) {
+                a->left->ty = ty_cstr;
+                return ty_cstr;
+            }
+            fail_n(a, "lucb.check.type", "a variadic argument cannot be `str`; use `cstr`");
+            return t_error();
+        }
+        if (is_span(t) || (t != nullptr && (t->kind == TypeKind::Struct || is_opt(t) ||
+                                            t->kind == TypeKind::Interface))) {
+            fail_n(a, "lucb.check.type", "this type cannot be a variadic argument");
+            return t_error();
+        }
+        return t;
+    }
+
+    bool is_c_repr(Type* t) {
+        if (t == nullptr) {
+            return true;
+        }
+        if (t->kind == TypeKind::Unit || t->kind == TypeKind::Never || t->kind == TypeKind::Void) {
+            return true;
+        }
+        if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Char ||
+            t->kind == TypeKind::CStr) {
+            return true;
+        }
+        if (is_ptr(t) || t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
+            is_int_enum(t)) {
+            return true;
+        }
+        return false;
+    }
+
+    void check_foreign_sig(Node* fn, bool exported) {
+        if (is_generic_decl(fn)) {
+            fail_n(fn, "lucb.check.unsupported", "a generic cannot be `extern` or `export`");
+            return;
+        }
+        if (exported && (fn->flags & FlagFallible) != 0) {
+            fail_n(fn, "lucb.check.unsupported", "a fallible `export` is not in this slice");
+        }
+        const char* where = exported ? "an `export` signature cannot use `str`; write `cstr`"
+                                     : "an `extern` signature cannot use `str`; write `cstr`";
+        for (Node* p = fn->right; p != nullptr; p = p->next) {
+            if (p->flags & FlagVariadic) {
+                continue;
+            }
+            if (p->flags & FlagOut) {
+                fail_n(p, "lucb.check.unsupported", "`out` parameters are not in this slice");
+            }
+            if (p->ty != nullptr && p->ty->kind == TypeKind::Str) {
+                fail_n(p, "lucb.check.type", where);
+            } else if (p->ty != nullptr && !is_c_repr(p->ty)) {
+                fail_n(p, "lucb.check.type", "this type is not C-representable");
+            }
+        }
+        if (fn->ty != nullptr && fn->ty->kind == TypeKind::Str) {
+            fail_n(fn, "lucb.check.type", where);
+        } else if (fn->ty != nullptr && !is_c_repr(fn->ty)) {
+            fail_n(fn, "lucb.check.type", "this type is not C-representable");
+        }
+    }
+
+    Type* check_extern_call(Node* n, Node* fn) {
+        n->resolved = fn;
+        int nparams = 0;
+        int nfixed = 0;
+        bool variadic = false;
+        for (Node* p = fn->right; p != nullptr; p = p->next) {
+            nparams++;
+            if (p->flags & FlagVariadic) {
+                variadic = true;
+            } else {
+                nfixed++;
+            }
+        }
+        int nargs = count_args(n->body);
+        if (variadic) {
+            if (nargs < nfixed) {
+                fail_n(n, "lucb.check.call", "wrong number of arguments");
+            }
+        } else if (nparams != nargs) {
+            fail_n(n, "lucb.check.call", "wrong number of arguments");
+        }
+        Node* p = fn->right;
+        Node* a = n->body;
+        int i = 0;
+        while (p != nullptr && a != nullptr && i < nfixed) {
+            Type* at = check_expr(a->left, p->ty);
+            if (!extern_arg_ok(at, p->ty, a->left)) {
+                fail_n(a, "lucb.check.type",
+                       "parameter `" + string(p->text) + "` has type " + type_name(p->ty));
+            }
+            a->resolved = p;
+            p = p->next;
+            a = a->next;
+            i++;
+        }
+        while (a != nullptr) {
+            check_variadic_arg(a);
+            a = a->next;
+        }
+        Type* result = fn->ty;
+        if (result == nullptr) {
+            result = t_unit();
+        }
+        return result;
+    }
+
     Type* check_method_call(Node* n) {
         Node* mem = n->left;
         Node* obj = mem->left;
@@ -2778,6 +2993,13 @@ struct Checker {
 
     Type* check_member(Node* n, bool as_call) {
         (void)as_call;
+        if (n->left != nullptr && n->left->kind == NodeKind::Name && n->left->text == "c") {
+            Type* t = c_alias(keep("c." + string(n->text)));
+            if (t != nullptr) {
+                n->left->ty = t;
+                return t;
+            }
+        }
         Type* ot = check_expr(n->left);
         if (is_ptr(ot) && ot->elem != nullptr) {
             ot = ot->elem;
@@ -3432,7 +3654,7 @@ struct Checker {
                 collect_type_decl(d, TypeKind::Union);
             } else if (d->kind == NodeKind::Interface) {
                 collect_type_decl(d, TypeKind::Interface);
-            } else if (d->kind == NodeKind::Func) {
+            } else if (d->kind == NodeKind::Func || d->kind == NodeKind::ExternFunc) {
                 if (is_core_name(d->text)) {
                     fail_n(d, "lucb.check.shadow", "this name belongs to the language");
                 }
@@ -3441,6 +3663,23 @@ struct Checker {
                     continue;
                 }
                 bind(d->text, t_unit(), false, d);
+            } else if (d->kind == NodeKind::ExternType) {
+                Type* t = nullptr;
+                if (d->type != nullptr) {
+                    t = resolve_type(d->type);
+                } else {
+                    t = make_type(TypeKind::Pointer, d->text);
+                    t->elem = ty_void;
+                    t->decl = d;
+                }
+                d->ty = t;
+                bind(d->text, t, false, d);
+            } else if (d->kind == NodeKind::ExternVar) {
+                bind(d->text, t_error(), true, d);
+            } else if (d->kind == NodeKind::ExternStruct) {
+                collect_type_decl(d, TypeKind::Struct);
+            } else if (d->kind == NodeKind::ExternUnion) {
+                collect_type_decl(d, TypeKind::Union);
             } else if (d->kind == NodeKind::Global) {
                 bind(d->text, t_error(), true, d);
             } else if (d->kind == NodeKind::Const) {
@@ -3454,7 +3693,8 @@ struct Checker {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union) &&
+            if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union ||
+                 d->kind == NodeKind::ExternStruct || d->kind == NodeKind::ExternUnion) &&
                 !is_generic_decl(d)) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Field) {
@@ -3483,6 +3723,13 @@ struct Checker {
                         }
                     }
                 }
+            } else if (d->kind == NodeKind::ExternVar) {
+                Type* t = d->type != nullptr ? resolve_type(d->type) : t_error();
+                d->ty = t;
+                Binding* b = lookup(d->text);
+                if (b != nullptr && b->decl == d) {
+                    b->type = t;
+                }
             } else if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
                 Type* t = d->type != nullptr ? resolve_type(d->type) : nullptr;
                 if (d->left != nullptr) {
@@ -3509,11 +3756,16 @@ struct Checker {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Func) {
+            if (d->kind == NodeKind::Func || d->kind == NodeKind::ExternFunc) {
                 resolve_sig(d);
                 Binding* b = lookup(d->text);
                 if (b != nullptr && b->decl == d) {
                     b->type = d->ty;
+                }
+                if (d->kind == NodeKind::ExternFunc) {
+                    check_foreign_sig(d, false);
+                } else if ((d->flags & FlagExport) != 0) {
+                    check_foreign_sig(d, true);
                 }
             } else if (d->kind == NodeKind::Interface) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
@@ -3531,6 +3783,9 @@ struct Checker {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
                         resolve_sig(m);
+                        if ((m->flags & FlagExport) != 0) {
+                            check_foreign_sig(m, true);
+                        }
                     }
                 }
                 if (g) {
@@ -3599,6 +3854,9 @@ struct Checker {
         }
         fn->ty = result;
         for (Node* p = fn->right; p != nullptr; p = p->next) {
+            if (p->flags & FlagVariadic) {
+                continue;
+            }
             p->ty = resolve_type(p->type);
         }
         if (generic) {
@@ -3735,6 +3993,31 @@ struct Checker {
                 check_test(d);
             } else if (d->kind == NodeKind::Assert) {
                 check_assert(d);
+            }
+        }
+        vector<string> export_syms;
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func && (d->flags & FlagExport) != 0) {
+                string sym = string(d->text);
+                for (size_t i = 0; i < export_syms.size(); i++) {
+                    if (export_syms[i] == sym) {
+                        fail_n(d, "lucb.check.shadow", "duplicate export symbol");
+                    }
+                }
+                export_syms.push_back(sym);
+            } else if (d->kind == NodeKind::Struct) {
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind != NodeKind::Func || (m->flags & FlagExport) == 0) {
+                        continue;
+                    }
+                    string sym = string(d->text) + "_" + string(m->text);
+                    for (size_t i = 0; i < export_syms.size(); i++) {
+                        if (export_syms[i] == sym) {
+                            fail_n(m, "lucb.check.shadow", "duplicate export symbol");
+                        }
+                    }
+                    export_syms.push_back(sym);
+                }
             }
         }
         for (size_t i = 0; i < pending_clones.size(); i++) {

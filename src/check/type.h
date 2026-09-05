@@ -88,6 +88,15 @@ int type_size(const Type* t);
 int type_align(const Type* t);
 
 bool is_ptr(const Type* t);
+inline bool needs_null_foreign(const Type* t) {
+    if (t == nullptr) {
+        return false;
+    }
+    if (is_ptr(t) && !t->is_nullable) {
+        return true;
+    }
+    return t->kind == TypeKind::CStr;
+}
 bool is_array(const Type* t);
 bool is_span(const Type* t);
 bool is_void_ptr(const Type* t);
