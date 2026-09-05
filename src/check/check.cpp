@@ -51,6 +51,17 @@ struct Checker {
     Type* ty_calloc = nullptr;
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
+    Node* current_module = nullptr;
+    bool checking_generic_template = false;
+    int inst_depth = 0;
+    struct Inst {
+        Node* generic = nullptr;
+        Node* clone = nullptr;
+        Type* type = nullptr;
+        vector<Type*> args;
+    };
+    vector<Inst> insts;
+    vector<Node*> pending_clones;
     vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
@@ -389,6 +400,514 @@ struct Checker {
         bind("memory", mt, false, mem);
     }
 
+    bool is_generic_decl(Node* n) {
+        return n != nullptr && n->left != nullptr && n->left->kind == NodeKind::GenericParam;
+    }
+
+    int count_generics(Node* n) {
+        int c = 0;
+        if (n == nullptr) {
+            return 0;
+        }
+        for (Node* g = n->left; g != nullptr; g = g->next) {
+            if (g->kind == NodeKind::GenericParam) {
+                c++;
+            }
+        }
+        return c;
+    }
+
+    string sanitize_ty(const string& s) {
+        string o;
+        for (size_t i = 0; i < s.size(); i++) {
+            char c = s[i];
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+                o += c;
+            } else {
+                o += '_';
+            }
+        }
+        return o;
+    }
+
+    string mangle_inst(string_view base, const vector<Type*>& args) {
+        string s(base);
+        for (size_t i = 0; i < args.size(); i++) {
+            s += "__";
+            s += sanitize_ty(type_name(args[i]));
+        }
+        return s;
+    }
+
+    int index_of_param(Node* generic, Type* p) {
+        int i = 0;
+        if (generic == nullptr || p == nullptr) {
+            return -1;
+        }
+        for (Node* g = generic->left; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            if (g->ty == p || g == p->decl) {
+                return i;
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    void apply_bounds(Node* g, Type* t) {
+        if (g == nullptr || t == nullptr || g->type == nullptr) {
+            return;
+        }
+        for (Node* b = g->type; b != nullptr; b = b->next) {
+            string_view name = b->text;
+            if (b->kind == NodeKind::Type && b->left != nullptr && name.empty()) {
+                name = b->left->text;
+            }
+            if (name == "Comparable") {
+                t->bounds |= BoundComparable;
+            } else if (name == "Equatable") {
+                t->bounds |= BoundEquatable;
+            } else if (!name.empty()) {
+                fail_n(b, "lucb.check.unsupported",
+                       "constraint `" + string(name) + "` is not in this slice");
+            }
+        }
+    }
+
+    void bind_generic_params(Node* gen) {
+        if (gen == nullptr) {
+            return;
+        }
+        for (Node* g = gen->left; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            if (g->ty == nullptr || g->ty->kind != TypeKind::Param) {
+                Type* t = make_type(TypeKind::Param, g->text);
+                t->decl = g;
+                t->name = g->text;
+                apply_bounds(g, t);
+                g->ty = t;
+            }
+            bind(g->text, g->ty, false, g);
+        }
+    }
+
+    Node* clone_chain(Node* n) {
+        Node* head = nullptr;
+        for (; n != nullptr; n = n->next) {
+            append_node(&head, clone_node(n));
+        }
+        return head;
+    }
+
+    Node* clone_node(Node* n) {
+        if (n == nullptr) {
+            return nullptr;
+        }
+        Node* c = arena->make<Node>();
+        c->kind = n->kind;
+        c->span = n->span;
+        c->text = n->text;
+        c->op = n->op;
+        c->flags = n->flags;
+        c->left = clone_chain(n->left);
+        c->right = clone_chain(n->right);
+        c->type = clone_chain(n->type);
+        c->body = clone_chain(n->body);
+        return c;
+    }
+
+    bool args_eq(const vector<Type*>& a, const vector<Type*>& b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < a.size(); i++) {
+            if (a[i] != b[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool is_identity_args(Node* generic, const vector<Type*>& args) {
+        int i = 0;
+        for (Node* g = generic != nullptr ? generic->left : nullptr; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            if (i >= static_cast<int>(args.size()) || args[static_cast<size_t>(i)] != g->ty) {
+                return false;
+            }
+            i++;
+        }
+        return i == static_cast<int>(args.size());
+    }
+
+    Inst* find_inst(Node* generic, const vector<Type*>& args) {
+        for (size_t i = 0; i < insts.size(); i++) {
+            if (insts[i].generic == generic && args_eq(insts[i].args, args)) {
+                return &insts[i];
+            }
+        }
+        return nullptr;
+    }
+
+    bool comparable_type(Type* t) {
+        if (t == nullptr) {
+            return false;
+        }
+        if (is_int(t) || is_float(t) || t->kind == TypeKind::Char || t->kind == TypeKind::Str) {
+            return true;
+        }
+        if (t->kind == TypeKind::Param && (t->bounds & BoundComparable) != 0) {
+            return true;
+        }
+        if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+            return struct_member(t->decl, "compare", NodeKind::Func) != nullptr;
+        }
+        return false;
+    }
+
+    bool satisfies_bounds(Type* t, uint32_t bounds, Node* at) {
+        if (bounds == 0) {
+            return true;
+        }
+        if ((bounds & BoundComparable) != 0 && !comparable_type(t)) {
+            fail_n(at, "lucb.check.type",
+                   "`" + type_name(t) + "` does not satisfy `Comparable`");
+            return false;
+        }
+        if ((bounds & BoundEquatable) != 0) {
+            (void)t;
+        }
+        return true;
+    }
+
+    void unify_into(Type* pat, Type* got, Node* generic, vector<Type*>& inf, Node* at) {
+        if (pat == nullptr || got == nullptr || got->kind == TypeKind::Error ||
+            pat->kind == TypeKind::Error) {
+            return;
+        }
+        if (pat->kind == TypeKind::Param) {
+            int i = index_of_param(generic, pat);
+            if (i < 0 || i >= static_cast<int>(inf.size())) {
+                return;
+            }
+            if (got->kind == TypeKind::UntypedInt) {
+                if (inf[static_cast<size_t>(i)] == nullptr) {
+                    inf[static_cast<size_t>(i)] = ty_i64;
+                }
+                return;
+            }
+            if (inf[static_cast<size_t>(i)] == nullptr) {
+                inf[static_cast<size_t>(i)] = got;
+            } else if (!type_eq(inf[static_cast<size_t>(i)], got) &&
+                       !can_widen(got, inf[static_cast<size_t>(i)])) {
+                if (can_widen(inf[static_cast<size_t>(i)], got)) {
+                    inf[static_cast<size_t>(i)] = got;
+                } else {
+                    fail_n(at, "lucb.check.type",
+                           "type parameter `" + string(pat->name) + "` inferred as both `" +
+                               type_name(inf[static_cast<size_t>(i)]) + "` and `" + type_name(got) +
+                               "`");
+                }
+            }
+            return;
+        }
+        if (is_ptr(pat) && is_ptr(got)) {
+            unify_into(pat->elem, got->elem, generic, inf, at);
+            return;
+        }
+        if (is_span(pat) && (is_span(got) || is_array(got))) {
+            unify_into(pat->elem, got->elem, generic, inf, at);
+            return;
+        }
+        if (is_array(pat) && is_array(got) && pat->length == got->length) {
+            unify_into(pat->elem, got->elem, generic, inf, at);
+            return;
+        }
+        if (is_opt(pat) && is_opt(got)) {
+            unify_into(pat->elem, got->elem, generic, inf, at);
+            return;
+        }
+        if (is_opt(pat)) {
+            unify_into(pat->elem, got, generic, inf, at);
+            return;
+        }
+        if (is_fail(pat) && is_fail(got)) {
+            unify_into(pat->elem, got->elem, generic, inf, at);
+            return;
+        }
+        if (pat->kind == TypeKind::Struct && got->kind == TypeKind::Struct &&
+            pat->decl == got->decl && pat->ntargs == got->ntargs && pat->args != nullptr &&
+            got->args != nullptr) {
+            for (int i = 0; i < pat->ntargs; i++) {
+                unify_into(pat->args[i], got->args[i], generic, inf, at);
+            }
+        }
+    }
+
+    bool finish_inferred(Node* generic, vector<Type*>& inf, Node* at) {
+        int i = 0;
+        for (Node* g = generic != nullptr ? generic->left : nullptr; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            if (i >= static_cast<int>(inf.size()) || inf[static_cast<size_t>(i)] == nullptr) {
+                fail_n(at, "lucb.check.type",
+                       "cannot infer type parameter `" + string(g->text) +
+                           "`; write it at the call");
+                return false;
+            }
+            if (inf[static_cast<size_t>(i)]->kind == TypeKind::UntypedInt) {
+                inf[static_cast<size_t>(i)] = ty_i64;
+            }
+            if (!satisfies_bounds(inf[static_cast<size_t>(i)],
+                                  g->ty != nullptr ? g->ty->bounds : 0, at)) {
+                return false;
+            }
+            i++;
+        }
+        return true;
+    }
+
+    Type* subst_type(Type* t, Node* generic, const vector<Type*>& args) {
+        if (t == nullptr) {
+            return nullptr;
+        }
+        if (t->kind == TypeKind::Param) {
+            int i = index_of_param(generic, t);
+            if (i >= 0 && i < static_cast<int>(args.size())) {
+                return args[static_cast<size_t>(i)];
+            }
+            return t;
+        }
+        if (t->kind == TypeKind::Pointer) {
+            return intern_ptr(subst_type(t->elem, generic, args), t->is_const, t->is_volatile,
+                              t->is_nullable);
+        }
+        if (t->kind == TypeKind::Span) {
+            return intern_sp(subst_type(t->elem, generic, args), t->is_const);
+        }
+        if (t->kind == TypeKind::Array) {
+            return intern_arr(subst_type(t->elem, generic, args), t->length);
+        }
+        if (t->kind == TypeKind::Optional) {
+            return intern_opt(subst_type(t->elem, generic, args));
+        }
+        if (t->kind == TypeKind::Fallible) {
+            return intern_fail(subst_type(t->elem, generic, args));
+        }
+        if (t->kind == TypeKind::Struct && t->ntargs > 0 && t->args != nullptr &&
+            t->decl != nullptr) {
+            vector<Type*> na;
+            for (int i = 0; i < t->ntargs; i++) {
+                na.push_back(subst_type(t->args[i], generic, args));
+            }
+            return instantiate_struct(t->decl, na, t->decl);
+        }
+        return t;
+    }
+
+    Node* instantiate_func(Node* fn, const vector<Type*>& args, Node* owner) {
+        if (fn == nullptr) {
+            return nullptr;
+        }
+        if (is_identity_args(fn, args)) {
+            return fn;
+        }
+        Inst* existing = find_inst(fn, args);
+        if (existing != nullptr) {
+            return existing->clone;
+        }
+        if (inst_depth > 32) {
+            fail_n(fn, "lucb.check.type", "generic instantiation is too deep");
+            return fn;
+        }
+        Node* clone = clone_node(fn);
+        clone->left = nullptr;
+        clone->text = keep(mangle_inst(fn->text, args));
+        Inst in;
+        in.generic = fn;
+        in.clone = clone;
+        in.args = args;
+        insts.push_back(in);
+        pending_clones.push_back(clone);
+        inst_depth++;
+        push_scope();
+        int i = 0;
+        for (Node* g = fn->left; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            Type* a = i < static_cast<int>(args.size()) ? args[static_cast<size_t>(i)] : t_error();
+            bind(g->text, a, false, nullptr);
+            i++;
+        }
+        check_func(clone, owner);
+        pop_scope();
+        inst_depth--;
+        return clone;
+    }
+
+    Type* instantiate_struct(Node* st, const vector<Type*>& args, Node* at) {
+        if (st == nullptr) {
+            return t_error();
+        }
+        if (is_identity_args(st, args)) {
+            return st->ty != nullptr ? st->ty : t_error();
+        }
+        Inst* existing = find_inst(st, args);
+        if (existing != nullptr && existing->type != nullptr) {
+            return existing->type;
+        }
+        if (inst_depth > 32) {
+            fail_n(at != nullptr ? at : st, "lucb.check.type", "generic instantiation is too deep");
+            return t_error();
+        }
+        Node* clone = clone_node(st);
+        clone->left = nullptr;
+        clone->text = keep(mangle_inst(st->text, args));
+        Type* t = make_type(TypeKind::Struct, clone->text);
+        t->decl = clone;
+        t->packed = (clone->flags & FlagPacked) != 0;
+        t->ntargs = static_cast<int>(args.size());
+        if (!args.empty()) {
+            t->args = static_cast<Type**>(arena->alloc(sizeof(Type*) * args.size(), alignof(Type*)));
+            for (size_t i = 0; i < args.size(); i++) {
+                t->args[i] = args[i];
+            }
+        }
+        clone->ty = t;
+        interned.push_back(t);
+        Inst in;
+        in.generic = st;
+        in.clone = clone;
+        in.type = t;
+        in.args = args;
+        insts.push_back(in);
+        pending_clones.push_back(clone);
+        inst_depth++;
+        push_scope();
+        int i = 0;
+        for (Node* g = st->left; g != nullptr; g = g->next) {
+            if (g->kind != NodeKind::GenericParam) {
+                continue;
+            }
+            Type* a = i < static_cast<int>(args.size()) ? args[static_cast<size_t>(i)] : t_error();
+            bind(g->text, a, false, nullptr);
+            i++;
+        }
+        for (Node* m = clone->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field) {
+                m->ty = resolve_type(m->type);
+            }
+        }
+        for (Node* m = clone->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Func) {
+                resolve_sig(m);
+                check_func(m, clone);
+            }
+        }
+        pop_scope();
+        inst_depth--;
+        return t;
+    }
+
+    Type* read_explicit_targs(Node* n, Node* generic, vector<Type*>& inf) {
+        if (n == nullptr || n->type == nullptr) {
+            return nullptr;
+        }
+        int i = 0;
+        int ng = count_generics(generic);
+        for (Node* a = n->type; a != nullptr; a = a->next) {
+            if (i >= ng) {
+                fail_n(a, "lucb.check.type", "too many type arguments");
+                break;
+            }
+            inf[static_cast<size_t>(i)] = resolve_type(a);
+            i++;
+        }
+        if (i != ng) {
+            fail_n(n, "lucb.check.type", "wrong number of type arguments");
+        }
+        return nullptr;
+    }
+
+    Type* check_generic_call(Node* n, Node* fn, Node* recv) {
+        int ng = count_generics(fn);
+        vector<Type*> inf(static_cast<size_t>(ng), nullptr);
+        if (n->type != nullptr) {
+            read_explicit_targs(n, fn, inf);
+        } else {
+            Node* p = fn->right;
+            Node* a = n->body;
+            while (p != nullptr && a != nullptr) {
+                Type* at = check_expr(a->left, nullptr);
+                unify_into(p->ty, at, fn, inf, a);
+                p = p->next;
+                a = a->next;
+            }
+        }
+        if (!finish_inferred(fn, inf, n)) {
+            return t_error();
+        }
+        Type* result = subst_type(fn->ty, fn, inf);
+        if ((fn->flags & FlagFallible) != 0) {
+            result = intern_fail(result);
+        }
+        if (checking_generic_template) {
+            n->resolved = fn;
+            Node* p = fn->right;
+            Node* a = n->body;
+            while (p != nullptr && a != nullptr) {
+                check_expr(a->left, subst_type(p->ty, fn, inf));
+                p = p->next;
+                a = a->next;
+            }
+            return result;
+        }
+        Node* inst = instantiate_func(fn, inf, recv);
+        return check_func_call(n, inst, recv);
+    }
+
+    Type* check_generic_ctor(Node* n, Node* st) {
+        int ng = count_generics(st);
+        vector<Type*> inf(static_cast<size_t>(ng), nullptr);
+        if (n->type != nullptr) {
+            read_explicit_targs(n, st, inf);
+        } else {
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                if (a->left == nullptr || a->text.empty()) {
+                    continue;
+                }
+                Node* field = struct_member(st, a->text, NodeKind::Field);
+                if (field == nullptr) {
+                    fail_n(a, "lucb.check.name", "no field `" + string(a->text) + "`");
+                    continue;
+                }
+                Type* at = check_expr(a->left, nullptr);
+                unify_into(field->ty, at, st, inf, a);
+            }
+        }
+        if (!finish_inferred(st, inf, n)) {
+            return t_error();
+        }
+        if (checking_generic_template) {
+            n->resolved = st;
+            return subst_type(st->ty, st, inf);
+        }
+        Type* ty = instantiate_struct(st, inf, n);
+        n->resolved = ty != nullptr ? ty->decl : st;
+        if (ty != nullptr && ty->decl != nullptr) {
+            check_ctor(n, ty->decl);
+        }
+        return ty;
+    }
+
     void mark_local(Node* n) {
         if (n != nullptr) {
             n->flags |= FlagLocal;
@@ -602,12 +1121,39 @@ struct Checker {
             return n->ty;
         }
         Binding* b = lookup(n->text);
-        if (b != nullptr && b->type != nullptr &&
-            (b->type->kind == TypeKind::Struct || b->type->kind == TypeKind::Enum ||
-             b->type->kind == TypeKind::Union || b->type->kind == TypeKind::Allocator)) {
-            n->ty = b->type;
-            n->resolved = b->decl;
-            return n->ty;
+        if (b != nullptr && b->type != nullptr) {
+            bool type_bind = b->decl == nullptr || b->decl->kind == NodeKind::Struct ||
+                             b->decl->kind == NodeKind::Enum || b->decl->kind == NodeKind::Union ||
+                             b->decl->kind == NodeKind::GenericParam ||
+                             b->type->kind == TypeKind::Allocator ||
+                             b->type->kind == TypeKind::Param;
+            if (type_bind) {
+                Type* t = b->type;
+                if (n->body != nullptr) {
+                    if (b->decl == nullptr || !is_generic_decl(b->decl)) {
+                        fail_n(n, "lucb.check.type",
+                               "`" + string(n->text) + "` does not take type arguments");
+                    } else {
+                        vector<Type*> targs;
+                        for (Node* a = n->body; a != nullptr; a = a->next) {
+                            targs.push_back(resolve_type(a));
+                        }
+                        if (static_cast<int>(targs.size()) != count_generics(b->decl)) {
+                            fail_n(n, "lucb.check.type", "wrong number of type arguments");
+                            t = t_error();
+                        } else {
+                            t = instantiate_struct(b->decl, targs, n);
+                        }
+                    }
+                } else if (b->decl != nullptr && is_generic_decl(b->decl) &&
+                           !checking_generic_template) {
+                    fail_n(n, "lucb.check.type",
+                           "`" + string(n->text) + "` needs type arguments");
+                }
+                n->ty = t;
+                n->resolved = b->decl;
+                return n->ty;
+            }
         }
         fail_n(n, "lucb.check.type", "unknown type `" + string(n->text) + "`");
         n->ty = t_error();
@@ -1456,12 +2002,18 @@ struct Checker {
             callee->resolved = b->decl;
             n->resolved = b->decl;
             if (b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
+                if (is_generic_decl(b->decl) || n->type != nullptr) {
+                    return check_generic_ctor(n, b->decl);
+                }
                 return check_ctor(n, b->decl);
             }
             if (b->decl != nullptr && b->decl->kind == NodeKind::Enum && is_int_enum(b->type)) {
                 return check_checked_conv(n, b->type);
             }
             if (b->decl != nullptr && b->decl->kind == NodeKind::Func) {
+                if (is_generic_decl(b->decl) || n->type != nullptr) {
+                    return check_generic_call(n, b->decl, nullptr);
+                }
                 return check_func_call(n, b->decl, nullptr);
             }
             fail_n(n, "lucb.check.type", "`" + string(callee->text) + "` is not callable");
@@ -1933,6 +2485,9 @@ struct Checker {
                     return check_checked_conv(n, d->ty);
                 }
                 if (d->kind == NodeKind::Func) {
+                    if (is_generic_decl(d) || n->type != nullptr) {
+                        return check_generic_call(n, d, nullptr);
+                    }
                     return check_func_call(n, d, nullptr);
                 }
                 fail_n(n, "lucb.check.type", "`" + string(mem->text) + "` is not callable");
@@ -1966,6 +2521,10 @@ struct Checker {
                 mem->resolved = method;
                 obj->resolved = b->decl;
                 obj->ty = b->type;
+                if (is_generic_decl(b->decl) || n->type != nullptr) {
+                    fail_n(n, "lucb.check.type", "write type arguments on the constructor");
+                    return t_error();
+                }
                 return check_func_call(n, method, nullptr);
             }
         }
@@ -1973,6 +2532,19 @@ struct Checker {
         Type* recv = ot;
         if (is_ptr(ot) && ot->elem != nullptr) {
             recv = ot->elem;
+        }
+        if (mem->text == "compare" && comparable_type(recv)) {
+            if (count_args(n->body) != 1) {
+                fail_n(n, "lucb.check.call", "`compare` takes one argument");
+                return t_i64();
+            }
+            Type* at = check_expr(n->body->left, recv);
+            if (!type_eq(at, recv) && !can_widen(at, recv)) {
+                fail_n(n, "lucb.check.type", "`compare` needs the same type");
+            }
+            n->resolved = nullptr;
+            mem->resolved = nullptr;
+            return t_i64();
         }
         if (recv == nullptr ||
             (recv->kind != TypeKind::Struct && recv->kind != TypeKind::Union) ||
@@ -2454,8 +3026,12 @@ struct Checker {
     }
 
     void check_func(Node* fn, Node* owner) {
-        if (fn->left != nullptr) {
-            fail_n(fn, "lucb.check.unsupported", "generics are not in the scalar core yet");
+        bool generic = is_generic_decl(fn);
+        bool saved_generic = checking_generic_template;
+        if (generic) {
+            checking_generic_template = true;
+            push_scope();
+            bind_generic_params(fn);
         }
         Type* result = t_unit();
         if (fn->type != nullptr) {
@@ -2489,9 +3065,25 @@ struct Checker {
         current_struct = saved_st;
         return_type = saved_ret;
         fallible_fn = saved_fail;
+        if (generic) {
+            pop_scope();
+            checking_generic_template = saved_generic;
+        }
     }
 
     void check_struct(Node* st) {
+        bool generic = is_generic_decl(st);
+        bool saved_generic = checking_generic_template;
+        if (generic) {
+            checking_generic_template = true;
+            push_scope();
+            bind_generic_params(st);
+            for (Node* m = st->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::Field) {
+                    m->ty = resolve_type(m->type);
+                }
+            }
+        }
         for (Node* m = st->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
                 if (struct_member(st, m->text, NodeKind::Func) != nullptr) {
@@ -2510,6 +3102,10 @@ struct Checker {
             } else if (m->kind != NodeKind::Field) {
                 fail_n(m, "lucb.check.unsupported", "this member is not in the scalar core yet");
             }
+        }
+        if (generic) {
+            pop_scope();
+            checking_generic_template = saved_generic;
         }
     }
 
@@ -2559,7 +3155,8 @@ struct Checker {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Struct || d->kind == NodeKind::Union) {
+            if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union) &&
+                !is_generic_decl(d)) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Field) {
                         m->ty = resolve_type(m->type);
@@ -2621,10 +3218,18 @@ struct Checker {
                 }
             } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
                        d->kind == NodeKind::Union) {
+                bool g = is_generic_decl(d);
+                if (g) {
+                    push_scope();
+                    bind_generic_params(d);
+                }
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
                         resolve_sig(m);
                     }
+                }
+                if (g) {
+                    pop_scope();
                 }
             }
         }
@@ -2674,6 +3279,11 @@ struct Checker {
     }
 
     void resolve_sig(Node* fn) {
+        bool generic = is_generic_decl(fn);
+        if (generic) {
+            push_scope();
+            bind_generic_params(fn);
+        }
         Type* result = t_unit();
         if (fn->type != nullptr) {
             result = resolve_type(fn->type);
@@ -2685,6 +3295,9 @@ struct Checker {
         fn->ty = result;
         for (Node* p = fn->right; p != nullptr; p = p->next) {
             p->ty = resolve_type(p->type);
+        }
+        if (generic) {
+            pop_scope();
         }
     }
 
@@ -2783,6 +3396,7 @@ struct Checker {
     }
 
     void check_module(Node* mod) {
+        current_module = mod;
         push_scope();
         bind_memory();
         bind_imports(mod);
@@ -2797,7 +3411,12 @@ struct Checker {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Func) {
+            if (d->kind == NodeKind::Func && is_generic_decl(d)) {
+                check_func(d, nullptr);
+            }
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func && !is_generic_decl(d)) {
                 check_func(d, nullptr);
                 if (d->text == "main") {
                     check_main(d);
@@ -2808,6 +3427,10 @@ struct Checker {
                 check_assert(d);
             }
         }
+        for (size_t i = 0; i < pending_clones.size(); i++) {
+            append_node(&mod->body, pending_clones[i]);
+        }
+        pending_clones.clear();
         check_unused_imports(mod);
         pop_scope();
     }

@@ -1826,6 +1826,29 @@ struct Interp {
                 return call_func(n->resolved, nullptr, n->body);
             }
             Node* method = callee->resolved;
+            if (callee->text == "compare" && (method == nullptr || method->kind != NodeKind::Func)) {
+                Value L = eval(callee->left);
+                Value R = eval(n->body != nullptr ? n->body->left : nullptr);
+                if (trapped) {
+                    return v_unit();
+                }
+                int64_t cmp = 0;
+                Type* lt = callee->left != nullptr ? callee->left->ty : L.type;
+                if (is_float(lt) || L.kind == TypeKind::F32 || L.kind == TypeKind::F64) {
+                    cmp = L.f < R.f ? -1 : L.f > R.f ? 1 : 0;
+                } else if (L.kind == TypeKind::Str || (lt != nullptr && lt->kind == TypeKind::Str)) {
+                    string a = decode_string(L.str);
+                    string b = decode_string(R.str);
+                    cmp = a < b ? -1 : a > b ? 1 : 0;
+                } else {
+                    int64_t lv = as_s(L, lt);
+                    int64_t rv = as_s(R, n->body != nullptr && n->body->left != nullptr
+                                             ? n->body->left->ty
+                                             : R.type);
+                    cmp = lv < rv ? -1 : lv > rv ? 1 : 0;
+                }
+                return v_i64(cmp);
+            }
             if (method == nullptr || method->kind != NodeKind::Func) {
                 fail("unknown method");
                 return v_unit();

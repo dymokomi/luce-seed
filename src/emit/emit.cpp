@@ -478,7 +478,8 @@ struct Emitter {
                 char nbuf[32];
                 snprintf(nbuf, sizeof(nbuf), "%lluULL",
                          static_cast<unsigned long long>(n->resolved->ty->length));
-                return "((lb_span){" + nm + ".d, " + nbuf + "})";
+                string sty = c_type(n->ty);
+                return "((" + sty + "){" + nm + ".d, " + nbuf + "})";
             }
             return ident("lb_", n->text);
         case NodeKind::Self:
@@ -902,7 +903,11 @@ struct Emitter {
                    ")])";
         }
         if (is_span(bt) || (bt != nullptr && bt->kind == TypeKind::Str)) {
-            string elem = n->ty != nullptr ? c_type(n->ty) : "uint8_t";
+            Type* et = is_span(bt) ? bt->elem : n->ty;
+            if (bt != nullptr && bt->kind == TypeKind::Str) {
+                et = nullptr;
+            }
+            string elem = et != nullptr ? c_type(et) : "uint8_t";
             return "(((" + elem + "*)" + b + ".data)[(lb_check_index((uint64_t)(" + i + "), " + b +
                    ".length), " + i + ")])";
         }
@@ -1083,6 +1088,11 @@ struct Emitter {
             Node* method = callee->resolved;
             Node* obj = callee->left;
             Type* ot = obj != nullptr ? obj->ty : nullptr;
+            if (callee->text == "compare" && method == nullptr) {
+                string L = emit_expr(obj);
+                string R = emit_expr(n->body != nullptr ? n->body->left : nullptr);
+                return "((" + L + " < " + R + ") ? -1LL : ((" + L + " > " + R + ") ? 1LL : 0LL))";
+            }
             Node* owner = ot != nullptr ? ot->decl : nullptr;
             string name = func_ident(method, owner);
             string args = emit_args(n->body);
@@ -2053,7 +2063,7 @@ struct Emitter {
     }
 
     void note_type(Type* t) {
-        if (t == nullptr) {
+        if (t == nullptr || t->kind == TypeKind::Param) {
             return;
         }
         if (t->kind == TypeKind::Array) {
@@ -2068,12 +2078,16 @@ struct Emitter {
         }
         if (is_opt(t)) {
             note_type(t->elem);
-            note_opt(t);
+            if (t->elem != nullptr && t->elem->kind != TypeKind::Param) {
+                note_opt(t);
+            }
             return;
         }
         if (is_fail(t)) {
             note_type(t->elem);
-            note_fail(t->elem);
+            if (t->elem != nullptr && t->elem->kind != TypeKind::Param) {
+                note_fail(t->elem);
+            }
             return;
         }
         if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span) {
@@ -2155,6 +2169,9 @@ struct Emitter {
             return;
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Struct) {
                 emit_struct(d);
             } else if (d->kind == NodeKind::Union) {
@@ -2175,6 +2192,9 @@ struct Emitter {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Func) {
                 emit_sig(d, nullptr, false);
             } else if (d->kind == NodeKind::Struct) {
@@ -2194,6 +2214,9 @@ struct Emitter {
             return;
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Struct) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
@@ -2203,6 +2226,9 @@ struct Emitter {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Func) {
                 emit_sig(d, nullptr, true);
             } else if (d->kind == NodeKind::Test) {

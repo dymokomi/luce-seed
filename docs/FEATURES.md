@@ -29,7 +29,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
 | 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
-| 13–14 | Generics/interfaces as syntax | partial | `parse_interface` |
+| 13–14 | Generics/interfaces as syntax | partial | `parse_generic_func`, `parse_generic_struct`, `parse_interface` |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | partial | `parse_extern_func` |
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
@@ -70,4 +70,6 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M11–M14 |
+| 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer` |
+| 13.1 | Constraints, declaration-time checking | partial | `agree_generic_comparable`, `check_generic_plus_rejected`; only `Comparable`/`Equatable`; no user interfaces |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M12–M14 |

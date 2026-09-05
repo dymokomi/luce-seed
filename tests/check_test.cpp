@@ -207,6 +207,29 @@ TEST(check_new_zeroable) {
                     "lucb.check.type"));
 }
 
+TEST(check_generic_id_ok) {
+    CHECK(check_ok("func id[T](x: T) -> T:\n"
+                   "    return x\n"
+                   "pub func answer() -> i64:\n"
+                   "    return id(40)\n"));
+}
+
+TEST(check_generic_plus_rejected) {
+    CHECK(check_has("func add[T](a: T, b: T) -> T:\n"
+                    "    return a + b\n"
+                    "pub func answer() -> i64:\n"
+                    "    return add(1, 2)\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_generic_needs_targ) {
+    CHECK(check_has("func decode[T]() -> i64:\n"
+                    "    return 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    return decode()\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_new_ok) {
     CHECK(check_ok("pub func answer() -> i64!:\n"
                    "    let p = try new i64\n"

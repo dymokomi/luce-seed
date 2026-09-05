@@ -460,6 +460,50 @@ TEST(agree_thread_local) {
                  "    return n\n"));
 }
 
+TEST(agree_generic_id) {
+    CHECK(agrees("func id[T](x: T) -> T:\n"
+                 "    return x\n"
+                 "pub func answer() -> i64:\n"
+                 "    return id(40)\n"));
+}
+
+TEST(agree_generic_first) {
+    CHECK(agrees("func first[T](values: const T[]) -> T?:\n"
+                 "    if values.length == 0:\n"
+                 "        return none\n"
+                 "    return values[0]\n"
+                 "pub func answer() -> i64:\n"
+                 "    let xs: i64[3] = [10, 20, 30]\n"
+                 "    return first(xs) else 0\n"));
+}
+
+TEST(agree_generic_pair) {
+    CHECK(agrees("struct Pair[A, B]:\n"
+                 "    var first: A\n"
+                 "    var second: B\n"
+                 "pub func answer() -> i64:\n"
+                 "    let p = Pair[i64, i64](first = 3, second = 4)\n"
+                 "    return p.first + p.second\n"));
+}
+
+TEST(agree_generic_pair_infer) {
+    CHECK(agrees("struct Pair[A, B]:\n"
+                 "    var first: A\n"
+                 "    var second: B\n"
+                 "pub func answer() -> i64:\n"
+                 "    let p = Pair(first = 3, second = 7)\n"
+                 "    return p.first + p.second\n"));
+}
+
+TEST(agree_generic_comparable) {
+    CHECK(agrees("func largest[T: Comparable](left: T, right: T) -> T:\n"
+                 "    if left.compare(right) >= 0:\n"
+                 "        return left\n"
+                 "    return right\n"
+                 "pub func answer() -> i64:\n"
+                 "    return largest(3, 9)\n"));
+}
+
 TEST(agree_new_i64) {
     CHECK(agrees("pub func answer() -> i64!:\n"
                  "    let p = try new i64\n"

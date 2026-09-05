@@ -13,6 +13,15 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M11 — Generics
+
+Generic functions and structs with declaration-time checking of an
+opaque type parameter. Calls infer type arguments or take them in
+`name[T](...)`. Instantiations are monomorphised. `T: Comparable` is
+the one constraint in this slice (`compare` on integers, floats, `char`,
+`str`). User interfaces wait for M12. Evidence: `tests/agree_test.cpp`,
+`tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M10 — Allocation and `memory`
 
 `new` / `alloc` / `free` / `with` / `in`. Builtin `Allocator` view,

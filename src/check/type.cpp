@@ -130,6 +130,8 @@ string type_name(const Type* t) {
         return "cstr";
     case TypeKind::Allocator:
         return "Allocator";
+    case TypeKind::Param:
+        return t->name.empty() ? "<param>" : string(t->name);
     }
     return "<unknown>";
 }
@@ -644,7 +646,8 @@ bool is_zeroable(const Type* t) {
     if (is_array(t)) {
         return is_zeroable(t->elem);
     }
-    if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator) {
+    if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator ||
+        t->kind == TypeKind::Param) {
         return true;
     }
     if (is_int_enum(t) && t->decl != nullptr) {

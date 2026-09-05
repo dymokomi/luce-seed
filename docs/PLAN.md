@@ -83,6 +83,7 @@ module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
 ## M11 — Generics (monomorphise)
 
 Functions and structs. Constraints. Declaration-time checking.
+**Landed.**
 
 ## M12 — Interfaces, `fmt`, `Display`, `Writer`
 

@@ -501,6 +501,15 @@ TEST(eval_enum_checked_conv_traps) {
     CHECK(r.trapped);
 }
 
+TEST(eval_generic_id) {
+    EvalResult r = run("func id[T](x: T) -> T:\n"
+                       "    return x\n"
+                       "pub func answer() -> i64:\n"
+                       "    return id(40)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40);
+}
+
 TEST(eval_new_i64) {
     EvalResult r = run("pub func answer() -> i64!:\n"
                        "    let p = try new i64\n"

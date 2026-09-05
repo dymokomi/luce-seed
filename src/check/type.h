@@ -39,6 +39,7 @@ enum class TypeKind : uint8_t {
     Module,
     CStr,
     Allocator,
+    Param,
 };
 
 struct Type {
@@ -52,6 +53,14 @@ struct Type {
     bool is_nullable = false; // T*?
     bool packed = false;
     int align_to = 0; // 0 = natural
+    Type** args = nullptr;
+    int ntargs = 0;
+    uint32_t bounds = 0;
+};
+
+enum {
+    BoundEquatable = 1u,
+    BoundComparable = 2u,
 };
 
 inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }

@@ -227,6 +227,24 @@ TEST(parse_labeled_loop) {
     CHECK(p.dump().find("(break \"rows\")") != std::string::npos);
 }
 
+TEST(parse_generic_func) {
+    Parsed p("func first[T](values: const T[]) -> T?:\n"
+             "    return values[0]\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(generics") != std::string::npos);
+    CHECK(p.dump().find("(generic \"T\")") != std::string::npos);
+}
+
+TEST(parse_generic_struct) {
+    Parsed p("struct Pair[A, B]:\n"
+             "    var first: A\n"
+             "    var second: B\n"
+             "func f() -> i64:\n"
+             "    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(generics") != std::string::npos);
+}
+
 TEST(parse_new_alloc) {
     Parsed p("func f() -> i64:\n"
              "    let n = try new Node(value = 1)\n"
