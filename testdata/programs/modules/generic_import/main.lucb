@@ -1,0 +1,8 @@
+import l
+pub func answer() -> i64!:
+    var backing: u8[4096]
+    var arena = FixedBuffer.over(backing)
+    with arena:
+        var xs = try l.List[i64].create(4)
+        try xs.push(40)
+        return xs.items[0]

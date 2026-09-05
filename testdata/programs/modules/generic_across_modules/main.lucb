@@ -1,0 +1,28 @@
+import list
+
+struct Bag:
+    var items: list.List[i64]
+    var tag: i64
+
+    static func create() -> Bag!:
+        return Bag(items = try list.List[i64].create(4), tag = 1)
+
+    mutating func add(x: i64) -> !:
+        try self.items.push(x)
+
+    func total() -> i64:
+        var t: i64 = 0
+        for x in self.items.span():
+            t += x
+        return t
+
+pub func answer() -> i64!:
+    var backing: u8[4096]
+    var arena = FixedBuffer.over(backing)
+    with arena:
+        var local = try list.List[i64].create(2)
+        try local.push(10)
+        var bag = try Bag.create()
+        try bag.add(12)
+        try bag.add(18)
+        return bag.total() + local.get(0)

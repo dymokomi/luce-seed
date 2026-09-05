@@ -256,6 +256,9 @@ auto Parser::parse_if() -> Node* {
         Token e = take();
         Node* elif = make(NodeKind::If, e.span);
         elif->left = parse_condition();
+        if (elif->left != nullptr && elif->left->kind == NodeKind::Let) {
+            elif->flags |= FlagIfLet; // `elif let x = ...:`
+        }
         expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
         elif->body = parse_suite();
         tail->right = elif;

@@ -886,8 +886,17 @@ auto Emitter::emit_if(Node* n) -> void {
             pad();
             out += "else ";
             if (n->right->kind == NodeKind::If) {
-                out += '\n';
+                // `elif let` declares a temporary, which needs its own block.
+                bool braces = (n->right->flags & FlagIfLet) != 0;
+                out += braces ? "{\n" : "\n";
+                if (braces) {
+                    indent++;
+                }
                 emit_if(n->right);
+                if (braces) {
+                    indent--;
+                    line("}");
+                }
             } else if (n->right->kind == NodeKind::Block) {
                 out += '\n';
                 emit_block(n->right);

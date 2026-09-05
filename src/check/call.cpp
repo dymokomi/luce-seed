@@ -663,6 +663,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
             obj->ty = b->type;
             n->resolved = d;
             if (d->kind == NodeKind::Struct) {
+                if (is_generic_decl(d) || n->type != nullptr) {
+                    return check_generic_ctor(n, d); // `module.List[i64](...)`
+                }
                 return check_ctor(n, d);
             }
             if (d->kind == NodeKind::Enum && is_int_enum(d->ty)) {

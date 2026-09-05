@@ -445,6 +445,24 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
         fail_n(at != nullptr ? at : st, "lucb.check.type", "generic instantiation is too deep");
         return t_error();
     }
+    // An imported generic is instantiated in its own module's scope, so its
+    // fields and methods see the names its author saw, not the importer's.
+    Node* home = module_of(st);
+    bool foreign = home != nullptr && home != current_module;
+    vector<Binding> saved_scope;
+    std::unordered_map<string_view, int> saved_index;
+    int saved_depth = depth;
+    Node* saved_module = current_module;
+    if (foreign) {
+        saved_scope.swap(scope);
+        saved_index.swap(scope_index);
+        depth = 0;
+        current_module = home;
+        push_scope();
+        bind_memory();
+        bind_imports(home);
+        bind_module_names(home);
+    }
     Node* clone = clone_node(st);
     clone->left = nullptr;
     clone->text = keep(mangle_inst(st->text, args));
@@ -491,6 +509,13 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
     }
     pop_scope();
     inst_depth--;
+    if (foreign) {
+        pop_scope();
+        scope.swap(saved_scope);
+        scope_index.swap(saved_index);
+        depth = saved_depth;
+        current_module = saved_module;
+    }
     return t;
 }
 

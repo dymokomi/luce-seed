@@ -678,6 +678,46 @@ auto Checker::resolve_sig(Node* fn) -> void {
     }
 }
 
+// The module whose body holds `decl`, or null for a synthesized declaration.
+auto Checker::module_of(Node* decl) -> Node* {
+    for (size_t i = 0; i < program_modules.size(); i++) {
+        Node* mod = program_modules[i];
+        for (Node* d = mod != nullptr ? mod->body : nullptr; d != nullptr; d = d->next) {
+            if (d == decl) {
+                return mod;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Bind every top-level declaration of `mod`, as its own bodies see them.
+auto Checker::bind_module_names(Node* mod) -> void {
+    for (Node* d = mod != nullptr ? mod->body : nullptr; d != nullptr; d = d->next) {
+        switch (d->kind) {
+        case NodeKind::Func:
+        case NodeKind::Struct:
+        case NodeKind::Enum:
+        case NodeKind::Union:
+        case NodeKind::Interface:
+        case NodeKind::TypeAlias:
+        case NodeKind::Const:
+        case NodeKind::Global:
+        case NodeKind::ExternFunc:
+        case NodeKind::ExternType:
+        case NodeKind::ExternVar:
+        case NodeKind::ExternStruct:
+        case NodeKind::ExternUnion:
+            if (!d->text.empty() && lookup(d->text) == nullptr) {
+                bind(d->text, decl_type(d), d->kind == NodeKind::Global, d);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 auto Checker::bind_imports(Node* mod) -> void {
     vector<string_view> seen;
     for (Node* d = mod->body; d != nullptr; d = d->next) {
@@ -934,6 +974,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.ty_errcode = c.make_type(TypeKind::ErrorCode, "ErrorCode");
     c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
     c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
+    c.program_modules = modules;
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
         if (modules[static_cast<size_t>(i)] != nullptr) {
             c.check_module(modules[static_cast<size_t>(i)]);

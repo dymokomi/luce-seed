@@ -1,0 +1,8 @@
+pub struct List[T]:
+    var items: T[]
+    var count: usize
+    pub static func create(capacity: usize) -> List[T]!:
+        return List[T](items = try alloc T[capacity], count = 0)
+    pub mutating func push(item: T) -> !:
+        self.items[self.count] = item
+        self.count += 1

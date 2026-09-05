@@ -1,0 +1,58 @@
+#==============================================================================================
+#
+#   list - A growable span over the current allocator
+#
+#   DESCRIPTION:
+#       Base has no built-in collections (base.md §1.3); this is the one the compiler
+#       uses. `List[T]` owns a span it doubles when full, allocated from the allocator
+#       current at creation, and never frees an old block until `destroy`, so element
+#       pointers taken between pushes are valid only until the next growth.
+#
+#==============================================================================================
+
+pub struct List[T]:
+    var items: T[]
+    var count: usize
+    var allocator: Allocator
+
+    pub static func create(capacity: usize) -> List[T]!:
+        let room = capacity if capacity > 0 else 4
+        return List[T](items = try alloc T[room], count = 0, allocator = memory.allocator)
+
+    pub mutating func push(item: T) -> !:
+        if self.count == self.items.length:
+            let grown = try alloc T[self.items.length * 2] in self.allocator
+            memory.copy(grown, self.items, self.count)
+            free(self.items) in self.allocator
+            self.items = grown
+        self.items[self.count] = item
+        self.count += 1
+
+    pub func get(index: usize) -> T:
+        return self.items[index]
+
+    pub mutating func set(index: usize, item: T):
+        self.items[index] = item
+
+    ## The live elements as a span; invalid after the next push.
+    pub func span() -> T[]:
+        return self.items[..<self.count]
+
+    pub mutating func destroy():
+        free(self.items) in self.allocator
+
+test "a list grows and keeps order":
+    var backing: u8[4096]
+    var arena = FixedBuffer.over(backing)
+    with arena:
+        var xs = try List[i64].create(1)
+        var i: i64 = 0
+        while i < 20:
+            try xs.push(i * 3)
+            i += 1
+        assert(xs.count == 20)
+        assert(xs.get(19) == 57)
+        var total: i64 = 0
+        for x in xs.span():
+            total += x
+        assert(total == 570)

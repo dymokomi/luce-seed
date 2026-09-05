@@ -78,6 +78,9 @@ struct Checker {
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
+    vector<Node*> program_modules; // every module of the program, for module_of
+    Node* module_of(Node* decl);
+    void bind_module_names(Node* mod);
     bool checking_generic_template = false;
     int inst_depth = 0;
     struct Inst {

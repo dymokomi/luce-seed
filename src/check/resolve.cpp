@@ -627,6 +627,26 @@ auto Checker::resolve_type(Node* n) -> Type* {
             Node* d = pub_member(mb->type->decl, n->text.substr(dot + 1));
             if (d != nullptr) {
                 Type* t = decl_type(d);
+                if (n->body != nullptr) {
+                    // `module.List[i64]`: instantiate the imported generic here.
+                    if (!is_generic_decl(d)) {
+                        fail_n(n, "lucb.check.type",
+                               "`" + string(n->text) + "` does not take type arguments");
+                    } else {
+                        vector<Type*> targs;
+                        for (Node* a = n->body; a != nullptr; a = a->next) {
+                            targs.push_back(resolve_type(a));
+                        }
+                        if (static_cast<int>(targs.size()) != count_generics(d)) {
+                            fail_n(n, "lucb.check.type", "wrong number of type arguments");
+                            t = t_error();
+                        } else {
+                            t = instantiate_struct(d, targs, n);
+                        }
+                    }
+                } else if (is_generic_decl(d) && !checking_generic_template) {
+                    fail_n(n, "lucb.check.type", "`" + string(n->text) + "` needs type arguments");
+                }
                 n->ty = t;
                 n->resolved = d;
                 return n->ty;
