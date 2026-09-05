@@ -173,6 +173,106 @@ void lb_pause(void) {
 #endif
 }
 
+void lb_mutex_lock(lb_Mutex* m) {
+    if (m == NULL) {
+        lb_trap("null pointer");
+    }
+    for (;;) {
+        uint32_t expected = 0;
+        if (atomic_compare_exchange_strong(&m->state, &expected, 1u)) {
+            return;
+        }
+        while (atomic_load(&m->state) != 0) {
+            lb_pause();
+        }
+    }
+}
+
+void lb_mutex_unlock(lb_Mutex* m) {
+    if (m == NULL) {
+        lb_trap("null pointer");
+    }
+    atomic_store(&m->state, 0);
+}
+
+bool lb_mutex_try(lb_Mutex* m) {
+    if (m == NULL) {
+        lb_trap("null pointer");
+    }
+    uint32_t expected = 0;
+    return atomic_compare_exchange_strong(&m->state, &expected, 1u);
+}
+
+void lb_cond_wait(lb_Cond* c, lb_Mutex* m) {
+    if (c == NULL || m == NULL) {
+        lb_trap("null pointer");
+    }
+    uint32_t s = atomic_load(&c->seq);
+    lb_mutex_unlock(m);
+    while (atomic_load(&c->seq) == s) {
+        lb_pause();
+    }
+    lb_mutex_lock(m);
+}
+
+void lb_cond_signal(lb_Cond* c) {
+    if (c == NULL) {
+        lb_trap("null pointer");
+    }
+    atomic_fetch_add(&c->seq, 1u);
+}
+
+void lb_cond_broadcast(lb_Cond* c) { lb_cond_signal(c); }
+
+int lb_once_begin(lb_Once* o) {
+    if (o == NULL) {
+        lb_trap("null pointer");
+    }
+    uint32_t expected = 0;
+    if (atomic_compare_exchange_strong(&o->state, &expected, 1u)) {
+        return 1;
+    }
+    return 0;
+}
+
+void lb_once_end(lb_Once* o) {
+    if (o == NULL) {
+        lb_trap("null pointer");
+    }
+    atomic_store(&o->state, 2u);
+}
+
+void lb_once_wait(lb_Once* o) {
+    if (o == NULL) {
+        lb_trap("null pointer");
+    }
+    while (atomic_load(&o->state) != 2u) {
+        lb_pause();
+    }
+}
+
+void lb_sem_acquire(lb_Sem* s) {
+    if (s == NULL) {
+        lb_trap("null pointer");
+    }
+    for (;;) {
+        uint32_t n = atomic_load(&s->count);
+        if (n > 0 && atomic_compare_exchange_weak(&s->count, &n, n - 1u)) {
+            return;
+        }
+        while (atomic_load(&s->count) == 0) {
+            lb_pause();
+        }
+    }
+}
+
+void lb_sem_release(lb_Sem* s) {
+    if (s == NULL) {
+        lb_trap("null pointer");
+    }
+    atomic_fetch_add(&s->count, 1u);
+}
+
 int64_t* lb_null_probe(void) { return NULL; }
 
 void lb_check_utf8(const char* s, size_t n) {

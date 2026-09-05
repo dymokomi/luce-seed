@@ -18,10 +18,11 @@ lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 `@T` atomic integers and pointers with wrapping `+=`/`-=`/`|=`/`&=`/`^=`,
 `load`/`store`/`add`/`cas`/`wait`/`wake` and friends, `Ordering`, and
 `atomic.fence`. `volatile T*` loads and stores. `thread.spawn` / `Handle.join`
-/ `detach` / `current` / `pause` / `yield` / `sleep` over pthreads. `asm` is
-rejected in the interpreter and emitted as GNU `asm volatile` with register
-operands for the host architecture. Evidence: `tests/agree_test.cpp`,
-`tests/eval_test.cpp`, `tests/check_test.cpp`.
+/ `detach` / `current` / `pause` / `yield` / `sleep` over pthreads. The `sync`
+module's `Mutex`, `Condition`, `Once`, and `Semaphore`, all zeroable, over
+`@T` wait/wake. `asm` is rejected in the interpreter and emitted as GNU
+`asm volatile` with register operands for the host architecture. Evidence:
+`tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 
 ## M13 — Calling C
 

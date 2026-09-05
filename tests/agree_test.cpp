@@ -756,6 +756,62 @@ TEST(agree_thread_current) {
                  "    return 1\n"));
 }
 
+TEST(agree_sync_mutex) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var lock: sync.Mutex\n"
+                 "    if not lock.try():\n"
+                 "        return 0\n"
+                 "    if lock.try():\n"
+                 "        return 0\n"
+                 "    lock.unlock()\n"
+                 "    lock.lock()\n"
+                 "    lock.unlock()\n"
+                 "    return 1\n"));
+}
+
+TEST(agree_sync_once) {
+    CHECK(agrees("var n: i64 = 0\n"
+                 "func bump():\n"
+                 "    n += 1\n"
+                 "pub func answer() -> i64:\n"
+                 "    var once: sync.Once\n"
+                 "    once.run(bump)\n"
+                 "    once.run(bump)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_sync_cond) {
+    CHECK(agrees("struct Ctx:\n"
+                 "    var mu: sync.Mutex\n"
+                 "    var cv: sync.Condition\n"
+                 "    var done: i64\n"
+                 "func signaler(context: void*):\n"
+                 "    let p = (Ctx*)context\n"
+                 "    p.mu.lock()\n"
+                 "    p.done = 1\n"
+                 "    p.cv.signal()\n"
+                 "    p.mu.unlock()\n"
+                 "pub func answer() -> i64!:\n"
+                 "    var ctx: Ctx\n"
+                 "    let h = try thread.spawn(signaler, (void*)(&ctx))\n"
+                 "    ctx.mu.lock()\n"
+                 "    while ctx.done == 0:\n"
+                 "        ctx.cv.wait(&ctx.mu)\n"
+                 "    ctx.mu.unlock()\n"
+                 "    try h.join()\n"
+                 "    return ctx.done\n"));
+}
+
+TEST(agree_sync_sem) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var sem: sync.Semaphore\n"
+                 "    sem.release()\n"
+                 "    sem.release()\n"
+                 "    sem.acquire()\n"
+                 "    sem.acquire()\n"
+                 "    return 1\n"));
+}
+
 TEST(native_asm_add) {
     Both both;
     const char* src = "pub func answer() -> i64:\n"

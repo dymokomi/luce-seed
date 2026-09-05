@@ -1734,6 +1734,28 @@ auto Checker::check_method_call(Node* n) -> Type* {
             fail_n(n, "lucb.check.mut", "a mutating method needs a `var` receiver");
         }
         mem->resolved = method;
+        if (recv->name == "Once" && mem->text == "run") {
+            n->resolved = method;
+            int nargs = count_args(n->body);
+            if (nargs != 1) {
+                fail_n(n, "lucb.check.call", "`Once.run` needs a function");
+                return t_unit();
+            }
+            Node* entry = n->body != nullptr ? n->body->left : nullptr;
+            if (entry == nullptr || entry->kind != NodeKind::Name) {
+                fail_n(n, "lucb.check.type", "`Once.run` needs a function name");
+            } else {
+                Binding* fb = lookup(entry->text);
+                if (fb == nullptr || fb->decl == nullptr || fb->decl->kind != NodeKind::Func) {
+                    fail_n(n, "lucb.check.type", "`Once.run` needs a function name");
+                } else if (fb->decl->right != nullptr) {
+                    fail_n(n, "lucb.check.type", "`Once.run` needs a function with no parameters");
+                } else {
+                    entry->resolved = fb->decl;
+                }
+            }
+            return t_unit();
+        }
         return check_func_call(n, method, obj);
     }
 

@@ -296,3 +296,19 @@ TEST(check_new_ok) {
                    "    free(p)\n"
                    "    return 0\n"));
 }
+
+TEST(check_sync_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    var lock: sync.Mutex\n"
+                   "    lock.lock()\n"
+                   "    lock.unlock()\n"
+                   "    return 1\n"));
+}
+
+TEST(check_sync_mut) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let lock: sync.Mutex\n"
+                    "    lock.lock()\n"
+                    "    return 0\n",
+                    "lucb.check.mut"));
+}

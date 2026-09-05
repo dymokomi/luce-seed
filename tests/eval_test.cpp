@@ -568,6 +568,19 @@ TEST(eval_asm_rejected) {
     CHECK(r.trap.find("asm") != std::string::npos);
 }
 
+TEST(eval_sync_once) {
+    EvalResult r = run("var n: i64 = 0\n"
+                       "func bump():\n"
+                       "    n += 1\n"
+                       "pub func answer() -> i64:\n"
+                       "    var once: sync.Once\n"
+                       "    once.run(bump)\n"
+                       "    once.run(bump)\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
 TEST(eval_null_foreign) {
     EvalResult r = run("extern func lb_null_probe() -> i64*\n"
                        "pub func answer() -> i64:\n"

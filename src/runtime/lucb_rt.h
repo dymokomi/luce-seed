@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -14,6 +15,34 @@
 
 LB_NORETURN void lb_trap(const char* message);
 void lb_pause(void);
+
+typedef struct lb_Mutex {
+    _Atomic uint32_t state;
+} lb_Mutex;
+
+typedef struct lb_Cond {
+    _Atomic uint32_t seq;
+} lb_Cond;
+
+typedef struct lb_Once {
+    _Atomic uint32_t state;
+} lb_Once;
+
+typedef struct lb_Sem {
+    _Atomic uint32_t count;
+} lb_Sem;
+
+void lb_mutex_lock(lb_Mutex* m);
+void lb_mutex_unlock(lb_Mutex* m);
+bool lb_mutex_try(lb_Mutex* m);
+void lb_cond_wait(lb_Cond* c, lb_Mutex* m);
+void lb_cond_signal(lb_Cond* c);
+void lb_cond_broadcast(lb_Cond* c);
+int lb_once_begin(lb_Once* o);
+void lb_once_end(lb_Once* o);
+void lb_once_wait(lb_Once* o);
+void lb_sem_acquire(lb_Sem* s);
+void lb_sem_release(lb_Sem* s);
 
 int64_t lb_add_s(int64_t a, int64_t b, int bits);
 uint64_t lb_add_u(uint64_t a, uint64_t b, int bits);

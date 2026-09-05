@@ -124,6 +124,18 @@ string c_type(Type* t) {
     if (t->kind == TypeKind::Struct && t->name == "Handle") {
         return "lb_Handle";
     }
+    if (t->kind == TypeKind::Struct && t->name == "Mutex") {
+        return "lb_Mutex";
+    }
+    if (t->kind == TypeKind::Struct && t->name == "Condition") {
+        return "lb_Cond";
+    }
+    if (t->kind == TypeKind::Struct && t->name == "Once") {
+        return "lb_Once";
+    }
+    if (t->kind == TypeKind::Struct && t->name == "Semaphore") {
+        return "lb_Sem";
+    }
     if (t->kind == TypeKind::Atomic) {
         return "_Atomic(" + c_type(t->elem) + ")";
     }

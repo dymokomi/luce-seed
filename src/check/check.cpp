@@ -297,6 +297,15 @@ auto Checker::syn_node(NodeKind k, const char* name) -> Node* {
         return n;
     }
 
+auto Checker::syn_method(const char* name, Type* result, bool mutating) -> Node* {
+        Node* m = syn_node(NodeKind::Func, name);
+        m->ty = result;
+        if (mutating) {
+            m->flags |= FlagMutating;
+        }
+        return m;
+    }
+
 auto Checker::is_fixed(Type* t) -> bool {
         return t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer";
     }
@@ -575,6 +584,56 @@ auto Checker::bind_memory() -> void {
         Type* tt = make_type(TypeKind::Module, "thread");
         tt->decl = tmod;
         bind("thread", tt, false, tmod);
+
+        Node* m_lock = syn_method("lock", t_unit(), true);
+        Node* m_unlock = syn_method("unlock", t_unit(), true);
+        Node* m_try = syn_method("try", ty_bool, true);
+        m_lock->next = m_unlock;
+        m_unlock->next = m_try;
+        Node* mu = syn_node(NodeKind::Struct, "Mutex");
+        mu->body = m_lock;
+        Type* tmu = make_type(TypeKind::Struct, "Mutex");
+        tmu->decl = mu;
+        mu->ty = tmu;
+
+        Node* c_wait = syn_method("wait", t_unit(), true);
+        Node* c_mp = syn_node(NodeKind::Param, "mutex");
+        c_mp->ty = intern_ptr(tmu, false, false, false);
+        c_wait->right = c_mp;
+        Node* c_sig = syn_method("signal", t_unit(), true);
+        Node* c_bc = syn_method("broadcast", t_unit(), true);
+        c_wait->next = c_sig;
+        c_sig->next = c_bc;
+        Node* cv = syn_node(NodeKind::Struct, "Condition");
+        cv->body = c_wait;
+        Type* tcv = make_type(TypeKind::Struct, "Condition");
+        tcv->decl = cv;
+        cv->ty = tcv;
+
+        Node* o_run = syn_method("run", t_unit(), true);
+        Node* on = syn_node(NodeKind::Struct, "Once");
+        on->body = o_run;
+        Type* ton = make_type(TypeKind::Struct, "Once");
+        ton->decl = on;
+        on->ty = ton;
+
+        Node* s_acq = syn_method("acquire", t_unit(), true);
+        Node* s_rel = syn_method("release", t_unit(), true);
+        s_acq->next = s_rel;
+        Node* sm = syn_node(NodeKind::Struct, "Semaphore");
+        sm->body = s_acq;
+        Type* tsm = make_type(TypeKind::Struct, "Semaphore");
+        tsm->decl = sm;
+        sm->ty = tsm;
+
+        mu->next = cv;
+        cv->next = on;
+        on->next = sm;
+        Node* smod = syn_node(NodeKind::Module, "sync");
+        smod->body = mu;
+        Type* st = make_type(TypeKind::Module, "sync");
+        st->decl = smod;
+        bind("sync", st, false, smod);
     }
 
 auto Checker::mark_local(Node* n) -> void {

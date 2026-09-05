@@ -379,6 +379,7 @@ struct Checker {
     bool atomic_ok(Type* t);
     void check_asm(Node* n);
     Node* syn_node(NodeKind k, const char* name);
+    Node* syn_method(const char* name, Type* result, bool mutating);
     bool is_fixed(Type* t);
     Type* check_in_allocator(Node* n);
     Type* check_new(Node* n);

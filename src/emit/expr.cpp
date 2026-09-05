@@ -1040,6 +1040,44 @@ auto Emitter::emit_call(Node* n) -> string {
                 string h = emit_expr(callee->left);
                 return "(pthread_detach((pthread_t)(" + h + ".id)))";
             }
+            if (recv != nullptr && recv->kind == TypeKind::Struct &&
+                (recv->name == "Mutex" || recv->name == "Condition" || recv->name == "Once" ||
+                 recv->name == "Semaphore")) {
+                string loc = is_ptr(ot) ? emit_expr(callee->left) : emit_addr(callee->left);
+                if (recv->name == "Mutex" && callee->text == "lock") {
+                    return "(lb_mutex_lock(" + loc + "))";
+                }
+                if (recv->name == "Mutex" && callee->text == "unlock") {
+                    return "(lb_mutex_unlock(" + loc + "))";
+                }
+                if (recv->name == "Mutex" && callee->text == "try") {
+                    return "(lb_mutex_try(" + loc + "))";
+                }
+                if (recv->name == "Condition" && callee->text == "wait") {
+                    string mu = n->body != nullptr ? emit_expr(n->body->left) : "NULL";
+                    return "(lb_cond_wait(" + loc + ", " + mu + "))";
+                }
+                if (recv->name == "Condition" && callee->text == "signal") {
+                    return "(lb_cond_signal(" + loc + "))";
+                }
+                if (recv->name == "Condition" && callee->text == "broadcast") {
+                    return "(lb_cond_broadcast(" + loc + "))";
+                }
+                if (recv->name == "Once" && callee->text == "run") {
+                    Node* entry = n->body != nullptr ? n->body->left : nullptr;
+                    string fn = entry != nullptr && entry->resolved != nullptr
+                                    ? func_ident(entry->resolved, nullptr)
+                                    : "lb_unknown";
+                    return "({ if (lb_once_begin(" + loc + ")) { " + fn + "(); lb_once_end(" + loc +
+                           "); } else { lb_once_wait(" + loc + "); } (void)0; })";
+                }
+                if (recv->name == "Semaphore" && callee->text == "acquire") {
+                    return "(lb_sem_acquire(" + loc + "))";
+                }
+                if (recv->name == "Semaphore" && callee->text == "release") {
+                    return "(lb_sem_release(" + loc + "))";
+                }
+            }
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Node* cond = n->body != nullptr ? n->body->left : nullptr;

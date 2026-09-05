@@ -1760,6 +1760,86 @@ auto Interp::eval_call(Node* n) -> Value {
                 callee->text == "detach") {
                 return v_unit();
             }
+            if (ot != nullptr && ot->kind == TypeKind::Struct &&
+                (ot->name == "Mutex" || ot->name == "Condition" || ot->name == "Once" ||
+                 ot->name == "Semaphore")) {
+                Value* slot = lvalue(callee->left);
+                if (slot != nullptr && slot->kind == TypeKind::Pointer) {
+                    slot = slot->ptr;
+                }
+                if (slot == nullptr) {
+                    fail("sync needs an lvalue");
+                    return v_unit();
+                }
+                if (ot->name == "Mutex" && callee->text == "lock") {
+                    if (slot->u != 0) {
+                        fail("mutex locked");
+                        return v_unit();
+                    }
+                    slot->u = 1;
+                    return v_unit();
+                }
+                if (ot->name == "Mutex" && callee->text == "unlock") {
+                    slot->u = 0;
+                    return v_unit();
+                }
+                if (ot->name == "Mutex" && callee->text == "try") {
+                    if (slot->u != 0) {
+                        return v_bool(false);
+                    }
+                    slot->u = 1;
+                    return v_bool(true);
+                }
+                if (ot->name == "Condition" && callee->text == "wait") {
+                    Value mu = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    if (mu.ptr == nullptr) {
+                        fail("null pointer");
+                        return v_unit();
+                    }
+                    mu.ptr->u = 0;
+                    mu.ptr->u = 1;
+                    return v_unit();
+                }
+                if (ot->name == "Condition" &&
+                    (callee->text == "signal" || callee->text == "broadcast")) {
+                    slot->u += 1;
+                    return v_unit();
+                }
+                if (ot->name == "Once" && callee->text == "run") {
+                    if (slot->u == 2) {
+                        return v_unit();
+                    }
+                    if (slot->u != 0) {
+                        fail("once running");
+                        return v_unit();
+                    }
+                    slot->u = 1;
+                    Node* entry = n->body != nullptr ? n->body->left : nullptr;
+                    Node* fn = entry != nullptr ? entry->resolved : nullptr;
+                    if (fn != nullptr) {
+                        call_func(fn, nullptr, nullptr);
+                    }
+                    slot->u = 2;
+                    return v_unit();
+                }
+                if (ot->name == "Semaphore" && callee->text == "acquire") {
+                    if (slot->u == 0) {
+                        fail("semaphore empty");
+                        return v_unit();
+                    }
+                    slot->u -= 1;
+                    return v_unit();
+                }
+                if (ot->name == "Semaphore" && callee->text == "release") {
+                    slot->u += 1;
+                    return v_unit();
+                }
+                fail("unknown method");
+                return v_unit();
+            }
             if (ot != nullptr && ot->kind == TypeKind::Interface) {
                 Value view = eval(callee->left);
                 if (trapped || view.ptr == nullptr) {
