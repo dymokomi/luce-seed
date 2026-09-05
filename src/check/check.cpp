@@ -593,8 +593,66 @@ auto Checker::bind_memory() -> void {
         heap_g->ty = ty_alloc;
         Node* exh = syn_node(NodeKind::Const, "exhausted");
         exh->ty = ty_i32;
+        Node* m_copy = syn_node(NodeKind::Func, "copy");
+        Node* cp_to = syn_node(NodeKind::Param, "to");
+        cp_to->ty = intern_sp(ty_u8, false);
+        Node* cp_from = syn_node(NodeKind::Param, "from");
+        cp_from->ty = intern_sp(ty_u8, true);
+        Node* cp_n = syn_node(NodeKind::Param, "count");
+        cp_n->ty = ty_usize;
+        cp_to->next = cp_from;
+        cp_from->next = cp_n;
+        m_copy->right = cp_to;
+        m_copy->ty = t_unit();
+        Node* m_move = syn_node(NodeKind::Func, "move");
+        Node* mv_to = syn_node(NodeKind::Param, "to");
+        mv_to->ty = intern_sp(ty_u8, false);
+        Node* mv_from = syn_node(NodeKind::Param, "from");
+        mv_from->ty = intern_sp(ty_u8, true);
+        Node* mv_n = syn_node(NodeKind::Param, "count");
+        mv_n->ty = ty_usize;
+        mv_to->next = mv_from;
+        mv_from->next = mv_n;
+        m_move->right = mv_to;
+        m_move->ty = t_unit();
+        Node* m_set = syn_node(NodeKind::Func, "set");
+        Node* st_span = syn_node(NodeKind::Param, "span");
+        st_span->ty = intern_sp(ty_u8, false);
+        Node* st_byte = syn_node(NodeKind::Param, "byte");
+        st_byte->ty = ty_u8;
+        st_span->next = st_byte;
+        m_set->right = st_span;
+        m_set->ty = t_unit();
+        Node* m_grow = syn_node(NodeKind::Func, "grow");
+        m_grow->flags |= FlagFallible;
+        Node* gr_block = syn_node(NodeKind::Param, "block");
+        gr_block->ty = intern_sp(ty_u8, false);
+        Node* gr_size = syn_node(NodeKind::Param, "size");
+        gr_size->ty = ty_usize;
+        gr_block->next = gr_size;
+        m_grow->right = gr_block;
+        m_grow->ty = intern_sp(ty_u8, false);
+        Node* m_read = syn_node(NodeKind::Func, "read");
+        Node* rd_addr = syn_node(NodeKind::Param, "address");
+        rd_addr->ty = intern_ptr(ty_void, false, false, false);
+        m_read->right = rd_addr;
+        m_read->ty = t_unit();
+        Node* m_write = syn_node(NodeKind::Func, "write");
+        Node* wr_addr = syn_node(NodeKind::Param, "address");
+        wr_addr->ty = intern_ptr(ty_void, false, false, false);
+        Node* wr_val = syn_node(NodeKind::Param, "value");
+        wr_val->ty = ty_unit;
+        wr_addr->next = wr_val;
+        m_write->right = wr_addr;
+        m_write->ty = t_unit();
         alloc_g->next = heap_g;
         heap_g->next = exh;
+        exh->next = m_copy;
+        m_copy->next = m_move;
+        m_move->next = m_set;
+        m_set->next = m_grow;
+        m_grow->next = m_read;
+        m_read->next = m_write;
 
         Node* mem = syn_node(NodeKind::Module, "memory");
         mem->body = alloc_g;
@@ -682,13 +740,35 @@ auto Checker::bind_memory() -> void {
         f_write->ty = t_unit();
         Node* f_miss = syn_node(NodeKind::Const, "missing");
         f_miss->ty = ty_i32;
+        Node* f_list = syn_node(NodeKind::Func, "list");
+        f_list->flags |= FlagFallible;
+        Node* lp = syn_node(NodeKind::Param, "path");
+        lp->ty = ty_cstr;
+        f_list->right = lp;
+        f_list->ty = intern_sp(ty_str, false);
         f_read->next = f_write;
         f_write->next = f_miss;
+        f_miss->next = f_list;
         Node* files = syn_node(NodeKind::Module, "files");
         files->body = f_read;
         Type* files_t = make_type(TypeKind::Module, "files");
         files_t->decl = files;
         bind("files", files_t, false, files);
+
+        Node* p_run = syn_node(NodeKind::Func, "run");
+        p_run->flags |= FlagFallible;
+        Node* pr_prog = syn_node(NodeKind::Param, "program");
+        pr_prog->ty = ty_cstr;
+        Node* pr_args = syn_node(NodeKind::Param, "arguments");
+        pr_args->ty = intern_sp(ty_cstr, true);
+        pr_prog->next = pr_args;
+        p_run->right = pr_prog;
+        p_run->ty = ty_i32;
+        Node* process = syn_node(NodeKind::Module, "process");
+        process->body = p_run;
+        Type* process_t = make_type(TypeKind::Module, "process");
+        process_t->decl = process;
+        bind("process", process_t, false, process);
 
         Node* c_in = syn_node(NodeKind::Func, "stdin");
         c_in->ty = intern_ptr(ty_void, false, false, false);
@@ -952,10 +1032,11 @@ auto Checker::is_core_name(string_view name) -> bool {
         return name == "print" || name == "assert" || name == "discard" || name == "error" ||
                name == "trap" || name == "hash" || name == "format" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
+               name == "bin" || name == "pad" ||
                named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt" ||
                name == "FixedBuffer" || name == "memory" || name == "fmt" || name == "format" ||
-               name == "luce" || name == "io" || name == "files" || name == "Writer" ||
-               name == "Location";
+               name == "luce" || name == "io" || name == "files" || name == "process" ||
+               name == "Writer" || name == "Location";
     }
 
 auto Checker::const_u64(Node* n, uint64_t* out) -> bool {

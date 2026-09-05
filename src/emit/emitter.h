@@ -259,6 +259,9 @@ struct Emitter {
     string emit_display_buf(const string& b, Node* v);
     string emit_print_formatted(Node* n);
     string emit_format_call(Node* n);
+    string emit_hash_of(Type* t, const string& e);
+    string emit_hash(Node* n);
+    string emit_str_conv(Node* src, bool checked);
     void emit_iface_typedef(Node* iface);
     void emit_vtable(Node* st, Node* iface_type_node);
     void emit_ifaces(Node* mod);

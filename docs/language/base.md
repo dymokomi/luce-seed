@@ -172,7 +172,7 @@ Types, interfaces, and unions are `PascalCase`; functions, methods, bindings, fi
 
 Names resolve lexically. A module's declarations share one namespace and are order-independent. Members of a type have their own namespace. Locals are sequential; use before declaration is rejected. A local may not shadow another visible local, parameter, or imported name; renaming is the repair. A loop, `catch`, `if let`, or `match` binding owns its nested scope. A loop label (§8.5) lives in its own namespace.
 
-The compiler-known core namespace cannot be redeclared: `assert`, `discard`, `error`, `trap`, `hash`, `print`, `format`, `sizeof`, `alignof`, `offsetof`, `hex`, the `luce` / `io` / `files` / `memory` / `c` modules, and the core type names. Calls such as `sizeof` parse as ordinary calls; only their checked types and semantics are special. `luce.location` and its pieces are not calls: they are compile-time replacements.
+The compiler-known core namespace cannot be redeclared: `assert`, `discard`, `error`, `trap`, `hash`, `print`, `format`, `sizeof`, `alignof`, `offsetof`, `hex`, `bin`, `pad`, the `luce` / `io` / `files` / `process` / `memory` / `c` modules, and the core type names. Calls such as `sizeof` parse as ordinary calls; only their checked types and semantics are special. `luce.location` and its pieces are not calls: they are compile-time replacements.
 
 **Why.** No shadowing removes a refactoring hazard and keeps every diagnostic that names a binding unambiguous. Making `sizeof` a core name rather than a keyword keeps the grammar small: it is a call whose argument may be a type.
 
@@ -1300,9 +1300,10 @@ The language depends on these modules by name. Their full surfaces are in the li
 
 | Module | What the language relies on |
 | --- | --- |
-| `memory` | `allocator` (thread-local current allocator), `heap` (the initial allocator), `exhausted` and `unset` (error codes), `read`, `write`, `copy`, `move`, `set` |
+| `memory` | `allocator` (thread-local current allocator), `heap` (the initial allocator), `exhausted` and `unset` (error codes), `read`, `write`, `copy`, `move`, `set`, `grow` |
 | `io` | `stdout()` and `stderr()` as `Writer`s |
-| `files` | `read(path: cstr) -> u8[]!` allocating from the current allocator, `open`, `write`, `missing` (error code) |
+| `files` | `read(path: cstr) -> u8[]!` allocating from the current allocator, `write`, `list(path: cstr) -> str[]!`, `missing` (error code) |
+| `process` | `run(program: cstr, arguments: cstr[]) -> i32!` |
 | `math` | `floor`, `mod`, `sqrt`, the NaN and infinity constants |
 | `thread` | `spawn`, `Handle`, `current`, `pause`, `yield`, `sleep` |
 | `sync` | `Mutex`, `Condition`, `Once`, `Semaphore` |

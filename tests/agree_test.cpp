@@ -913,6 +913,118 @@ TEST(agree_program_scan) { CHECK(agrees_file("testdata/programs/scan.lucb")); }
 
 TEST(agree_program_table) { CHECK(agrees_file("testdata/programs/table.lucb")); }
 
+TEST(agree_program_memory) { CHECK(agrees_file("testdata/programs/memory.lucb")); }
+
+TEST(agree_program_text) { CHECK(agrees_file("testdata/programs/text.lucb")); }
+
+TEST(agree_program_list) { CHECK(agrees_file("testdata/programs/list.lucb")); }
+
+TEST(agree_program_spawn) { CHECK(agrees_file("testdata/programs/spawn.lucb")); }
+
+TEST(agree_program_hash) { CHECK(agrees_file("testdata/programs/hash.lucb")); }
+
+TEST(agree_memory_copy) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var dst: u8[4] = [0, 0, 0, 0]\n"
+                 "    var src: u8[4] = [1, 2, 3, 4]\n"
+                 "    memory.copy(dst, src, 4)\n"
+                 "    return i64(dst[0]) + i64(dst[3])\n"));
+}
+
+TEST(agree_memory_set) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var b: u8[3] = [0, 0, 0]\n"
+                 "    memory.set(b, 7)\n"
+                 "    return i64(b[0]) + i64(b[2])\n"));
+}
+
+TEST(agree_memory_move) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var b: u8[4] = [1, 2, 3, 4]\n"
+                 "    memory.move(b[1..], b[0..<3], 3)\n"
+                 "    return i64(b[0]) + i64(b[1]) + i64(b[3])\n"));
+}
+
+TEST(agree_memory_read_write) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 0\n"
+                 "    memory.write[i64]((void*)(&n), 42)\n"
+                 "    return memory.read[i64]((void*)(&n))\n"));
+}
+
+TEST(agree_memory_grow) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let b = try alloc u8[2]\n"
+                 "    b[0] = 9\n"
+                 "    let g = try memory.grow(b, 8)\n"
+                 "    return i64(g[0]) + i64(g.length)\n"));
+}
+
+TEST(agree_memory_grow_fixed) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var buf: u8[16]\n"
+                 "    var fb = FixedBuffer.over(buf)\n"
+                 "    with fb:\n"
+                 "        let b = try alloc u8[4]\n"
+                 "        let g = try memory.grow(b, 8)\n"
+                 "        return i64(g.length)\n"));
+}
+
+TEST(agree_str_from_bytes) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let s = try str(\"hi\".bytes)\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_str_invalid_utf8) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var b: u8[1] = [255]\n"
+                 "    let s = str(b) catch:\n"
+                 "        return 1\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_str_unchecked) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let s = (str)\"ok\".bytes\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_str_cstr) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let s = try str((cstr)\"hi\")\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_files_list_missing) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let names = files.list(\"/no/such/lucb_dir\") catch:\n"
+                 "        return 1\n"
+                 "    return i64(names.length)\n"));
+}
+
+TEST(agree_process_run) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var args: cstr[2] = [\"-c\", \"exit 7\"]\n"
+                 "    let code = try process.run(\"/bin/sh\", args)\n"
+                 "    return i64(code)\n"));
+}
+
+TEST(agree_hash_int) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    if hash(7) == hash(7) and hash(7) != hash(8):\n"
+                 "        return 1\n"
+                 "    return 0\n"));
+}
+
+TEST(agree_hex_bin_pad) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    print(hex(255))\n"
+                 "    print(bin(5))\n"
+                 "    print(pad(7, 3))\n"
+                 "    return 0\n"));
+}
+
 TEST(agree_slice_from_zero) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    let xs: i64[4] = [1, 2, 3, 4]\n"

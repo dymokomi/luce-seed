@@ -23,6 +23,8 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 7.3 | No chained comparisons; `not a == b` refused | done | `parse_chained_comparison`, `parse_not_before_comparison` |
 | 7.6 | Indexing and slicing | done | `agree_array_index`, `agree_slice`, `agree_slice_from_zero`, `agree_index_oob_traps` |
 | 7.7 | Pointer `*`, `&`, `p+n` | done | `agree_pointer_deref`, `agree_assign_through_pointer` |
+| 7.7 | `memory.copy` / `move` / `set` / `read[T]` / `write[T]` | done | `agree_memory_copy`, `agree_memory_move`, `agree_memory_set`, `agree_memory_read_write`, `testdata/programs/memory.lucb` |
+| 7.4 | `hash` / `hex` / `bin` / `pad` | done | `agree_hash_int`, `agree_hex_bin_pad`, `testdata/programs/hash.lucb` |
 | 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
@@ -37,7 +39,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` unsupported |
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `agree_ptr_int_cast`, `check_nullable_deref`, `check_escape_local` |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
-| 5.5 | `str` as a view | partial | `agree_str_length`, `agree_str_bytes`; `str(bytes)` as `str!` waits |
+| 5.5 | `str` as a view | done | `agree_str_length`, `agree_str_bytes`, `agree_str_from_bytes`, `agree_str_cstr`, `agree_str_unchecked`, `agree_str_invalid_utf8` |
 | 5.6 | Function types `func(A, B) -> R` | done | `agree_func_value`, `agree_alias_func`, `check_func_type_ok`, `check_func_no_zero` |
 | 5.7 | Tuples `(i64, str)` | done | `agree_tuple`, `eval_tuple`, `check_tuple_ok` |
 | 5.10 | Type aliases | done | `agree_type_alias`, `eval_type_alias`, `check_type_alias_ok`, `check_alias_recursive` |
@@ -77,16 +79,17 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
-| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
+| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena`; `memory.grow` `agree_memory_grow`, `agree_memory_grow_fixed` |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
 | 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer`, `agree_generic_span` |
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
 | 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
-| 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`; user `Display` not yet |
+| 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`, `agree_hex_bin_pad`; user `Display` not yet |
 | 5.5 / 9.1 | `fmt`, `format`, `luce.location` | done | `agree_format`, `agree_location` |
 | 16.6 | `io.stdout` / `io.stderr` as `Writer` | done | `agree_io_stderr` |
-| 16.6 | `files.read` / `files.write` | done | `agree_files_roundtrip` |
+| 16.6 | `files.read` / `files.write` / `files.list` | done | `agree_files_roundtrip`, `agree_files_list_missing`, `testdata/programs/list.lucb` |
+| 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb` |
 | 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` unsupported |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
 | 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export later |

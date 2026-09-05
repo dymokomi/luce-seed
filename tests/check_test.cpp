@@ -621,3 +621,77 @@ TEST(check_luce_location_ok) {
                    "    let loc = luce.location\n"
                    "    return i64(loc.line)\n"));
 }
+
+TEST(check_memory_copy_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    var dst: u8[4] = [0, 0, 0, 0]\n"
+                   "    var src: u8[4] = [1, 2, 3, 4]\n"
+                   "    memory.copy(dst, src, 4)\n"
+                   "    return 0\n"));
+}
+
+TEST(check_memory_read_needs_type) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    var n: i64 = 1\n"
+                    "    return memory.read((void*)(&n))\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_memory_read_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    var n: i64 = 1\n"
+                   "    return memory.read[i64]((void*)(&n))\n"));
+}
+
+TEST(check_str_bytes_ok) {
+    CHECK(check_ok("pub func answer() -> i64!:\n"
+                   "    let s = try str(\"hi\".bytes)\n"
+                   "    return i64(s.length)\n"));
+}
+
+TEST(check_str_bytes_needs_try) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let s = str(\"hi\".bytes)\n"
+                    "    return i64(s.length)\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_files_list_ok) {
+    CHECK(check_ok("pub func answer() -> i64!:\n"
+                   "    let names = try files.list(\".\")\n"
+                   "    return i64(names.length)\n"));
+}
+
+TEST(check_process_run_ok) {
+    CHECK(check_ok("pub func answer() -> i64!:\n"
+                   "    var args: cstr[1] = [\"\"]\n"
+                   "    let code = try process.run(\"/bin/true\", args[0..<0])\n"
+                   "    return i64(code)\n"));
+}
+
+TEST(check_hash_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    if hash(7) == hash(7):\n"
+                   "        return 1\n"
+                   "    return 0\n"));
+}
+
+TEST(check_hash_rejected) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    return i64(hash(true, 1))\n",
+                    "lucb.check.call"));
+}
+
+TEST(check_hex_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    print(hex(255))\n"
+                   "    return 0\n"));
+}
+
+TEST(check_process_shadow) {
+    CHECK(check_has("func process() -> i64:\n"
+                    "    return 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    return process()\n",
+                    "lucb.check.shadow"));
+}

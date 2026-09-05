@@ -2,6 +2,75 @@
 
 #include "support/literal.h"
 #include <cstdio>
+#include <cstring>
+#include <dirent.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+namespace {
+
+bool utf8_ok(const char* s, size_t n) {
+    size_t i = 0;
+    if (s == nullptr) {
+        return n == 0;
+    }
+    while (i < n) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t w = 1;
+        uint32_t cp = 0;
+        if (c < 0x80) {
+            w = 1;
+            cp = c;
+        } else if ((c & 0xE0) == 0xC0) {
+            w = 2;
+            cp = c & 0x1Fu;
+        } else if ((c & 0xF0) == 0xE0) {
+            w = 3;
+            cp = c & 0x0Fu;
+        } else if ((c & 0xF8) == 0xF0) {
+            w = 4;
+            cp = c & 0x07u;
+        } else {
+            return false;
+        }
+        if (i + w > n) {
+            return false;
+        }
+        for (size_t k = 1; k < w; k++) {
+            unsigned char x = static_cast<unsigned char>(s[i + k]);
+            if ((x & 0xC0) != 0x80) {
+                return false;
+            }
+            cp = (cp << 6) | static_cast<uint32_t>(x & 0x3Fu);
+        }
+        if (w == 2 && cp < 0x80) {
+            return false;
+        }
+        if (w == 3 && cp < 0x800) {
+            return false;
+        }
+        if (w == 4 && cp < 0x10000) {
+            return false;
+        }
+        if (cp >= 0xD800 && cp <= 0xDFFF) {
+            return false;
+        }
+        if (cp > 0x10FFFFu) {
+            return false;
+        }
+        i += w;
+    }
+    return true;
+}
+
+uint64_t mix64(uint64_t h, uint64_t x) {
+    h ^= x;
+    h *= 0x9E3779B97F4A7C15ULL;
+    h ^= h >> 32;
+    return h;
+}
+
+} // namespace
 
 namespace lucb {
 
@@ -803,6 +872,11 @@ auto Interp::eval_new(Node* n) -> Value {
             Value sp = make_array(payload, std::move(elems));
             sp.kind = TypeKind::Span;
             sp.type = payload;
+            if (a.u == 1) {
+                bump_fb = a.ptr;
+                bump_ptr = sp.ptr;
+                bump_len = sp.length;
+            }
             return ok_payload(sp, n->ty);
         }
         Type* elem = is_ptr(payload) ? payload->elem : payload;
@@ -892,6 +966,11 @@ auto Interp::eval_alloc(Node* n) -> Value {
         Value sp = make_array(payload, std::move(elems));
         sp.kind = TypeKind::Span;
         sp.type = payload;
+        if (a.u == 1) {
+            bump_fb = a.ptr;
+            bump_ptr = sp.ptr;
+            bump_len = sp.length;
+        }
         return ok_payload(sp, n->ty);
     }
 
@@ -1600,13 +1679,228 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
             x.kind = TypeKind::Pointer;
             return x;
         }
+        if (dest->kind == TypeKind::Str &&
+            (src != nullptr &&
+             (src->kind == TypeKind::CStr ||
+              ((is_span(src) || is_array(src)) && src->elem != nullptr &&
+               src->elem->kind == TypeKind::U8)))) {
+            return eval_str_conv(x, src, dest, checked);
+        }
         x.type = dest;
         x.kind = dest->kind;
         return x;
     }
 
+auto Interp::eval_str_conv(const Value& x, Type* src, Type* result_ty, bool checked) -> Value {
+        string text;
+        if (src != nullptr && src->kind == TypeKind::CStr) {
+            text = cstr_text(x);
+            if (text.empty() && !x.str.empty()) {
+                text = decode_string(x.str);
+            }
+        } else if (x.kind == TypeKind::Str) {
+            text = decode_string(x.str);
+        } else {
+            size_t nlen = x.length != 0 ? x.length : x.fields.size();
+            const Value* p = x.ptr != nullptr ? x.ptr : x.fields.data();
+            text.resize(nlen);
+            for (size_t i = 0; i < nlen; i++) {
+                text[i] = static_cast<char>(p != nullptr ? p[i].u : 0);
+            }
+        }
+        if (checked && !utf8_ok(text.data(), text.size())) {
+            Value e;
+            e.failed = true;
+            e.kind = TypeKind::Fallible;
+            e.type = result_ty;
+            e.err_code = 3;
+            e.err_msg = "invalid_utf8";
+            return e;
+        }
+        strings.push_back(text);
+        Value s = v_str(strings.back());
+        s.length = strings.back().size();
+        if (checked) {
+            return ok_payload(s, result_ty);
+        }
+        return s;
+    }
+
+auto Interp::hash_value(const Value& v, Type* t) -> uint64_t {
+        if (hash_seed == 0) {
+            hash_seed = 0x9E3779B97F4A7C15ULL ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&hash_seed));
+            if (hash_seed == 0) {
+                hash_seed = 0x9E3779B97F4A7C15ULL;
+            }
+        }
+        uint64_t h = hash_seed;
+        if (t == nullptr) {
+            t = v.type;
+        }
+        if (t != nullptr && t->kind == TypeKind::Str) {
+            string s = decode_string(v.str);
+            for (size_t i = 0; i < s.size(); i++) {
+                h = mix64(h, static_cast<unsigned char>(s[i]));
+            }
+            return mix64(h, s.size());
+        }
+        if (t != nullptr && t->kind == TypeKind::Bool) {
+            return mix64(h, v.b ? 1 : 0);
+        }
+        if (is_float(t) || v.kind == TypeKind::F32 || v.kind == TypeKind::F64) {
+            uint64_t bits = 0;
+            if (t != nullptr && t->kind == TypeKind::F32) {
+                float f = static_cast<float>(v.f);
+                memcpy(&bits, &f, sizeof(float));
+            } else {
+                memcpy(&bits, &v.f, sizeof(double));
+            }
+            return mix64(h, bits);
+        }
+        if (is_ptr(t) || (t != nullptr && t->kind == TypeKind::CStr)) {
+            return mix64(h, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(v.ptr)));
+        }
+        if (is_array(t) || v.kind == TypeKind::Array) {
+            size_t nlen = v.length != 0 ? v.length : v.fields.size();
+            const Value* p = v.ptr != nullptr ? v.ptr : v.fields.data();
+            Type* elem = t != nullptr ? t->elem : nullptr;
+            for (size_t i = 0; i < nlen; i++) {
+                h = mix64(h, hash_value(p[i], elem));
+            }
+            return h;
+        }
+        if (is_opt(t) || v.kind == TypeKind::Optional) {
+            if (!v.present) {
+                return mix64(h, 0);
+            }
+            Value inner = v;
+            Type* elem = t != nullptr ? t->elem : nullptr;
+            if (elem != nullptr) {
+                inner.kind = elem->kind;
+                inner.type = elem;
+            }
+            return mix64(hash_value(inner, elem), 1);
+        }
+        if (is_tup(t) || v.kind == TypeKind::Tuple || v.kind == TypeKind::Struct) {
+            for (size_t i = 0; i < v.fields.size(); i++) {
+                Type* ft = nullptr;
+                if (is_tup(t) && t != nullptr && static_cast<int>(i) < t->ntargs) {
+                    ft = t->args[static_cast<int>(i)];
+                } else if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr) {
+                    int k = 0;
+                    for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                        if (m->kind == NodeKind::Field) {
+                            if (k == static_cast<int>(i)) {
+                                ft = m->ty;
+                                break;
+                            }
+                            k++;
+                        }
+                    }
+                }
+                h = mix64(h, hash_value(v.fields[i], ft));
+            }
+            return h;
+        }
+        if (t != nullptr && t->kind == TypeKind::Enum && !is_int_enum(t)) {
+            return mix64(h, v.u);
+        }
+        return mix64(h, v.u);
+    }
+
+auto Interp::eval_hash(Node* n) -> Value {
+        Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        Type* t = n->body != nullptr && n->body->left != nullptr ? n->body->left->ty : a.type;
+        return v_int(n->ty, hash_value(a, t));
+    }
+
+auto Interp::eval_hex(Node* n) -> Value {
+        Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        Type* t = n->body != nullptr && n->body->left != nullptr ? n->body->left->ty : a.type;
+        uint64_t u = is_ptr(t) ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(a.ptr)) : a.u;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%llx", static_cast<unsigned long long>(u));
+        strings.push_back(buf);
+        Value v = v_str(strings.back());
+        v.type = n->ty;
+        v.kind = TypeKind::Str;
+        return v;
+    }
+
+auto Interp::eval_bin(Node* n) -> Value {
+        Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        uint64_t u = a.u;
+        string s;
+        if (u == 0) {
+            s = "0";
+        } else {
+            char rev[64];
+            int m = 0;
+            while (u != 0 && m < 64) {
+                rev[m++] = static_cast<char>('0' + (u & 1u));
+                u >>= 1;
+            }
+            while (m > 0) {
+                s.push_back(rev[--m]);
+            }
+        }
+        strings.push_back(s);
+        Value v = v_str(strings.back());
+        v.type = n->ty;
+        v.kind = TypeKind::Str;
+        return v;
+    }
+
+auto Interp::eval_pad(Node* n) -> Value {
+        Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+        Value w = eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                     : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        string inner;
+        Type* t = n->body != nullptr && n->body->left != nullptr ? n->body->left->ty : a.type;
+        if (t != nullptr && t->kind == TypeKind::Fmt) {
+            inner = decode_string(a.str);
+        } else {
+            inner = show(a);
+        }
+        size_t width = static_cast<size_t>(as_u(w, w.type));
+        string s;
+        if (inner.size() < width) {
+            s.assign(width - inner.size(), ' ');
+        }
+        s += inner;
+        strings.push_back(s);
+        Value v = v_str(strings.back());
+        v.type = n->ty;
+        v.kind = TypeKind::Str;
+        return v;
+    }
+
 auto Interp::eval_call(Node* n) -> Value {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+            return eval_hash(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
+            return eval_hex(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
+            return eval_bin(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
+            return eval_pad(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
             return heap_alloc_value();
         }
@@ -1693,6 +1987,16 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             return v;
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "str" &&
+            n->body != nullptr) {
+            Value x = eval(n->body->left);
+            if (trapped) {
+                return v_unit();
+            }
+            Type* src = n->body->left != nullptr ? n->body->left->ty : x.type;
+            bool checked = n->ty != nullptr && is_fail(n->ty);
+            return eval_str_conv(x, src, n->ty, checked);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && n->ty != nullptr &&
             n->body != nullptr &&
             (n->resolved == nullptr ||
@@ -1728,6 +2032,255 @@ auto Interp::eval_call(Node* n) -> Value {
                     v.type = n->ty;
                     v.u = callee->text == "stdin" ? 1 : callee->text == "stdout" ? 2 : 3;
                     return v;
+                }
+                if (lt->name == "memory" &&
+                    (callee->text == "copy" || callee->text == "move")) {
+                    Value to = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value from = n->body != nullptr && n->body->next != nullptr
+                                     ? eval(n->body->next->left)
+                                     : v_unit();
+                    Value cv = n->body != nullptr && n->body->next != nullptr &&
+                                       n->body->next->next != nullptr
+                                   ? eval(n->body->next->next->left)
+                                   : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    size_t count = static_cast<size_t>(as_u(cv, cv.type));
+                    size_t tlen = to.length != 0 ? to.length : to.fields.size();
+                    size_t flen = from.length != 0 ? from.length : from.fields.size();
+                    if (to.kind == TypeKind::Array && to.type != nullptr) {
+                        tlen = static_cast<size_t>(to.type->length);
+                    }
+                    if (from.kind == TypeKind::Array && from.type != nullptr) {
+                        flen = static_cast<size_t>(from.type->length);
+                    }
+                    if (count > tlen || count > flen) {
+                        fail("index out of bounds");
+                        return v_unit();
+                    }
+                    Value* td = to.ptr != nullptr ? to.ptr : to.fields.data();
+                    Value* fd = from.ptr != nullptr ? from.ptr : from.fields.data();
+                    if (td == nullptr || fd == nullptr) {
+                        return v_unit();
+                    }
+                    if (callee->text == "move") {
+                        vector<Value> tmp(fd, fd + static_cast<ptrdiff_t>(count));
+                        for (size_t i = 0; i < count; i++) {
+                            td[i] = tmp[i];
+                        }
+                    } else {
+                        for (size_t i = 0; i < count; i++) {
+                            td[i] = fd[i];
+                        }
+                    }
+                    return v_unit();
+                }
+                if (lt->name == "memory" && callee->text == "set") {
+                    Value span = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value byte = n->body != nullptr && n->body->next != nullptr
+                                     ? eval(n->body->next->left)
+                                     : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    size_t nlen = span.length != 0 ? span.length : span.fields.size();
+                    if (span.kind == TypeKind::Array && span.type != nullptr) {
+                        nlen = static_cast<size_t>(span.type->length);
+                    }
+                    Value* p = span.ptr != nullptr ? span.ptr : span.fields.data();
+                    Type* et = span.type != nullptr ? span.type->elem : nullptr;
+                    for (size_t i = 0; i < nlen && p != nullptr; i++) {
+                        p[i] = v_int(et, byte.u);
+                    }
+                    return v_unit();
+                }
+                if (lt->name == "memory" && callee->text == "grow") {
+                    Value block = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value sv = n->body != nullptr && n->body->next != nullptr
+                                   ? eval(n->body->next->left)
+                                   : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    size_t size = static_cast<size_t>(as_u(sv, sv.type));
+                    size_t old = block.length != 0 ? block.length : block.fields.size();
+                    Value* src = block.ptr != nullptr ? block.ptr : block.fields.data();
+                    if (current_alloc.u == 1 && current_alloc.ptr != nullptr) {
+                        Value* fb = current_alloc.ptr;
+                        bool tail = bump_fb == fb && bump_ptr == src;
+                        size_t cap = fb->fields.size() >= 2 ? static_cast<size_t>(fb->fields[1].u)
+                                                            : 0;
+                        size_t used = fb->fields.size() >= 3 ? static_cast<size_t>(fb->fields[2].u)
+                                                             : 0;
+                        if (!tail || used < old) {
+                            return fail_exhausted(n->ty);
+                        }
+                        size_t start = used - old;
+                        if (start + size < start || start + size > cap) {
+                            return fail_exhausted(n->ty);
+                        }
+                        fb->fields[2].u = start + size;
+                    }
+                    vector<Value> elems;
+                    elems.resize(size);
+                    Type* elem = n->ty != nullptr && is_fail(n->ty) && n->ty->elem != nullptr
+                                     ? n->ty->elem->elem
+                                     : nullptr;
+                    for (size_t i = 0; i < size; i++) {
+                        if (i < old && src != nullptr) {
+                            elems[i] = src[i];
+                        } else {
+                            elems[i] = v_int(elem, 0);
+                        }
+                    }
+                    Type* sp = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    Value grown = make_array(sp, std::move(elems));
+                    grown.kind = TypeKind::Span;
+                    grown.type = sp;
+                    if (current_alloc.u == 1) {
+                        bump_fb = current_alloc.ptr;
+                        bump_ptr = grown.ptr;
+                        bump_len = grown.length;
+                    }
+                    return ok_payload(grown, n->ty);
+                }
+                if (lt->name == "memory" && callee->text == "read") {
+                    Value addr = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    Type* t = n->type != nullptr ? n->type->ty : n->ty;
+                    if (addr.ptr != nullptr) {
+                        Value v = *addr.ptr;
+                        v.type = t;
+                        if (t != nullptr) {
+                            v.kind = t->kind;
+                        }
+                        return v;
+                    }
+                    return v_zero(t);
+                }
+                if (lt->name == "memory" && callee->text == "write") {
+                    Value addr = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value val = n->body != nullptr && n->body->next != nullptr
+                                    ? eval(n->body->next->left)
+                                    : v_unit();
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    if (addr.ptr != nullptr) {
+                        Type* t = n->type != nullptr ? n->type->ty : val.type;
+                        val.type = t;
+                        if (t != nullptr) {
+                            val.kind = t->kind;
+                        }
+                        *addr.ptr = val;
+                    }
+                    return v_unit();
+                }
+                if (lt->name == "files" && callee->text == "list") {
+                    Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    string path = cstr_text(pv);
+                    if (path.empty()) {
+                        path = decode_string(pv.str);
+                    }
+                    DIR* dir = opendir(path.c_str());
+                    if (dir == nullptr) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 2;
+                        e.err_msg = "missing";
+                        return e;
+                    }
+                    vector<string> names;
+                    struct dirent* ent;
+                    while ((ent = readdir(dir)) != nullptr) {
+                        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+                            continue;
+                        }
+                        names.push_back(ent->d_name);
+                    }
+                    closedir(dir);
+                    for (size_t i = 1; i < names.size(); i++) {
+                        string key = names[i];
+                        size_t j = i;
+                        while (j > 0 && names[j - 1] > key) {
+                            names[j] = names[j - 1];
+                            j--;
+                        }
+                        names[j] = key;
+                    }
+                    vector<Value> elems;
+                    elems.resize(names.size());
+                    for (size_t i = 0; i < names.size(); i++) {
+                        strings.push_back(names[i]);
+                        elems[i] = v_str(strings.back());
+                    }
+                    Type* sp = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    Value span = make_array(sp, std::move(elems));
+                    span.kind = TypeKind::Span;
+                    span.type = sp;
+                    return ok_payload(span, n->ty);
+                }
+                if (lt->name == "process" && callee->text == "run") {
+                    Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value av = n->body != nullptr && n->body->next != nullptr
+                                   ? eval(n->body->next->left)
+                                   : v_unit();
+                    string prog = cstr_text(pv);
+                    if (prog.empty()) {
+                        prog = decode_string(pv.str);
+                    }
+                    size_t nargs = av.length != 0 ? av.length : av.fields.size();
+                    if (av.kind == TypeKind::Array && av.type != nullptr) {
+                        nargs = static_cast<size_t>(av.type->length);
+                    }
+                    Value* ap = av.ptr != nullptr ? av.ptr : av.fields.data();
+                    vector<string> store;
+                    store.reserve(nargs);
+                    vector<const char*> argv;
+                    argv.push_back(prog.c_str());
+                    for (size_t i = 0; i < nargs; i++) {
+                        string a = ap != nullptr ? cstr_text(ap[i]) : string();
+                        if (a.empty() && ap != nullptr) {
+                            a = decode_string(ap[i].str);
+                        }
+                        store.push_back(a);
+                    }
+                    for (size_t i = 0; i < store.size(); i++) {
+                        argv.push_back(store[i].c_str());
+                    }
+                    argv.push_back(nullptr);
+                    pid_t pid = fork();
+                    if (pid < 0) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 1;
+                        e.err_msg = "run";
+                        return e;
+                    }
+                    if (pid == 0) {
+                        execvp(prog.c_str(), const_cast<char* const*>(argv.data()));
+                        _exit(127);
+                    }
+                    int st = 0;
+                    if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 1;
+                        e.err_msg = "run";
+                        return e;
+                    }
+                    return ok_payload(v_int(n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty,
+                                           static_cast<uint64_t>(WEXITSTATUS(st))),
+                                     n->ty);
                 }
                 if (lt->name == "files" && callee->text == "read") {
                     Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();

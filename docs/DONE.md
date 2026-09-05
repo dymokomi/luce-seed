@@ -2,6 +2,17 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## Memory, text, listing, spawn, hash
+
+`memory.copy` / `move` / `set`, `memory.read[T]` / `write[T]`, and
+`memory.grow` (heap realloc; FixedBuffer in-place at the bump tail).
+`str(bytes)` and `str(cstr)` validate UTF-8 and yield `str!`; `(str)bytes`
+stays unchecked. `files.list` names a directory. `process.run` forks,
+execs, and waits. `hash` is process-seeded; `hex` / `bin` / `pad` are
+Display forms. Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`,
+`tests/check_test.cpp`, `testdata/programs/memory.lucb`, `text.lucb`,
+`list.lucb`, `spawn.lucb`, `hash.lucb`.
+
 ## Compile-time `luce` facts, `io`, and `files`
 
 `luce.location`, `luce.file`, `luce.line`, and `luce.function` are

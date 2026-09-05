@@ -32,6 +32,10 @@ struct Interp {
     Value current_alloc;
     Value stdio_dummy;
     std::deque<string> strings;
+    uint64_t hash_seed = 0;
+    Value* bump_fb = nullptr;
+    Value* bump_ptr = nullptr;
+    size_t bump_len = 0;
     struct Deferred {
         Node* n = nullptr;
         bool err_only = false;
@@ -181,6 +185,12 @@ struct Interp {
     bool match_pat(Node* pat, const Value& scrut, Type* st);
     Value eval_match(Node* n);
     Value eval_conv(Node* srcn, Type* dest, bool checked);
+    Value eval_str_conv(const Value& x, Type* src, Type* result_ty, bool checked);
+    uint64_t hash_value(const Value& v, Type* t);
+    Value eval_hash(Node* n);
+    Value eval_hex(Node* n);
+    Value eval_bin(Node* n);
+    Value eval_pad(Node* n);
     Node* find_func(string_view name);
     void load_globals();
     Value call_func(Node* fn, Value* self, Node* args);

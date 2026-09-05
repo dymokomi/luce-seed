@@ -490,6 +490,21 @@ auto Emitter::emit_binary(Node* n) -> string {
             return "(" + L + " " + cop + " " + R + ")";
         }
         Type* ct = n->left != nullptr && n->left->ty != nullptr ? n->left->ty : t;
+        if ((lt != nullptr && lt->kind == TypeKind::Str) ||
+            (rt != nullptr && rt->kind == TypeKind::Str)) {
+            if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+                int id = tmp();
+                string a = "_lb_sa" + std::to_string(id);
+                string b = "_lb_sb" + std::to_string(id);
+                string eq = "({ lb_str " + a + " = " + L + "; lb_str " + b + " = " + R + "; (" + a +
+                            ".length == " + b + ".length && (" + a + ".length == 0 || memcmp(" + a +
+                            ".data, " + b + ".data, " + a + ".length) == 0)); })";
+                if (op == TokenKind::NotEq) {
+                    return "(!" + eq + ")";
+                }
+                return eq;
+            }
+        }
         if (op == TokenKind::EqEq) {
             return "(" + L + " == " + R + ")";
         }
@@ -604,11 +619,54 @@ auto Emitter::emit_enum_check(Type* dest, const string& e) -> string {
         return s;
     }
 
-auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
-        string e = emit_expr(src);
+auto Emitter::emit_str_conv(Node* src, bool checked) -> string {
         Type* st = src != nullptr ? src->ty : nullptr;
+        string e = emit_expr(src);
+        int id = tmp();
+        string sn = "_lb_sc" + std::to_string(id);
+        string bn = "_lb_sb" + std::to_string(id);
+        string ln = "_lb_sl" + std::to_string(id);
+        string bind = "({ ";
+        if (st != nullptr && st->kind == TypeKind::CStr) {
+            bind += "const char* " + bn + " = " + e + "; size_t " + ln + " = " + bn +
+                    " == NULL ? 0 : strlen(" + bn + "); ";
+        } else if (is_array(st)) {
+            bind += c_type(st) + " " + sn + " = " + e + "; const char* " + bn + " = (const char*)" +
+                    sn + ".d; size_t " + ln + " = " + std::to_string(st->length) + "ULL; ";
+        } else {
+            string sty = st != nullptr && st->is_const ? "lb_cspan" : "lb_span";
+            bind += sty + " " + sn + " = " + e + "; const char* " + bn + " = (const char*)" + sn +
+                    ".data; size_t " + ln + " = " + sn + ".length; ";
+        }
+        if (!checked) {
+            return bind + "(lb_str){ " + bn + ", " + ln + " }; })";
+        }
+        string rn = "_lb_sr" + std::to_string(id);
+        bind += "lb_r_str " + rn + "; ";
+        bind += "if (!lb_utf8_ok(" + bn + ", " + ln + ")) { " + rn +
+                ".failed = true; " + rn +
+                ".error = (lb_error){ .code = LB_INVALID_UTF8, .message = (lb_str){\"invalid_utf8\", "
+                "12} }; } else { " +
+                rn + ".failed = false; " + rn + ".value = (lb_str){ " + bn + ", " + ln + " }; } " +
+                rn + "; })";
+        return bind;
+    }
+
+auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
+        Type* st = src != nullptr ? src->ty : nullptr;
+        if (dest != nullptr && dest->kind == TypeKind::Str &&
+            (st != nullptr &&
+             (st->kind == TypeKind::CStr ||
+              ((is_span(st) || is_array(st)) && st->elem != nullptr &&
+               st->elem->kind == TypeKind::U8)))) {
+            return emit_str_conv(src, checked);
+        }
+        string e = emit_expr(src);
         if (dest == nullptr) {
             return e;
+        }
+        if (dest->kind == TypeKind::CStr && st != nullptr && st->kind == TypeKind::Str) {
+            return "(" + e + ".data)";
         }
         if (is_int_enum(dest)) {
             if (checked) {
@@ -836,7 +894,7 @@ auto Emitter::emit_display_buf(const string& b, Node* v) -> string {
         if (t != nullptr && t->kind == TypeKind::Bool) {
             return "lb_fmtbuf_bool(&" + b + ", " + e + ")";
         }
-        if (t != nullptr && t->kind == TypeKind::Str) {
+        if (t != nullptr && (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
             return "lb_fmtbuf_put(&" + b + ", " + e + ".data, " + e + ".length)";
         }
         if (is_float(t)) {
@@ -851,6 +909,93 @@ auto Emitter::emit_display_buf(const string& b, Node* v) -> string {
         return "lb_fmtbuf_i64(&" + b + ", (int64_t)(" + e + "))";
     }
 
+auto Emitter::emit_hash_of(Type* t, const string& e) -> string {
+        if (t == nullptr) {
+            return "0";
+        }
+        if (t->kind == TypeKind::Str) {
+            return "lb_hash_bytes(lb_hash_seed(), " + e + ".data, " + e + ".length)";
+        }
+        if (t->kind == TypeKind::Bool) {
+            return "lb_hash_mix(lb_hash_seed(), (uint64_t)(" + e + " ? 1 : 0))";
+        }
+        if (is_float(t)) {
+            int id = tmp();
+            string vn = "_lb_hf" + std::to_string(id);
+            string bits = t->kind == TypeKind::F32 ? "uint32_t" : "uint64_t";
+            return "({ " + c_type(t) + " " + vn + " = " + e + "; " + bits + " _lb_hb" +
+                   std::to_string(id) + "; memcpy(&_lb_hb" + std::to_string(id) + ", &" + vn +
+                   ", sizeof(" + vn + ")); lb_hash_mix(lb_hash_seed(), (uint64_t)_lb_hb" +
+                   std::to_string(id) + "); })";
+        }
+        if (is_ptr(t) || t->kind == TypeKind::CStr) {
+            return "lb_hash_mix(lb_hash_seed(), (uint64_t)(uintptr_t)(" + e + "))";
+        }
+        if (is_int(t) || t->kind == TypeKind::Char || is_int_enum(t)) {
+            return "lb_hash_mix(lb_hash_seed(), (uint64_t)(" + e + "))";
+        }
+        if (is_array(t)) {
+            int id = tmp();
+            string vn = "_lb_ha" + std::to_string(id);
+            string h = "_lb_hh" + std::to_string(id);
+            string i = "_lb_hi" + std::to_string(id);
+            string s = "({ " + c_type(t) + " " + vn + " = " + e + "; uint64_t " + h +
+                       " = lb_hash_seed(); size_t " + i + " = 0; for (; " + i + " < " +
+                       std::to_string(t->length) + "ULL; " + i + "++) { " + h + " = lb_hash_mix(" +
+                       h + ", " + emit_hash_of(t->elem, vn + ".d[" + i + "]") + "); } " + h +
+                       "; })";
+            return s;
+        }
+        if (is_opt(t)) {
+            int id = tmp();
+            string vn = "_lb_ho" + std::to_string(id);
+            return "({ " + c_type(t) + " " + vn + " = " + e + "; " + vn +
+                   ".present ? lb_hash_mix(" + emit_hash_of(t->elem, vn + ".value") +
+                   ", 1) : lb_hash_mix(lb_hash_seed(), 0); })";
+        }
+        if (is_tup(t)) {
+            int id = tmp();
+            string vn = "_lb_ht" + std::to_string(id);
+            string s = "({ " + c_type(t) + " " + vn + " = " + e + "; uint64_t _lb_hh" +
+                       std::to_string(id) + " = lb_hash_seed(); ";
+            for (int i = 0; i < t->ntargs; i++) {
+                s += "_lb_hh" + std::to_string(id) + " = lb_hash_mix(_lb_hh" + std::to_string(id) +
+                     ", " + emit_hash_of(t->args[i], vn + ".a" + std::to_string(i)) + "); ";
+            }
+            s += "_lb_hh" + std::to_string(id) + "; })";
+            return s;
+        }
+        if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+            int id = tmp();
+            string vn = "_lb_hs" + std::to_string(id);
+            string s = "({ " + c_type(t) + " " + vn + " = " + e + "; uint64_t _lb_hh" +
+                       std::to_string(id) + " = lb_hash_seed(); ";
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind != NodeKind::Field) {
+                    continue;
+                }
+                s += "_lb_hh" + std::to_string(id) + " = lb_hash_mix(_lb_hh" + std::to_string(id) +
+                     ", " + emit_hash_of(m->ty, vn + "." + string(m->text)) + "); ";
+            }
+            s += "_lb_hh" + std::to_string(id) + "; })";
+            return s;
+        }
+        if (t->kind == TypeKind::Enum && t->decl != nullptr && !is_int_enum(t)) {
+            int id = tmp();
+            string vn = "_lb_he" + std::to_string(id);
+            return "({ " + c_type(t) + " " + vn + " = " + e + "; lb_hash_mix(lb_hash_seed(), "
+                   "(uint64_t)" +
+                   vn + ".tag); })";
+        }
+        return "lb_hash_mix(lb_hash_seed(), (uint64_t)(" + e + "))";
+    }
+
+auto Emitter::emit_hash(Node* n) -> string {
+        Node* arg = n->body != nullptr ? n->body->left : nullptr;
+        Type* t = arg != nullptr ? arg->ty : nullptr;
+        return emit_hash_of(t, emit_expr(arg));
+    }
+
 auto Emitter::emit_print_formatted(Node* n) -> string {
         string s = "({ ";
         for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
@@ -862,7 +1007,8 @@ auto Emitter::emit_print_formatted(Node* n) -> string {
                 string e = emit_expr(p->left);
                 if (t != nullptr && t->kind == TypeKind::Bool) {
                     s += "fputs((" + e + ") ? \"true\" : \"false\", stdout); ";
-                } else if (t != nullptr && t->kind == TypeKind::Str) {
+                } else if (t != nullptr &&
+                           (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
                     s += "fwrite(" + e + ".data, 1, " + e + ".length, stdout); ";
                 } else if (is_float(t)) {
                     s += "fprintf(stdout, \"%g\", (double)(" + e + ")); ";
@@ -1160,11 +1306,43 @@ auto Emitter::emit_call(Node* n) -> string {
             }
             return "((void)((" + emit_expr(cond) + ") ? 0 : (lb_trap(" + msg + "), 0)))";
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+            return emit_hash(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            Type* t = arg != nullptr ? arg->ty : nullptr;
+            string e = emit_expr(arg);
+            if (is_ptr(t)) {
+                return "lb_show_hex((uint64_t)(uintptr_t)(" + e + "))";
+            }
+            return "lb_show_hex((uint64_t)(" + e + "))";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            return "lb_show_bin((uint64_t)(" + emit_expr(arg) + "))";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            Node* w = n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                    : nullptr;
+            int id = tmp();
+            string buf = "_lb_pbuf" + std::to_string(id);
+            string bn = "_lb_pb" + std::to_string(id);
+            string s = "({ char " + buf + "[256]; lb_fmtbuf " + bn + " = { " + buf +
+                       ", 256, 0 }; ";
+            s += "(void)" + emit_display_buf(bn, arg) + "; ";
+            s += "lb_show_pad(lb_fmtbuf_finish(&" + bn + "), (size_t)(" + emit_expr(w) + ")); })";
+            return s;
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
             Type* t = arg != nullptr ? arg->ty : nullptr;
             if (t != nullptr && t->kind == TypeKind::Fmt) {
-                return emit_print_formatted(arg);
+                if (arg != nullptr && arg->kind == NodeKind::Formatted) {
+                    return emit_print_formatted(arg);
+                }
+                return "lb_print_str(" + emit_expr(arg) + ")";
             }
             string e = emit_expr(arg);
             if (t != nullptr && t->kind == TypeKind::Bool) {
@@ -1209,6 +1387,11 @@ auto Emitter::emit_call(Node* n) -> string {
             string ty = c_type(t);
             string f = field != nullptr ? string(field->text) : "x";
             return "((size_t)offsetof(" + ty + ", " + f + "))";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "str" &&
+            n->body != nullptr) {
+            bool checked = n->ty != nullptr && is_fail(n->ty);
+            return emit_str_conv(n->body->left, checked);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && n->body != nullptr &&
             n->ty != nullptr &&
@@ -1262,6 +1445,129 @@ auto Emitter::emit_call(Node* n) -> string {
                            "(lb_str){\"memory.exhausted\", 16} }; fclose(_lb_f); } else { "
                            "if (_lb_n > 0) fread(_lb_b.data, 1, (size_t)_lb_n, _lb_f); "
                            "fclose(_lb_f); _lb_fr.failed = false; _lb_fr.value = _lb_b; } } _lb_fr; })";
+                }
+                if (lt->name == "memory" &&
+                    (callee->text == "copy" || callee->text == "move")) {
+                    Node* to = n->body != nullptr ? n->body->left : nullptr;
+                    Node* from = n->body != nullptr && n->body->next != nullptr
+                                     ? n->body->next->left
+                                     : nullptr;
+                    Node* count = n->body != nullptr && n->body->next != nullptr &&
+                                          n->body->next->next != nullptr
+                                      ? n->body->next->next->left
+                                      : nullptr;
+                    int id = tmp();
+                    string tn = "_lb_to" + std::to_string(id);
+                    string fn = "_lb_fr" + std::to_string(id);
+                    string cn = "_lb_n" + std::to_string(id);
+                    string fn_name = callee->text == "move" ? "memmove" : "memcpy";
+                    string to_ty = to != nullptr && to->ty != nullptr ? c_type(to->ty) : "lb_span";
+                    string from_ty =
+                        from != nullptr && from->ty != nullptr ? c_type(from->ty) : "lb_cspan";
+                    string to_e = to != nullptr ? emit_expr(to) : "((lb_span){(void*)8, 0})";
+                    string from_e = from != nullptr ? emit_expr(from) : "((lb_cspan){(void*)8, 0})";
+                    return "({ " + to_ty + " " + tn + " = " + to_e + "; " + from_ty + " " + fn +
+                           " = " + from_e + "; size_t " + cn + " = (size_t)(" + emit_expr(count) +
+                           "); if (" + cn + " > " + tn + ".length || " + cn + " > " + fn +
+                           ".length) lb_trap(\"index out of bounds\"); " + fn_name + "( (void*)" +
+                           tn + ".data, " + fn + ".data, " + cn + "); (void)0; })";
+                }
+                if (lt->name == "memory" && callee->text == "set") {
+                    Node* span = n->body != nullptr ? n->body->left : nullptr;
+                    Node* byte = n->body != nullptr && n->body->next != nullptr
+                                     ? n->body->next->left
+                                     : nullptr;
+                    int id = tmp();
+                    string sn = "_lb_set" + std::to_string(id);
+                    string sp;
+                    string sty = span != nullptr && span->ty != nullptr ? c_type(span->ty) : "lb_span";
+                    sp = span != nullptr ? emit_expr(span) : "((lb_span){(void*)8, 0})";
+                    return "({ " + sty + " " + sn + " = " + sp + "; memset((void*)" + sn +
+                           ".data, (int)(unsigned char)(" + emit_expr(byte) + "), " + sn +
+                           ".length); (void)0; })";
+                }
+                if (lt->name == "memory" && callee->text == "grow") {
+                    Node* block = n->body != nullptr ? n->body->left : nullptr;
+                    Node* size = n->body != nullptr && n->body->next != nullptr
+                                     ? n->body->next->left
+                                     : nullptr;
+                    string rty = fail_c_name(n->ty);
+                    int id = tmp();
+                    string bn = "_lb_gb" + std::to_string(id);
+                    string gn = "_lb_gg" + std::to_string(id);
+                    return "({ lb_span " + bn + " = " + emit_expr(block) + "; lb_span " + gn +
+                           " = lb_resize_bytes(lb_get_alloc(), " + bn + ", (size_t)(" +
+                           emit_expr(size) + ")); " + rty + " _lb_gr" + std::to_string(id) +
+                           "; if (" + gn +
+                           ".data == NULL) { _lb_gr" + std::to_string(id) +
+                           " = " + emit_exhausted_lit(n->ty) + "; } else { _lb_gr" +
+                           std::to_string(id) + ".failed = false; _lb_gr" + std::to_string(id) +
+                           ".value = " + gn + "; } _lb_gr" + std::to_string(id) + "; })";
+                }
+                if (lt->name == "memory" && callee->text == "read") {
+                    Type* t = n->type != nullptr ? n->type->ty : n->ty;
+                    string addr = n->body != nullptr ? emit_expr(n->body->left) : "NULL";
+                    int id = tmp();
+                    string vn = "_lb_rd" + std::to_string(id);
+                    return "({ " + c_type(t) + " " + vn + "; memcpy(&" + vn + ", " + addr +
+                           ", sizeof(" + vn + ")); " + vn + "; })";
+                }
+                if (lt->name == "memory" && callee->text == "write") {
+                    Type* t = n->type != nullptr ? n->type->ty : nullptr;
+                    string addr = n->body != nullptr ? emit_expr(n->body->left) : "NULL";
+                    string val = n->body != nullptr && n->body->next != nullptr
+                                     ? emit_expr(n->body->next->left)
+                                     : "0";
+                    int id = tmp();
+                    string vn = "_lb_wr" + std::to_string(id);
+                    string ty = t != nullptr ? c_type(t) : "int64_t";
+                    return "({ " + ty + " " + vn + " = " + val + "; memcpy(" + addr + ", &" + vn +
+                           ", sizeof(" + vn + ")); (void)0; })";
+                }
+                if (lt->name == "files" && callee->text == "list") {
+                    Node* parg = n->body != nullptr ? n->body->left : nullptr;
+                    string p = parg != nullptr ? emit_expr(parg) : "NULL";
+                    string pathc = parg != nullptr && parg->ty != nullptr &&
+                                           parg->ty->kind == TypeKind::CStr
+                                       ? p
+                                       : "((" + p + ").data)";
+                    string rty = fail_c_name(n->ty);
+                    int id = tmp();
+                    return "({ const char* _lb_lp = " + pathc + "; lb_span _lb_ln; int _lb_le = "
+                           "lb_files_list(lb_get_alloc(), _lb_lp, &_lb_ln); " +
+                           rty + " _lb_lr" + std::to_string(id) + "; if (_lb_le != 0) { _lb_lr" +
+                           std::to_string(id) + ".failed = true; _lb_lr" + std::to_string(id) +
+                           ".error = (lb_error){ .code = _lb_le == 2 ? 2 : 1, .message = _lb_le == 2 "
+                           "? (lb_str){\"missing\", 7} : (lb_str){\"memory.exhausted\", 16} }; } else "
+                           "{ _lb_lr" +
+                           std::to_string(id) + ".failed = false; _lb_lr" + std::to_string(id) +
+                           ".value = _lb_ln; } _lb_lr" + std::to_string(id) + "; })";
+                }
+                if (lt->name == "process" && callee->text == "run") {
+                    Node* prog = n->body != nullptr ? n->body->left : nullptr;
+                    Node* args = n->body != nullptr && n->body->next != nullptr
+                                     ? n->body->next->left
+                                     : nullptr;
+                    string p = prog != nullptr ? emit_expr(prog) : "NULL";
+                    string pathc = prog != nullptr && prog->ty != nullptr &&
+                                           prog->ty->kind == TypeKind::CStr
+                                       ? p
+                                       : "((" + p + ").data)";
+                    string a = args != nullptr ? emit_expr(args) : "((lb_cspan){(void*)8, 0})";
+                    string aty = args != nullptr && args->ty != nullptr ? c_type(args->ty) : "lb_cspan";
+                    string rty = fail_c_name(n->ty);
+                    int id = tmp();
+                    string an = "_lb_pa" + std::to_string(id);
+                    return "({ const char* _lb_pp = " + pathc + "; " + aty + " " + an + " = " + a +
+                           "; int32_t _lb_ps = 0; int _lb_pe = lb_process_run(_lb_pp, (const char* "
+                           "const*)" +
+                           an + ".data, " + an + ".length, &_lb_ps); " + rty + " _lb_pr" +
+                           std::to_string(id) + "; if (_lb_pe != 0) { _lb_pr" + std::to_string(id) +
+                           ".failed = true; _lb_pr" + std::to_string(id) +
+                           ".error = (lb_error){ .code = 1, .message = (lb_str){\"run\", 3} }; } else "
+                           "{ _lb_pr" +
+                           std::to_string(id) + ".failed = false; _lb_pr" + std::to_string(id) +
+                           ".value = _lb_ps; } _lb_pr" + std::to_string(id) + "; })";
                 }
                 if (lt->name == "files" && callee->text == "write") {
                     Node* parg = n->body != nullptr ? n->body->left : nullptr;

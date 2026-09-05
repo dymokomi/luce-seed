@@ -412,6 +412,12 @@ struct Checker {
     bool is_identity_args(Node* generic, const vector<Type*>& args);
     Inst* find_inst(Node* generic, const vector<Type*>& args);
     bool comparable_type(Type* t);
+    bool is_hashable(Type* t);
+    Type* check_hash(Node* n);
+    Type* check_hex(Node* n);
+    Type* check_bin(Node* n);
+    Type* check_pad(Node* n);
+    Type* check_memory_rw(Node* n, string_view name);
     bool struct_implements(Node* st, Type* iface);
     bool iface_has_mutating(Type* iface);
     bool satisfies_bounds(Type* t, Node* g, Node* at);

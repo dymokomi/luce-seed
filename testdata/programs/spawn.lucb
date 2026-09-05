@@ -1,0 +1,4 @@
+pub func answer() -> i64!:
+    var args: cstr[2] = ["-c", "exit 7"]
+    let code = try process.run("/bin/sh", args)
+    return i64(code)

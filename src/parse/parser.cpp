@@ -130,6 +130,7 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         TokenKind operand = peek_kind(i + 1);
         if (operand == TokenKind::Name || operand == TokenKind::IntLit ||
             operand == TokenKind::FloatLit || operand == TokenKind::CharLit ||
+            operand == TokenKind::StringLit || operand == TokenKind::BytesLit ||
             operand == TokenKind::KwSelf || operand == TokenKind::KwTrue ||
             operand == TokenKind::KwFalse) {
             if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {

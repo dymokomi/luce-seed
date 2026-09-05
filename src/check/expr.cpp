@@ -893,6 +893,18 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
             return check_format(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+            return check_hash(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
+            return check_hex(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
+            return check_bin(n);
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
+            return check_pad(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
             fail_n(n, "lucb.check.name", "write `luce.location`");
             return t_error();
@@ -1077,6 +1089,10 @@ auto Checker::check_checked_conv(Node* n, Type* dest) -> Type* {
         if (!convert_ok(n, src, dest, true)) {
             return t_error();
         }
+        if (dest != nullptr && dest->kind == TypeKind::Str && src != nullptr &&
+            !type_eq(src, dest)) {
+            return intern_fail(dest);
+        }
         return dest;
     }
 
@@ -1169,6 +1185,18 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
         if (is_int(src) && is_int_enum(dest)) {
             return true;
         }
+        if (dest->kind == TypeKind::Str) {
+            if (src->kind == TypeKind::CStr) {
+                return true;
+            }
+            if ((is_span(src) || is_array(src)) && src->elem != nullptr &&
+                src->elem->kind == TypeKind::U8) {
+                return true;
+            }
+        }
+        if (dest->kind == TypeKind::CStr && src->kind == TypeKind::Str) {
+            return true;
+        }
         fail_n(n, "lucb.check.type",
                "cannot convert `" + type_name(src) + "` to `" + type_name(dest) + "`");
         return false;
@@ -1179,7 +1207,129 @@ auto Checker::is_display(Type* t) -> bool {
             return false;
         }
         return is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Str ||
-               t->kind == TypeKind::Char || is_ptr(t);
+               t->kind == TypeKind::Char || is_ptr(t) || t->kind == TypeKind::Fmt;
+    }
+
+auto Checker::is_hashable(Type* t) -> bool {
+        if (t == nullptr) {
+            return false;
+        }
+        if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Char ||
+            t->kind == TypeKind::Str || is_ptr(t)) {
+            return true;
+        }
+        if (is_array(t) || is_opt(t)) {
+            return is_hashable(t->elem);
+        }
+        if (is_tup(t)) {
+            for (int i = 0; i < t->ntargs; i++) {
+                if (!is_hashable(t->args[i])) {
+                    return false;
+                }
+            }
+            return t->ntargs > 0;
+        }
+        if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::Field && !is_hashable(m->ty)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (t->kind == TypeKind::Enum && t->decl != nullptr) {
+            if (is_int_enum(t)) {
+                return true;
+            }
+            for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+                if (c->kind != NodeKind::EnumCase) {
+                    continue;
+                }
+                for (Node* p = c->body; p != nullptr; p = p->next) {
+                    if (!is_hashable(p->ty)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+auto Checker::check_hash(Node* n) -> Type* {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`hash` takes one argument");
+            return ty_u64;
+        }
+        Type* a = check_expr(n->body->left, nullptr);
+        if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+            a = coerce(n->body->left, a, t_i64());
+            n->body->left->ty = a;
+        }
+        if (!is_hashable(a)) {
+            fail_n(n, "lucb.check.type", "this value cannot be hashed");
+        }
+        return ty_u64;
+    }
+
+auto Checker::check_hex(Node* n) -> Type* {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`hex` takes one argument");
+            return ty_fmt;
+        }
+        Type* a = check_expr(n->body->left, nullptr);
+        if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+            a = coerce(n->body->left, a, t_i64());
+            n->body->left->ty = a;
+        }
+        if (!is_int(a) && !is_ptr(a) && (a == nullptr || a->kind != TypeKind::Char)) {
+            fail_n(n, "lucb.check.type", "`hex` takes an integer or a pointer");
+        }
+        return ty_fmt;
+    }
+
+auto Checker::check_bin(Node* n) -> Type* {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`bin` takes one argument");
+            return ty_fmt;
+        }
+        Type* a = check_expr(n->body->left, nullptr);
+        if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+            a = coerce(n->body->left, a, t_i64());
+            n->body->left->ty = a;
+        }
+        if (!is_int(a) && (a == nullptr || a->kind != TypeKind::Char)) {
+            fail_n(n, "lucb.check.type", "`bin` takes an integer");
+        }
+        return ty_fmt;
+    }
+
+auto Checker::check_pad(Node* n) -> Type* {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 2) {
+            fail_n(n, "lucb.check.call", "`pad` takes a value and a width");
+            return ty_fmt;
+        }
+        Type* a = check_expr(n->body->left, nullptr);
+        if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+            a = coerce(n->body->left, a, t_i64());
+            n->body->left->ty = a;
+        }
+        if (!is_display(a)) {
+            fail_n(n, "lucb.check.type", "`pad` needs a displayable value");
+        }
+        Type* w = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_usize());
+        if (w != nullptr && w->kind == TypeKind::UntypedInt) {
+            w = coerce(n->body->next->left, w, t_usize());
+            n->body->next->left->ty = w;
+        }
+        if (!is_int(w) && (w == nullptr || w->kind != TypeKind::Usize)) {
+            fail_n(n, "lucb.check.type", "`pad` width must be `usize`");
+        }
+        return ty_fmt;
     }
 
 auto Checker::check_formatted(Node* n) -> Type* {
@@ -1878,6 +2028,64 @@ auto Checker::check_extern_call(Node* n, Node* fn) -> Type* {
         return result;
     }
 
+auto Checker::check_memory_rw(Node* n, string_view name) -> Type* {
+        Node* mem = n->left;
+        Node* obj = mem != nullptr ? mem->left : nullptr;
+        if (obj != nullptr) {
+            Binding* b = lookup(obj->text);
+            if (b != nullptr) {
+                obj->resolved = b->decl;
+                obj->ty = b->type;
+            }
+        }
+        if (n->type == nullptr) {
+            fail_n(n, "lucb.check.type", "`memory." + string(name) + "` needs a type argument");
+            return t_error();
+        }
+        if (n->type->next != nullptr) {
+            fail_n(n, "lucb.check.type", "`memory." + string(name) + "` takes one type argument");
+        }
+        Type* t = resolve_type(n->type);
+        n->type->ty = t;
+        Type* voidp = intern_ptr(ty_void, false, false, false);
+        if (name == "read") {
+            if (count_args(n->body) != 1) {
+                fail_n(n, "lucb.check.call", "`memory.read` takes an address");
+            }
+            if (n->body != nullptr) {
+                Type* at = check_expr(n->body->left, voidp);
+                if (!is_ptr(at) && (at == nullptr || at->kind != TypeKind::Void)) {
+                    fail_n(n, "lucb.check.type", "`memory.read` needs a pointer");
+                }
+            }
+            if (mem != nullptr) {
+                mem->resolved = n->resolved;
+            }
+            return t;
+        }
+        if (count_args(n->body) != 2) {
+            fail_n(n, "lucb.check.call", "`memory.write` takes an address and a value");
+        }
+        if (n->body != nullptr) {
+            Type* at = check_expr(n->body->left, voidp);
+            if (!is_ptr(at) && (at == nullptr || at->kind != TypeKind::Void)) {
+                fail_n(n, "lucb.check.type", "`memory.write` needs a pointer");
+            }
+            if (n->body->next != nullptr) {
+                Type* vt = check_expr(n->body->next->left, t);
+                if (!type_eq(vt, t) && !can_widen(vt, t) &&
+                    !can_ptr_convert(vt, t, n->body->next->left)) {
+                    fail_n(n->body->next, "lucb.check.type",
+                           "`memory.write` value has type `" + type_name(t) + "`");
+                }
+            }
+        }
+        if (mem != nullptr) {
+            mem->resolved = n->resolved;
+        }
+        return t_unit();
+    }
+
 auto Checker::check_method_call(Node* n) -> Type* {
         Node* mem = n->left;
         Node* obj = mem->left;
@@ -1910,6 +2118,10 @@ auto Checker::check_method_call(Node* n) -> Type* {
                     return check_checked_conv(n, d->ty);
                 }
                 if (d->kind == NodeKind::Func) {
+                    if (b->type->name == "memory" &&
+                        (mem->text == "read" || mem->text == "write")) {
+                        return check_memory_rw(n, mem->text);
+                    }
                     if (b->type->name == "thread" && mem->text == "spawn") {
                         n->resolved = d;
                         mem->resolved = d;

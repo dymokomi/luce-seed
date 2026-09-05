@@ -1,10 +1,13 @@
 #include "lucb_rt.h"
 
+#include <dirent.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static _Thread_local lb_alloc lb_current_alloc = {NULL, -1};
 
@@ -158,6 +161,57 @@ void lb_release_bytes(lb_alloc a, lb_span block) {
     }
 }
 
+lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size) {
+    lb_span s;
+    s.data = NULL;
+    s.length = 0;
+    if (size == block.length) {
+        return block;
+    }
+    if (a.kind < 0) {
+        lb_trap("memory.unset");
+    }
+    if (a.kind == 0) {
+        if (size == 0) {
+            lb_release_bytes(a, block);
+            s.data = (void*)8;
+            s.length = 0;
+            return s;
+        }
+        void* p = NULL;
+        if (posix_memalign(&p, clamp_align(sizeof(void*)), size) != 0) {
+            return s;
+        }
+        size_t n = size < block.length ? size : block.length;
+        if (n > 0 && block.data != NULL && block.length > 0) {
+            memcpy(p, block.data, n);
+        }
+        if (block.length > 0 && block.data != NULL) {
+            free(block.data);
+        }
+        s.data = p;
+        s.length = size;
+        return s;
+    }
+    if (a.kind == 1 && a.ctx != NULL) {
+        lb_fixed* f = (lb_fixed*)a.ctx;
+        uint8_t* start = (uint8_t*)block.data;
+        if (f->data != NULL && start >= f->data && start + block.length == f->data + f->used) {
+            if (start + size < start) {
+                return s;
+            }
+            if (start + size <= f->data + f->cap) {
+                f->used = (size_t)(start - f->data) + size;
+                s.data = start;
+                s.length = size;
+                return s;
+            }
+        }
+        return s;
+    }
+    return s;
+}
+
 void lb_trap(const char* message) {
     fprintf(stderr, "trap: %s\n", message != NULL ? message : "");
     exit(1);
@@ -275,32 +329,316 @@ void lb_sem_release(lb_Sem* s) {
 
 int64_t* lb_null_probe(void) { return NULL; }
 
-void lb_check_utf8(const char* s, size_t n) {
+int lb_utf8_ok(const char* s, size_t n) {
     size_t i = 0;
+    if (s == NULL) {
+        return n == 0;
+    }
     while (i < n) {
         unsigned char c = (unsigned char)s[i];
         size_t w = 1;
+        uint32_t cp = 0;
         if (c < 0x80) {
             w = 1;
+            cp = c;
         } else if ((c & 0xE0) == 0xC0) {
             w = 2;
+            cp = c & 0x1Fu;
         } else if ((c & 0xF0) == 0xE0) {
             w = 3;
+            cp = c & 0x0Fu;
         } else if ((c & 0xF8) == 0xF0) {
             w = 4;
+            cp = c & 0x07u;
         } else {
-            lb_trap("invalid_utf8");
+            return 0;
         }
         if (i + w > n) {
-            lb_trap("invalid_utf8");
+            return 0;
         }
         for (size_t k = 1; k < w; k++) {
-            if (((unsigned char)s[i + k] & 0xC0) != 0x80) {
-                lb_trap("invalid_utf8");
+            unsigned char x = (unsigned char)s[i + k];
+            if ((x & 0xC0) != 0x80) {
+                return 0;
             }
+            cp = (cp << 6) | (uint32_t)(x & 0x3Fu);
+        }
+        if (w == 2 && cp < 0x80) {
+            return 0;
+        }
+        if (w == 3 && cp < 0x800) {
+            return 0;
+        }
+        if (w == 4 && cp < 0x10000) {
+            return 0;
+        }
+        if (cp >= 0xD800 && cp <= 0xDFFF) {
+            return 0;
+        }
+        if (cp > 0x10FFFFu) {
+            return 0;
         }
         i += w;
     }
+    return 1;
+}
+
+void lb_check_utf8(const char* s, size_t n) {
+    if (!lb_utf8_ok(s, n)) {
+        lb_trap("invalid_utf8");
+    }
+}
+
+typedef struct lb_name_item {
+    char* name;
+    size_t len;
+} lb_name_item;
+
+static int lb_name_cmp(const void* a, const void* b) {
+    const lb_name_item* x = (const lb_name_item*)a;
+    const lb_name_item* y = (const lb_name_item*)b;
+    size_t n = x->len < y->len ? x->len : y->len;
+    int c = memcmp(x->name, y->name, n);
+    if (c != 0) {
+        return c;
+    }
+    if (x->len < y->len) {
+        return -1;
+    }
+    if (x->len > y->len) {
+        return 1;
+    }
+    return 0;
+}
+
+int lb_files_list(lb_alloc a, const char* path, lb_span* out) {
+    if (out == NULL) {
+        return 1;
+    }
+    out->data = (void*)8;
+    out->length = 0;
+    if (path == NULL) {
+        return 2;
+    }
+    DIR* dir = opendir(path);
+    if (dir == NULL) {
+        return 2;
+    }
+    lb_name_item* items = NULL;
+    size_t n = 0;
+    size_t cap = 0;
+    size_t bytes = 0;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+            continue;
+        }
+        size_t len = strlen(ent->d_name);
+        if (n == cap) {
+            size_t next = cap == 0 ? 8 : cap * 2;
+            lb_name_item* grown = (lb_name_item*)realloc(items, next * sizeof(lb_name_item));
+            if (grown == NULL) {
+                for (size_t i = 0; i < n; i++) {
+                    free(items[i].name);
+                }
+                free(items);
+                closedir(dir);
+                return 1;
+            }
+            items = grown;
+            cap = next;
+        }
+        char* copy = (char*)malloc(len + 1);
+        if (copy == NULL) {
+            for (size_t i = 0; i < n; i++) {
+                free(items[i].name);
+            }
+            free(items);
+            closedir(dir);
+            return 1;
+        }
+        memcpy(copy, ent->d_name, len + 1);
+        items[n].name = copy;
+        items[n].len = len;
+        n++;
+        bytes += len + 1;
+    }
+    closedir(dir);
+    if (n > 1) {
+        qsort(items, n, sizeof(lb_name_item), lb_name_cmp);
+    }
+    if (n == 0) {
+        free(items);
+        return 0;
+    }
+    size_t need = n * sizeof(lb_str) + bytes;
+    lb_span block = lb_alloc_bytes(a, need, sizeof(void*));
+    if (block.data == NULL) {
+        for (size_t i = 0; i < n; i++) {
+            free(items[i].name);
+        }
+        free(items);
+        return 1;
+    }
+    lb_str* names = (lb_str*)block.data;
+    char* store = (char*)(names + n);
+    for (size_t i = 0; i < n; i++) {
+        names[i].data = store;
+        names[i].length = items[i].len;
+        memcpy(store, items[i].name, items[i].len);
+        store[items[i].len] = 0;
+        store += items[i].len + 1;
+        free(items[i].name);
+    }
+    free(items);
+    out->data = names;
+    out->length = n;
+    return 0;
+}
+
+int lb_process_run(const char* program, const char* const* args, size_t nargs, int32_t* status) {
+    if (program == NULL) {
+        return 1;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        return 1;
+    }
+    if (pid == 0) {
+        const char** argv = (const char**)malloc((nargs + 2) * sizeof(char*));
+        if (argv == NULL) {
+            _exit(127);
+        }
+        argv[0] = program;
+        for (size_t i = 0; i < nargs; i++) {
+            argv[i + 1] = args != NULL ? args[i] : "";
+        }
+        argv[nargs + 1] = NULL;
+        execvp(program, (char* const*)argv);
+        _exit(127);
+    }
+    int st = 0;
+    if (waitpid(pid, &st, 0) < 0) {
+        return 1;
+    }
+    if (WIFEXITED(st)) {
+        if (status != NULL) {
+            *status = (int32_t)WEXITSTATUS(st);
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static uint64_t lb_seed;
+static int lb_seed_set;
+
+uint64_t lb_hash_seed(void) {
+    if (!lb_seed_set) {
+        lb_seed = 0x9E3779B97F4A7C15ULL ^ (uint64_t)(uintptr_t)&lb_seed;
+        lb_seed_set = 1;
+    }
+    return lb_seed;
+}
+
+uint64_t lb_hash_mix(uint64_t h, uint64_t x) {
+    h ^= x;
+    h *= 0x9E3779B97F4A7C15ULL;
+    h ^= h >> 32;
+    return h;
+}
+
+uint64_t lb_hash_bytes(uint64_t h, const void* p, size_t n) {
+    const unsigned char* b = (const unsigned char*)p;
+    for (size_t i = 0; i < n; i++) {
+        h = lb_hash_mix(h, b[i]);
+    }
+    h = lb_hash_mix(h, (uint64_t)n);
+    return h;
+}
+
+#define LB_SHOW_SLOTS 4
+#define LB_SHOW_CAP 256
+
+static _Thread_local char lb_show_buf[LB_SHOW_SLOTS][LB_SHOW_CAP];
+static _Thread_local int lb_show_i;
+
+static lb_str lb_show_take(const char* s, size_t n) {
+    int slot = lb_show_i++ & (LB_SHOW_SLOTS - 1);
+    if (n >= LB_SHOW_CAP) {
+        n = LB_SHOW_CAP - 1;
+    }
+    if (s != NULL && n > 0) {
+        memcpy(lb_show_buf[slot], s, n);
+    }
+    lb_show_buf[slot][n] = 0;
+    lb_str r;
+    r.data = lb_show_buf[slot];
+    r.length = n;
+    return r;
+}
+
+lb_str lb_show_hex(uint64_t v) {
+    char tmp[32];
+    int n = snprintf(tmp, sizeof(tmp), "%" PRIx64, v);
+    if (n < 0) {
+        n = 0;
+    }
+    return lb_show_take(tmp, (size_t)n);
+}
+
+lb_str lb_show_bin(uint64_t v) {
+    char tmp[65];
+    int n = 0;
+    if (v == 0) {
+        tmp[n++] = '0';
+    } else {
+        char rev[64];
+        int m = 0;
+        while (v != 0 && m < 64) {
+            rev[m++] = (char)('0' + (v & 1u));
+            v >>= 1;
+        }
+        while (m > 0) {
+            tmp[n++] = rev[--m];
+        }
+    }
+    tmp[n] = 0;
+    return lb_show_take(tmp, (size_t)n);
+}
+
+lb_str lb_show_pad(lb_str inner, size_t width) {
+    size_t n = inner.length;
+    const char* s = inner.data != NULL ? inner.data : "";
+    if (n >= width) {
+        return lb_show_take(s, n);
+    }
+    char tmp[LB_SHOW_CAP];
+    size_t pad = width - n;
+    if (width >= LB_SHOW_CAP) {
+        pad = LB_SHOW_CAP - 1 - (n < LB_SHOW_CAP - 1 ? n : LB_SHOW_CAP - 1);
+        if (n > LB_SHOW_CAP - 1) {
+            n = LB_SHOW_CAP - 1;
+            pad = 0;
+        }
+    }
+    for (size_t i = 0; i < pad; i++) {
+        tmp[i] = ' ';
+    }
+    if (n > 0) {
+        memcpy(tmp + pad, s, n);
+    }
+    return lb_show_take(tmp, pad + n);
+}
+
+int lb_fmtbuf_hex(lb_fmtbuf* b, uint64_t v) {
+    lb_str s = lb_show_hex(v);
+    return lb_fmtbuf_put(b, s.data, s.length);
+}
+
+int lb_fmtbuf_bin(lb_fmtbuf* b, uint64_t v) {
+    lb_str s = lb_show_bin(v);
+    return lb_fmtbuf_put(b, s.data, s.length);
 }
 
 static uint64_t mask_bits(int bits) {

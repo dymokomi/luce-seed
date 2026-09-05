@@ -754,3 +754,88 @@ TEST(eval_method_value) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 5);
 }
+
+TEST(eval_memory_copy) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var dst: u8[4] = [0, 0, 0, 0]\n"
+                       "    var src: u8[4] = [1, 2, 3, 4]\n"
+                       "    memory.copy(dst, src, 4)\n"
+                       "    return i64(dst[0]) + i64(dst[3])\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 5);
+}
+
+TEST(eval_memory_read_write) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = 0\n"
+                       "    memory.write[i64]((void*)(&n), 42)\n"
+                       "    return memory.read[i64]((void*)(&n))\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 42);
+}
+
+TEST(eval_memory_grow) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    let b = try alloc u8[2]\n"
+                       "    b[0] = 9\n"
+                       "    let g = try memory.grow(b, 8)\n"
+                       "    return i64(g[0]) + i64(g.length)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 17);
+}
+
+TEST(eval_str_from_bytes) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    let s = try str(\"hi\".bytes)\n"
+                       "    return i64(s.length)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}
+
+TEST(eval_str_invalid_utf8) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    var b: u8[1] = [255]\n"
+                       "    let s = str(b) catch:\n"
+                       "        return 1\n"
+                       "    return i64(s.length)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_files_list) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    let names = try files.list(\"testdata/programs\")\n"
+                       "    var found = 0\n"
+                       "    for name in names:\n"
+                       "        if name == \"hello.lucb\":\n"
+                       "            found = 1\n"
+                       "    return i64(found)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_process_run) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    var args: cstr[2] = [\"-c\", \"exit 7\"]\n"
+                       "    let code = try process.run(\"/bin/sh\", args)\n"
+                       "    return i64(code)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 7);
+}
+
+TEST(eval_hash_int) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    if hash(7) == hash(7) and hash(7) != hash(8):\n"
+                       "        return 1\n"
+                       "    return 0\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_hex) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    print(hex(255))\n"
+                       "    return 0\n");
+    CHECK(r.ok);
+    CHECK(r.output.find("ff") != std::string::npos);
+}

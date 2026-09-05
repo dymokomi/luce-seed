@@ -148,11 +148,27 @@ typedef struct lb_fixed {
 lb_alloc lb_heap_alloc(void);
 lb_alloc lb_fixed_alloc(lb_fixed* f);
 lb_span lb_alloc_bytes(lb_alloc a, size_t size, size_t align);
+lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size);
 void lb_release_bytes(lb_alloc a, lb_span block);
 lb_alloc lb_get_alloc(void);
 void lb_set_alloc(lb_alloc a);
 
+int lb_utf8_ok(const char* s, size_t n);
+int lb_files_list(lb_alloc a, const char* path, lb_span* out);
+int lb_process_run(const char* program, const char* const* args, size_t nargs, int32_t* status);
+
+uint64_t lb_hash_seed(void);
+uint64_t lb_hash_mix(uint64_t h, uint64_t x);
+uint64_t lb_hash_bytes(uint64_t h, const void* p, size_t n);
+lb_str lb_show_hex(uint64_t v);
+lb_str lb_show_bin(uint64_t v);
+lb_str lb_show_pad(lb_str inner, size_t width);
+int lb_fmtbuf_hex(lb_fmtbuf* b, uint64_t v);
+int lb_fmtbuf_bin(lb_fmtbuf* b, uint64_t v);
+
 #define LB_MEMORY_EXHAUSTED 1
+#define LB_FILES_MISSING 2
+#define LB_INVALID_UTF8 3
 
 typedef struct lb_error {
     int32_t code;

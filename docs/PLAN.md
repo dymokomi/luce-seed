@@ -77,7 +77,8 @@ module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
 ## M10 — Allocation and `memory`
 
 `new` / `alloc` / `free` / `with` / `in`. `Allocator`. `FixedBuffer` and
-`CAllocator`. `memory.exhausted`.
+`CAllocator`. `memory.exhausted`. `memory.copy` / `move` / `set` /
+`read[T]` / `write[T]` / `grow`.
 **Landed.**
 
 ## M11 — Generics (monomorphise)
