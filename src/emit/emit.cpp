@@ -403,6 +403,12 @@ auto Emitter::note_type(Type* t) -> void {
             note_fn(t);
         }
         if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+            for (size_t i = 0; i < noted_structs.size(); i++) {
+                if (noted_structs[i] == t) {
+                    return;
+                }
+            }
+            noted_structs.push_back(t);
             for (Node* m = t->decl->body; m != nullptr; m = m->next) {
                 if (m->kind == NodeKind::Field) {
                     note_type(m->ty);
@@ -413,6 +419,12 @@ auto Emitter::note_type(Type* t) -> void {
 
 auto Emitter::walk_types(Node* n) -> void {
         if (n == nullptr) {
+            return;
+        }
+        if (n->left != nullptr && n->left->kind == NodeKind::GenericParam &&
+            (n->kind == NodeKind::Struct || n->kind == NodeKind::Func ||
+             n->kind == NodeKind::Enum || n->kind == NodeKind::Union)) {
+            walk_types(n->next);
             return;
         }
         note_type(n->ty);
@@ -428,6 +440,9 @@ auto Emitter::emit_type_forwards(Node* mod) -> void {
             return;
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Struct || d->kind == NodeKind::ExternStruct) {
                 string n = struct_ident(d);
                 line("typedef struct " + n + " " + n + ";");
@@ -530,6 +545,9 @@ auto Emitter::collect_from(Node* mod) -> void {
         }
         walk_types(mod);
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
+                continue;
+            }
             if (d->kind == NodeKind::Func) {
                 note_fail_fn(d);
             } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
@@ -784,6 +802,7 @@ auto Emitter::emit_module(Node* mod) -> void {
         fails.clear();
         tups.clear();
         fns.clear();
+        noted_structs.clear();
         wrote_writer_rt = false;
         collect_from(mod);
         emit_type_forwards(mod);
@@ -823,6 +842,7 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         fails.clear();
         tups.clear();
         fns.clear();
+        noted_structs.clear();
         wrote_writer_rt = false;
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             collect_from(modules[static_cast<size_t>(i)]);

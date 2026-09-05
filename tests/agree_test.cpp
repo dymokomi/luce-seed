@@ -940,6 +940,18 @@ TEST(agree_program_arena) { CHECK(agrees_file("testdata/programs/arena.lucb")); 
 
 TEST(agree_program_map) { CHECK(agrees_file("testdata/programs/map.lucb")); }
 
+TEST(agree_program_while_let) { CHECK(agrees_file("testdata/programs/while_let.lucb")); }
+
+TEST(agree_program_if_let_call) { CHECK(agrees_file("testdata/programs/if_let_call.lucb")); }
+
+TEST(agree_program_ptr_fields) { CHECK(agrees_file("testdata/programs/ptr_fields.lucb")); }
+
+TEST(agree_program_defer_free) { CHECK(agrees_file("testdata/programs/defer_free.lucb")); }
+
+TEST(agree_program_char_u8) { CHECK(agrees_file("testdata/programs/char_u8.lucb")); }
+
+TEST(agree_program_generic_list) { CHECK(agrees_file("testdata/programs/generic_list.lucb")); }
+
 TEST(agree_program_builder) { CHECK(agrees_file("testdata/programs/builder.lucb")); }
 
 TEST(agree_user_arena) {

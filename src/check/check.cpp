@@ -993,7 +993,12 @@ auto Checker::is_local(Node* n) -> bool {
     }
 
 auto Checker::fail(Span span, const char* code, const string& message) -> void {
-        diag->add(code, path, span, message);
+        string p = path;
+        if (current_module != nullptr && current_module->left != nullptr &&
+            !current_module->left->text.empty()) {
+            p = string(current_module->left->text);
+        }
+        diag->add(code, p, span, message);
     }
 
 auto Checker::fail_n(Node* n, const char* code, const string& message) -> void {
@@ -1953,6 +1958,12 @@ auto Checker::check_module(Node* mod) -> void {
         current_module = mod;
         if (mod != nullptr && mod->text.empty() && !path.empty()) {
             mod->text = keep(path);
+        }
+        if (mod != nullptr && mod->left == nullptr && !path.empty()) {
+            Node* loc = arena->make<Node>();
+            loc->kind = NodeKind::Name;
+            loc->text = keep(path);
+            mod->left = loc;
         }
         push_scope();
         bind_memory();

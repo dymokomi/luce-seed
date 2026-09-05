@@ -1,0 +1,10 @@
+pub func answer() -> i64:
+    let src = "let x"
+    let b = src.bytes
+    var i: usize = 0
+    while i < b.length and b[i] != ' ':
+        i += 1
+    var c: u8 = b[0]
+    if c == 'l':
+        return i64(i) + 37
+    return 0

@@ -1,0 +1,6 @@
+import kinds
+
+pub func answer() -> i64:
+    if kinds.Kind.number == kinds.Kind.number:
+        return i64(kinds.Kind.eof) + 33
+    return 0

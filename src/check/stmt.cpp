@@ -274,7 +274,11 @@ auto Checker::check_stmt(Node* n) -> void {
             break;
         }
         case NodeKind::Defer:
-            check_expr(n->left);
+            if (n->left != nullptr && n->left->kind == NodeKind::Free) {
+                check_free(n->left);
+            } else {
+                check_expr(n->left);
+            }
             if (n->body != nullptr) {
                 check_stmt(n->body);
             }
@@ -283,7 +287,11 @@ auto Checker::check_stmt(Node* n) -> void {
             if (!fallible_fn) {
                 fail_n(n, "lucb.check.type", "`errdefer` is only valid in a fallible function");
             }
-            check_expr(n->left);
+            if (n->left != nullptr && n->left->kind == NodeKind::Free) {
+                check_free(n->left);
+            } else {
+                check_expr(n->left);
+            }
             break;
         case NodeKind::Recover:
             if (!in_catch) {

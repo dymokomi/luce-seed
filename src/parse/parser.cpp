@@ -68,7 +68,11 @@ auto Parser::is_generic_call_ahead() const -> bool {
             return false;
         }
         int close = find_match(pos, TokenKind::LBracket, TokenKind::RBracket);
-        if (close < 0 || close + 1 >= n || tok[close + 1].kind != TokenKind::LParen) {
+        if (close < 0 || close + 1 >= n) {
+            return false;
+        }
+        TokenKind after = tok[close + 1].kind;
+        if (after != TokenKind::LParen && after != TokenKind::Dot) {
             return false;
         }
         Token first = peek(1);

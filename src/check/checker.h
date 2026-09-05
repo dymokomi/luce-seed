@@ -419,6 +419,7 @@ struct Checker {
     Type* check_bin(Node* n);
     Type* check_pad(Node* n);
     Type* check_memory_rw(Node* n, string_view name);
+    Type* check_memory_copy(Node* n, string_view name);
     bool struct_implements(Node* st, Type* iface);
     bool iface_has_mutating(Type* iface);
     bool satisfies_bounds(Type* t, Node* g, Node* at);

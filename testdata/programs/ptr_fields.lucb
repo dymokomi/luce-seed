@@ -1,0 +1,15 @@
+struct Inner:
+    var count: i64
+struct Outer:
+    var inner: Inner
+    var next: Outer*?
+func touch(o: Outer*):
+    o.inner.count += 1
+    if let n = o.next:
+        n.inner.count += 10
+pub func answer() -> i64:
+    var b = Outer(inner = Inner(count = 0), next = none)
+    var a = Outer(inner = Inner(count = 0), next = &b)
+    touch(&a)
+    touch(&a)
+    return a.inner.count + b.inner.count + 18

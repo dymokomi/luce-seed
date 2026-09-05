@@ -3,6 +3,20 @@
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 This tree is **luce-seed-0.1**.
 
+## Oracle, recursive structs, and first-day compiler holes
+
+`if let` / `while let` over a function that returns `T?` now agree: the
+interpreter wraps a payload as optional, matching C emit. Self-referential
+`T*?` fields no longer overflow the emitter. Diagnostics from an imported
+module name that file. `defer free(x)` / `errdefer free(x)` parse.
+A `char` literal compares with `u8`. `mod.Enum.case` typechecks.
+`memory.copy` copies any element type by count, so `List[T]` can grow.
+`List[i64].create(n)` parses as a static call on an instantiated struct.
+Evidence: `agree_program_while_let`, `agree_program_if_let_call`,
+`agree_program_ptr_fields`, `agree_program_defer_free`,
+`agree_program_char_u8`, `agree_program_qenum`,
+`agree_program_generic_list`, `import_diag_names_the_imported_file`.
+
 ## Writer.write consumes fmt, process capture, seed freeze
 
 `Writer.write` takes `const u8[]` and also consumes a formatted string or a

@@ -437,6 +437,7 @@ struct Parser {
     Node* parse_suite();
     Node* parse_statement();
     Node* parse_simple_stmt();
+    Node* parse_free();
     Node* parse_binding();
     Node* parse_condition();
     Node* parse_if();

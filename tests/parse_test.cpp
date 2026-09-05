@@ -288,6 +288,16 @@ TEST(parse_test_declaration) {
     CHECK(p.dump().find("(test") != std::string::npos);
 }
 
+TEST(parse_defer_free) {
+    Parsed p("pub func answer() -> i64!:\n"
+             "    let bytes = try alloc u8[4]\n"
+             "    defer free(bytes)\n"
+             "    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(defer") != std::string::npos);
+    CHECK(p.dump().find("(free") != std::string::npos);
+}
+
 TEST(parse_interface) {
     Parsed p("interface Writer:\n"
              "    mutating func write(bytes: const u8[]) -> usize!\n"

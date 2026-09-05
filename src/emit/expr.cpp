@@ -1507,11 +1507,13 @@ auto Emitter::emit_call(Node* n) -> string {
                         from != nullptr && from->ty != nullptr ? c_type(from->ty) : "lb_cspan";
                     string to_e = to != nullptr ? emit_expr(to) : "((lb_span){(void*)8, 0})";
                     string from_e = from != nullptr ? emit_expr(from) : "((lb_cspan){(void*)8, 0})";
+                    Type* elem = to != nullptr && to->ty != nullptr ? to->ty->elem : nullptr;
+                    string esz = elem != nullptr ? "sizeof(" + c_type(elem) + ")" : "1";
                     return "({ " + to_ty + " " + tn + " = " + to_e + "; " + from_ty + " " + fn +
                            " = " + from_e + "; size_t " + cn + " = (size_t)(" + emit_expr(count) +
                            "); if (" + cn + " > " + tn + ".length || " + cn + " > " + fn +
                            ".length) lb_trap(\"index out of bounds\"); " + fn_name + "( (void*)" +
-                           tn + ".data, " + fn + ".data, " + cn + "); (void)0; })";
+                           tn + ".data, " + fn + ".data, " + cn + " * " + esz + "); (void)0; })";
                 }
                 if (lt->name == "memory" && callee->text == "set") {
                     Node* span = n->body != nullptr ? n->body->left : nullptr;

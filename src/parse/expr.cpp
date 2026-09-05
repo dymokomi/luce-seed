@@ -165,7 +165,9 @@ auto Parser::parse_postfix() -> Node* {
                 Node* c = make(NodeKind::Call, start.span);
                 c->left = value;
                 c->type = parse_type_args();
-                c->body = parse_arg_list();
+                if (at(TokenKind::LParen)) {
+                    c->body = parse_arg_list();
+                }
                 c->span = span_from(start);
                 value = c;
             } else if (at(TokenKind::LBracket) && peek(1).kind == TokenKind::RBracket &&

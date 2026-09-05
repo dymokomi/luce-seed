@@ -814,6 +814,18 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
                 }
                 return t_bool();
             }
+            bool u8_char = (L != nullptr && R != nullptr &&
+                            ((L->kind == TypeKind::U8 && R->kind == TypeKind::Char) ||
+                             (L->kind == TypeKind::Char && R->kind == TypeKind::U8)));
+            if (u8_char) {
+                if (L->kind == TypeKind::Char && n->left != nullptr) {
+                    n->left->ty = ty_u8;
+                }
+                if (R->kind == TypeKind::Char && n->right != nullptr) {
+                    n->right->ty = ty_u8;
+                }
+                return t_bool();
+            }
             if (!type_eq(L, R)) {
                 fail_n(n, "lucb.check.type", "operands of `==` must have the same type");
             }
@@ -2042,6 +2054,46 @@ auto Checker::check_extern_call(Node* n, Node* fn) -> Type* {
         return result;
     }
 
+auto Checker::check_memory_copy(Node* n, string_view name) -> Type* {
+        n->resolved = n->left != nullptr ? n->left->resolved : n->resolved;
+        if (count_args(n->body) != 3) {
+            fail_n(n, "lucb.check.call", "`memory." + string(name) + "` takes to, from, and count");
+            return t_unit();
+        }
+        Node* to = n->body != nullptr ? n->body->left : nullptr;
+        Node* from = n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
+        Node* count = n->body != nullptr && n->body->next != nullptr && n->body->next->next != nullptr
+                          ? n->body->next->next->left
+                          : nullptr;
+        Type* tt = check_expr(to, nullptr);
+        Type* ft = check_expr(from, nullptr);
+        Type* ct = check_expr(count, ty_usize);
+        (void)ct;
+        if (is_array(tt) && to != nullptr) {
+            tt = intern_sp(tt->elem, false);
+            to->ty = tt;
+        }
+        if (is_array(ft) && from != nullptr) {
+            bool cnst = ft->is_const;
+            ft = intern_sp(ft->elem, true);
+            (void)cnst;
+            from->ty = ft;
+        }
+        Type* telem = (is_span(tt) || is_array(tt)) && tt != nullptr ? tt->elem : nullptr;
+        Type* felem = (is_span(ft) || is_array(ft)) && ft != nullptr ? ft->elem : nullptr;
+        if (telem == nullptr || felem == nullptr) {
+            fail_n(n, "lucb.check.type", "`memory." + string(name) + "` needs spans or arrays");
+            return t_unit();
+        }
+        if (!type_eq(telem, felem)) {
+            fail_n(n, "lucb.check.type", "`memory." + string(name) + "` copies one element type");
+        }
+        if (is_span(tt) && tt->is_const) {
+            fail_n(n, "lucb.check.mut", "`memory." + string(name) + "` destination must be mutable");
+        }
+        return t_unit();
+    }
+
 auto Checker::check_memory_rw(Node* n, string_view name) -> Type* {
         Node* mem = n->left;
         Node* obj = mem != nullptr ? mem->left : nullptr;
@@ -2132,6 +2184,10 @@ auto Checker::check_method_call(Node* n) -> Type* {
                     return check_checked_conv(n, d->ty);
                 }
                 if (d->kind == NodeKind::Func) {
+                    if (b->type->name == "memory" &&
+                        (mem->text == "copy" || mem->text == "move")) {
+                        return check_memory_copy(n, mem->text);
+                    }
                     if (b->type->name == "memory" &&
                         (mem->text == "read" || mem->text == "write")) {
                         return check_memory_rw(n, mem->text);
@@ -2374,10 +2430,24 @@ auto Checker::check_method_call(Node* n) -> Type* {
             return t_error();
         }
         if ((method->flags & FlagStatic) != 0) {
-            if (obj != nullptr && obj->kind == NodeKind::Member && obj->resolved != nullptr &&
-                obj->resolved->kind == NodeKind::Struct) {
+            bool on_type = false;
+            if (obj != nullptr && obj->kind == NodeKind::Name) {
+                Binding* b = lookup(obj->text);
+                on_type = b != nullptr && b->decl != nullptr &&
+                          (b->decl->kind == NodeKind::Struct || b->decl->kind == NodeKind::Enum);
+            } else if (obj != nullptr && obj->kind == NodeKind::Member && obj->resolved != nullptr &&
+                       (obj->resolved->kind == NodeKind::Struct ||
+                        obj->resolved->kind == NodeKind::Enum)) {
+                on_type = true;
+            } else if (obj != nullptr && obj->kind == NodeKind::Call && obj->type != nullptr) {
+                on_type = true;
+            }
+            if (on_type) {
                 mem->resolved = method;
                 n->resolved = method;
+                if (is_generic_decl(method) || n->type != nullptr) {
+                    return check_generic_call(n, method, nullptr);
+                }
                 return check_func_call(n, method, nullptr);
             }
             fail_n(n, "lucb.check.call", "a static method is called on the type");
@@ -2517,6 +2587,19 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
             }
             n->resolved = field;
             return field->ty;
+        }
+        if (ot != nullptr && is_enum(ot) && ot->decl != nullptr) {
+            Node* cse = enum_case(ot->decl, n->text);
+            if (cse == nullptr) {
+                fail_n(n, "lucb.check.name", "no case `" + string(n->text) + "`");
+                return t_error();
+            }
+            if (cse->body != nullptr) {
+                fail_n(n, "lucb.check.type", "this case needs a payload");
+                return t_error();
+            }
+            n->resolved = cse;
+            return ot;
         }
         if (ot == nullptr || ot->kind != TypeKind::Struct || ot->decl == nullptr) {
             fail_n(n, "lucb.check.type", "field access needs a struct");

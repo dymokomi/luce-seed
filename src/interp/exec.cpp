@@ -27,9 +27,13 @@ auto Interp::exec(Node* n) -> void {
                             continue;
                         }
                         Node* dn = d[static_cast<size_t>(i)].n;
-                        Value dv = eval(dn->left);
-                        if (dv.failed && dn->body != nullptr) {
-                            run_catch_handler(dn, dv);
+                        if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
+                            exec(dn->left);
+                        } else {
+                            Value dv = eval(dn->left);
+                            if (dv.failed && dn->body != nullptr) {
+                                run_catch_handler(dn, dv);
+                            }
                         }
                     }
                 }

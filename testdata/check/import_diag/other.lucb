@@ -1,0 +1,2 @@
+pub func boom() -> i64:
+    return "no"

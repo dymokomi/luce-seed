@@ -350,6 +350,16 @@ auto Interp::show(const Value& v) -> string {
     }
 
 auto Interp::eval(Node* n) -> Value {
+        Value v = eval_uncast(n);
+        if (n != nullptr && is_opt(n->ty) && v.kind != TypeKind::Optional) {
+            v.present = true;
+            v.kind = TypeKind::Optional;
+            v.type = n->ty;
+        }
+        return v;
+    }
+
+auto Interp::eval_uncast(Node* n) -> Value {
         if (n == nullptr || trapped) {
             return v_unit();
         }

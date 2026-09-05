@@ -159,6 +159,7 @@ struct Interp {
     string decode_string(string_view tok);
     string show(const Value& v);
     Value eval(Node* n);
+    Value eval_uncast(Node* n);
     Value eval_case_value(Node* n);
     Value eval_member(Node* n);
     Value eval_index(Node* n);

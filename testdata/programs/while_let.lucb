@@ -1,0 +1,11 @@
+var n: i64 = 0
+func next() -> i64?:
+    if n >= 4:
+        return none
+    n += 1
+    return n * 10
+pub func answer() -> i64:
+    var total: i64 = 0
+    while let v = next():
+        total += v
+    return total - 60

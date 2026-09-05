@@ -1,0 +1,8 @@
+var n: i64 = 0
+func next() -> i64?:
+    n += 1
+    return n * 10
+pub func answer() -> i64:
+    if let v = next():
+        return v + 30
+    return 1

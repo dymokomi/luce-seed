@@ -75,6 +75,19 @@ auto Parser::parse_statement() -> Node* {
         return parse_simple_stmt();
     }
 
+auto Parser::parse_free() -> Node* {
+        Token start = take();
+        Node* n = make(NodeKind::Free, start.span);
+        expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
+        n->left = parse_expression();
+        expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
+        if (eat(TokenKind::KwIn)) {
+            n->right = parse_expression();
+        }
+        n->span = span_from(start);
+        return n;
+    }
+
 auto Parser::parse_simple_stmt() -> Node* {
         Token start = cur();
         if (at(TokenKind::KwLet) || at(TokenKind::KwVar)) {
@@ -104,7 +117,11 @@ auto Parser::parse_simple_stmt() -> Node* {
             Token t = take();
             Node* n = make(t.kind == TokenKind::KwDefer ? NodeKind::Defer : NodeKind::Errdefer,
                            start.span);
-            n->left = parse_expression();
+            if (at(TokenKind::KwFree)) {
+                n->left = parse_free();
+            } else {
+                n->left = parse_expression();
+            }
             if (eat(TokenKind::KwCatch)) {
                 if (at(TokenKind::Name)) {
                     n->text = take().text;
@@ -125,15 +142,8 @@ auto Parser::parse_simple_stmt() -> Node* {
             return n;
         }
         if (at(TokenKind::KwFree)) {
-            take();
-            Node* n = make(NodeKind::Free, start.span);
-            expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
-            n->left = parse_expression();
-            expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
-            if (eat(TokenKind::KwIn)) {
-                n->right = parse_expression();
-            }
-            expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+            Node* n = parse_free();
+            expect_stmt_newline(n != nullptr ? n->left : nullptr);
             return n;
         }
         if (at(TokenKind::KwGoto)) {

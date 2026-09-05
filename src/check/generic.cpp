@@ -573,7 +573,7 @@ auto Checker::check_generic_ctor(Node* n, Node* st) -> Type* {
         }
         Type* ty = instantiate_struct(st, inf, n);
         n->resolved = ty != nullptr ? ty->decl : st;
-        if (ty != nullptr && ty->decl != nullptr) {
+        if (n->body != nullptr && ty != nullptr && ty->decl != nullptr) {
             check_ctor(n, ty->decl);
         }
         return ty;

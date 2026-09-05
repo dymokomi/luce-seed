@@ -1,0 +1,4 @@
+pub enum Kind as u8:
+    number = 1
+    name = 2
+    eof = 7

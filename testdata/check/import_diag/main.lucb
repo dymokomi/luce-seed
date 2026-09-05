@@ -1,0 +1,4 @@
+import other
+
+pub func answer() -> i64:
+    return other.boom()

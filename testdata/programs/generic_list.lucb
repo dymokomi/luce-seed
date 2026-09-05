@@ -1,0 +1,37 @@
+pub struct List[T]:
+    var items: T[]
+    var length: usize
+    var allocator: Allocator
+
+    pub static func create(capacity: usize) -> List[T]!:
+        return List(items = try alloc T[capacity], length = 0, allocator = memory.allocator)
+
+    pub mutating func push(item: T) -> !:
+        if self.length == self.items.length:
+            var cap = self.items.length * 2
+            if cap < 4:
+                cap = 4
+            let grown = try alloc T[cap] in self.allocator
+            memory.copy(grown, self.items, self.length)
+            free(self.items) in self.allocator
+            self.items = grown
+        self.items[self.length] = item
+        self.length += 1
+
+    pub func get(i: usize) -> T:
+        return self.items[i]
+
+    pub mutating func destroy():
+        free(self.items) in self.allocator
+
+pub func answer() -> i64!:
+    var xs = try List[i64].create(1)
+    defer xs.destroy()
+    for i in 0..<10:
+        try xs.push(i64(i))
+    var total: i64 = 0
+    var k: usize = 0
+    while k < xs.length:
+        total += xs.get(k)
+        k += 1
+    return total - 5

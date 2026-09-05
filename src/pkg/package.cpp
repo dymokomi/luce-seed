@@ -187,6 +187,13 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     memcpy(p, name.data(), name.size());
     p[name.size()] = 0;
     loaded.module->text = {p, name.size()};
+    char* fp = static_cast<char*>(program.arena->alloc(path.size() + 1, 1));
+    memcpy(fp, path.data(), path.size());
+    fp[path.size()] = 0;
+    Node* loc = program.arena->make<Node>();
+    loc->kind = NodeKind::Name;
+    loc->text = {fp, path.size()};
+    loaded.module->left = loc;
     program.files.push_back(std::move(loaded));
     size_t idx = program.files.size() - 1;
     stack.push_back(name);

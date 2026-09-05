@@ -18,6 +18,7 @@ struct Emitter {
     vector<Type*> fails;
     vector<Type*> tups;
     vector<Type*> fns;
+    vector<Type*> noted_structs;
     Node* current_fn = nullptr;
     string src_file = "t.lucb";
     bool wrote_writer_rt = false;

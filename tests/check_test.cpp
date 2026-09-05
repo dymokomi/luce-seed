@@ -686,6 +686,14 @@ TEST(check_process_run_ok) {
                    "    return i64(code)\n"));
 }
 
+TEST(check_char_u8_eq_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    let b: u8 = 32\n"
+                   "    if b == ' ':\n"
+                   "        return 1\n"
+                   "    return 0\n"));
+}
+
 TEST(check_writer_fmt_ok) {
     CHECK(check_ok("struct Sink implements Writer:\n"
                    "    var n: usize\n"

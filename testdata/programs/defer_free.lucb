@@ -1,0 +1,5 @@
+pub func answer() -> i64!:
+    let bytes = try alloc u8[16]
+    defer free(bytes)
+    bytes[0] = 40
+    return i64(bytes[0])

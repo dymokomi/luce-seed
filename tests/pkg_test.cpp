@@ -91,6 +91,47 @@ TEST(eval_tests_pass_and_fail) {
     CHECK_EQ(run.failed, 1);
 }
 
+TEST(import_diag_names_the_imported_file) {
+    DiagnosticBag diagnostics;
+    Arena arena;
+    Program program;
+    CHECK(load_program("testdata/check/import_diag/main.lucb", program, arena, diagnostics));
+    CHECK(diagnostics.empty());
+    check_program(mods_of(program), arena, diagnostics, "testdata/check/import_diag/main.lucb");
+    CHECK(!diagnostics.empty());
+    bool named = false;
+    for (size_t i = 0; i < diagnostics.items.size(); i++) {
+        if (diagnostics.items[i].path.find("other.lucb") != std::string::npos) {
+            named = true;
+        }
+    }
+    CHECK(named);
+}
+
+TEST(agree_program_qenum) {
+    DiagnosticBag diagnostics;
+    Arena arena;
+    Program program;
+    CHECK(load_program("testdata/programs/qenum/main.lucb", program, arena, diagnostics));
+    CHECK(diagnostics.empty());
+    CHECK(check_program(mods_of(program), arena, diagnostics, "testdata/programs/qenum/main.lucb"));
+    CHECK(diagnostics.empty());
+    std::string c = emit_program(mods_of(program), program.entry());
+    char tmpl[] = "/tmp/lucbXXXXXX";
+    char* dir = mkdtemp(tmpl);
+    CHECK(dir != nullptr);
+    std::string exe = std::string(dir) + "/prog";
+    std::string err;
+    CHECK(compile_c(c, exe, &err, true));
+    lucb::RunResult native = run_exe(exe);
+    lucb::EvalResult interp = eval_module(program.entry());
+    CHECK(interp.ok);
+    CHECK_EQ(interp.answer, 40);
+    CHECK_EQ(native.exit_code, 0);
+    std::string want = std::to_string(interp.answer) + "\n";
+    CHECK(native.out == want);
+}
+
 TEST(agree_program_compile) {
     DiagnosticBag diagnostics;
     Arena arena;
