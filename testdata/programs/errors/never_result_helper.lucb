@@ -1,0 +1,37 @@
+# A helper declared `-> never!` always fails; `return try helper()` is legal in
+# a unit function, a typed function, and as the exit of an `else`.
+let bad: ErrorCode = ErrorCode.package(1)
+
+func fail_with(what: str) -> never!:
+    error(bad, what)
+
+func unit_path(x: i64?) -> !:
+    let v = x else return try fail_with("unit")
+    discard(v)
+
+func typed_path(x: i64?) -> i64!:
+    let v = x else return try fail_with("typed")
+    return v
+
+func direct() -> i64!:
+    return try fail_with("direct")
+
+pub func answer() -> i64:
+    var score: i64 = 0
+    unit_path(none) catch e:
+        if e.message == "unit":
+            score += 1
+        recover ()
+    unit_path(5) catch e:
+        score += 100
+        recover ()
+    let t = typed_path(none) catch e:
+        if e.message == "typed":
+            score += 10
+        recover -1
+    let d = direct() catch e:
+        if e.message == "direct":
+            score += 100
+        recover -1
+    return score + t + d + 2
+# answer: 111

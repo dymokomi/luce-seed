@@ -1,0 +1,25 @@
+# An array handed to a span field views the array (base.md §5.4): writes through
+# the field land in the array, in a constructor and through a call.
+struct Sink:
+    var data: u8[]
+    var used: usize
+
+func put(s: Sink*, byte: u8):
+    s.data[s.used] = byte
+    s.used += 1
+
+func fill(s: u8[]):
+    s[3] = 'z'
+
+pub func answer() -> i64:
+    var buf: u8[8]
+    var sink = Sink(data = buf, used = 0)
+    put(&sink, 'a')
+    put(&sink, 'b')
+    fill(buf)
+    var total: i64 = 0
+    total += (i64)buf[0] + (i64)buf[1] + (i64)buf[3]
+    if (str)buf[..<2] == "ab":
+        total += 1000
+    return total
+# answer: 1317

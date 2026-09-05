@@ -1,0 +1,28 @@
+# `return call()` of a unit-valued call runs the call before leaving, in a
+# plain function and in a fallible one.
+let no: ErrorCode = ErrorCode.package(3)
+var hits: i64 = 0
+
+func bump():
+    hits += 1
+
+func bump_or_fail(ok: bool) -> !:
+    if not ok:
+        error(no, "no")
+    hits += 10
+
+func plain():
+    return bump()
+
+func fallible(ok: bool) -> !:
+    return try bump_or_fail(ok)
+
+pub func answer() -> i64:
+    plain()
+    fallible(true) catch e:
+        recover ()
+    fallible(false) catch e:
+        hits += 100
+        recover ()
+    return hits
+# answer: 111

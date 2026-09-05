@@ -823,6 +823,10 @@ auto Checker::pattern_covers_rest(Node* pat) -> bool {
 
 auto Checker::check_match(Node* n, Type* expected) -> Type* {
     Type* scrut = check_expr(n->left, nullptr);
+    if (scrut != nullptr && scrut->kind == TypeKind::UntypedInt) {
+        scrut = coerce(n->left, scrut, t_i64());
+        n->left->ty = scrut;
+    }
     Type* result = expected;
     bool saw_rest = false;
     bool saw_true = false;

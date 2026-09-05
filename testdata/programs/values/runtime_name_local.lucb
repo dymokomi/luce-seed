@@ -1,0 +1,17 @@
+# Locals named like the C backend's own helpers (`span`, `out`, `fmtbuf`) are
+# ordinary names and must not collide with them.
+struct Holder:
+    var span: u8[]
+    var out: i64
+
+pub func answer() -> i64:
+    var buf: u8[4]
+    var span: u8[] = buf
+    span[1] = 7
+    var fmtbuf: i64 = 3
+    let out: i64 = 5
+    var h = Holder(span = buf, out = out)
+    h.span[2] = 9
+    var hash_seed: i64 = 1
+    return (i64)buf[1] + (i64)buf[2] + fmtbuf + out + hash_seed + h.out
+# answer: 30

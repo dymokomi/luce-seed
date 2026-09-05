@@ -19,10 +19,27 @@
 
 namespace lucb {
 
+// A user name that spells a runtime identifier (`span`, `str`, `error`, ...)
+// gets a trailing underscore so the two never meet in the C.
+static auto runtime_name(string_view name) -> bool {
+    static const char* const names[] = {"span",  "str",  "error", "cspan", "out",  "fmtbuf",
+                                        "hash_bytes", "hash_mix", "hash_seed", "utf8_ok",
+                                        "r_str", "trap", "check_index", "unknown"};
+    for (const char* n : names) {
+        if (name == n) {
+            return true;
+        }
+    }
+    return false;
+}
+
 string ident(string_view prefix, string_view name) {
     string s;
     s.append(prefix.data(), prefix.size());
     s.append(name.data(), name.size());
+    if (prefix == "lb_" && runtime_name(name)) {
+        s.push_back('_');
+    }
     return s;
 }
 

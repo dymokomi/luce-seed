@@ -91,6 +91,24 @@ auto Emitter::is_trap_call(Node* n) -> bool {
            n->left->kind == NodeKind::Name && n->left->text == "trap";
 }
 
+// A value that never arrives: a `never` expression, or `try` on a `never!` call.
+// The checker coerces the outer type to the context, so the inner call is asked.
+auto Emitter::never_valued(Node* n) -> bool {
+    if (n == nullptr) {
+        return false;
+    }
+    if (n->ty != nullptr && n->ty->kind == TypeKind::Never) {
+        return true;
+    }
+    return n->kind == NodeKind::Unary && n->op == TokenKind::KwTry && n->left != nullptr &&
+           is_fail(n->left->ty) && n->left->ty->elem != nullptr &&
+           n->left->ty->elem->kind == TypeKind::Never;
+}
+
+auto Emitter::unit_valued(Node* n) -> bool {
+    return n != nullptr && n->ty != nullptr && n->ty->kind == TypeKind::Unit;
+}
+
 auto Emitter::is_never_expr(Node* n) -> bool {
     if (n == nullptr) {
         return false;
@@ -156,7 +174,7 @@ auto Emitter::emit_try(Node* n) -> string {
     } else {
         s += "return " + rn + "; } ";
     }
-    if (payload == nullptr || payload->kind == TypeKind::Unit) {
+    if (payload == nullptr || payload->kind == TypeKind::Unit || payload->kind == TypeKind::Never) {
         s += "(void)0; })";
     } else {
         s += rn + ".value; })";
@@ -402,6 +420,10 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         if (is_error_call(n->left)) {
             return "return " + emit_expr(n->left);
         }
+        if (never_valued(n->left)) {
+            // `else return try never_call()`: the call leaves on its own.
+            return "(void)(" + emit_expr(n->left) + "); __builtin_unreachable()";
+        }
         if (n->left == nullptr) {
             if (fn_fallible()) {
                 return "return " + wrap_ok("0");
@@ -409,6 +431,10 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             return "return";
         }
         string e = emit_expr(n->left);
+        if (unit_valued(n->left)) {
+            // `return call()` of a unit call: the call runs, the result is empty.
+            return "(void)(" + e + "); return " + (fn_fallible() ? wrap_ok("0") : string());
+        }
         if (fn_fallible()) {
             e = wrap_ok(e);
         }

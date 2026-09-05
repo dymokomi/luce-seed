@@ -1162,14 +1162,15 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
                 break;
             }
         }
-        if (provided != nullptr && provided->left != nullptr) {
-            if (i < static_cast<int>(v.fields.size())) {
-                v.fields[static_cast<size_t>(i)] = eval(provided->left);
+        Node* init = provided != nullptr && provided->left != nullptr ? provided->left : f->left;
+        if (init != nullptr && i < static_cast<int>(v.fields.size())) {
+            Value fv = eval(init);
+            // An array handed to a span field is viewed, not copied (base.md §5.4).
+            if (f->ty != nullptr && f->ty->kind == TypeKind::Span && fv.kind == TypeKind::Array) {
+                fv.kind = TypeKind::Span;
+                fv.type = f->ty;
             }
-        } else if (f->left != nullptr) {
-            if (i < static_cast<int>(v.fields.size())) {
-                v.fields[static_cast<size_t>(i)] = eval(f->left);
-            }
+            v.fields[static_cast<size_t>(i)] = fv;
         }
         if (trapped) {
             return v_unit();

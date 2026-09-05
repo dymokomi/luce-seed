@@ -86,6 +86,8 @@ struct Emitter {
     bool is_error_call(Node* n);
     bool is_trap_call(Node* n);
     bool is_never_expr(Node* n);
+    bool never_valued(Node* n);
+    bool unit_valued(Node* n);
     string emit_enum_value(Node* n);
     string emit_try(Node* n);
     string emit_else(Node* n);

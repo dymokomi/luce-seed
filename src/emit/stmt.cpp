@@ -533,6 +533,12 @@ auto Emitter::emit_return(Node* n) -> void {
         }
         return;
     }
+    // `return try never_call()`: the value never arrives, so only the call is emitted.
+    if (never_valued(n->left)) {
+        line("(void)(" + emit_expr(n->left) + ");");
+        line("__builtin_unreachable();");
+        return;
+    }
     if (n->left == nullptr) {
         run_defers_from(0);
         if (fn_fallible()) {
@@ -543,6 +549,12 @@ auto Emitter::emit_return(Node* n) -> void {
         return;
     }
     string e = emit_expr(n->left);
+    if (unit_valued(n->left)) {
+        line("(void)(" + e + ");");
+        run_defers_from(0);
+        line(fn_fallible() ? "return " + wrap_ok("0") + ";" : string("return;"));
+        return;
+    }
     if (fn_fallible()) {
         e = wrap_ok(e);
     }
