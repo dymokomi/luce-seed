@@ -172,7 +172,8 @@ void lb_release_call(lb_iface a, lb_span block);
 
 int lb_utf8_ok(const char* s, size_t n);
 int lb_files_list(lb_iface a, const char* path, lb_span* out);
-int lb_process_run(const char* program, const char* const* args, size_t nargs, int32_t* status);
+int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+                   int32_t* status, lb_str* out, lb_str* err);
 
 uint64_t lb_hash_seed(void);
 uint64_t lb_hash_mix(uint64_t h, uint64_t x);

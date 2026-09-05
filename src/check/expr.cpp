@@ -1677,10 +1677,24 @@ auto Checker::check_func_call(Node* n, Node* fn, Node* recv) -> Type* {
                 fail_n(a, "lucb.check.call", "argument name does not match parameter `" +
                                                  string(p->text) + "`");
             }
-            Type* at = check_expr(a->left, p->ty);
-            if (!type_eq(at, p->ty) && !can_widen(at, p->ty) && !can_ptr_convert(at, p->ty, a->left)) {
-                fail_n(a, "lucb.check.type",
-                       "parameter `" + string(p->text) + "` has type " + type_name(p->ty));
+            Type* hint = p->ty;
+            if (is_u8_cspan(p->ty)) {
+                hint = nullptr;
+            }
+            Type* at = check_expr(a->left, hint);
+            bool text_to_bytes = is_u8_cspan(p->ty) && at != nullptr &&
+                                 (at->kind == TypeKind::Fmt || at->kind == TypeKind::Str);
+            if (!text_to_bytes) {
+                if (is_u8_cspan(p->ty) && is_array(at) && can_ptr_convert(at, p->ty, a->left)) {
+                    at = coerce(a->left, at, p->ty);
+                    if (a->left != nullptr) {
+                        a->left->ty = at;
+                    }
+                } else if (!type_eq(at, p->ty) && !can_widen(at, p->ty) &&
+                           !can_ptr_convert(at, p->ty, a->left)) {
+                    fail_n(a, "lucb.check.type",
+                           "parameter `" + string(p->text) + "` has type " + type_name(p->ty));
+                }
             }
             a->resolved = p;
             p = p->next;
@@ -2360,6 +2374,12 @@ auto Checker::check_method_call(Node* n) -> Type* {
             return t_error();
         }
         if ((method->flags & FlagStatic) != 0) {
+            if (obj != nullptr && obj->kind == NodeKind::Member && obj->resolved != nullptr &&
+                obj->resolved->kind == NodeKind::Struct) {
+                mem->resolved = method;
+                n->resolved = method;
+                return check_func_call(n, method, nullptr);
+            }
             fail_n(n, "lucb.check.call", "a static method is called on the type");
         }
         bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const) ||

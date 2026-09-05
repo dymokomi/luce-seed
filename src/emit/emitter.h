@@ -265,6 +265,7 @@ struct Emitter {
     void emit_iface_typedef(Node* iface);
     void emit_vtable(Node* st, Node* iface_type_node);
     void emit_ifaces(Node* mod);
+    string emit_as_cspan(Node* n);
     string emit_args(Node* args);
     string emit_extern_args(Node* n);
     string emit_call(Node* n);

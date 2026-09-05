@@ -816,9 +816,11 @@ TEST(eval_files_list) {
 
 TEST(eval_process_run) {
     EvalResult r = run("pub func answer() -> i64!:\n"
-                       "    var args: cstr[2] = [\"-c\", \"exit 7\"]\n"
-                       "    let code = try process.run(\"/bin/sh\", args)\n"
-                       "    return i64(code)\n");
+                       "    var args: cstr[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
+                       "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+                       "    if out == \"out\" and err == \"err\":\n"
+                       "        return i64(code)\n"
+                       "    return 0\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 7);
 }

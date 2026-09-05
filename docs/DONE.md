@@ -2,6 +2,16 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## Writer.write consumes fmt, process capture, seed freeze
+
+`Writer.write` takes `const u8[]` and also consumes a formatted string or a
+`str`. `process.run` answers `(i32, str, str)!` — status, stdout, stderr —
+allocated from the current allocator. The freeze gate is the toy compiler
+package under `testdata/programs/compile/`. This tree is luce-seed.
+Evidence: `agree_writer_fmt`, `agree_program_builder`, `agree_process_run`,
+`agree_program_compile`, `testdata/programs/builder.lucb`,
+`testdata/programs/spawn.lucb`, `testdata/programs/compile/`.
+
 ## `Hashable` bound
 
 `T: Hashable` and `T: Hashable & Equatable` are derived like `Equatable`.

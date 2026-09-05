@@ -1,4 +1,6 @@
 pub func answer() -> i64!:
-    var args: cstr[2] = ["-c", "exit 7"]
-    let code = try process.run("/bin/sh", args)
-    return i64(code)
+    var args: cstr[2] = ["-c", "printf out; printf err >&2; exit 7"]
+    let (code, out, err) = try process.run("/bin/sh", args)
+    if out == "out" and err == "err":
+        return i64(code)
+    return 0

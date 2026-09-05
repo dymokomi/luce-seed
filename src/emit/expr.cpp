@@ -773,7 +773,7 @@ auto Emitter::emit_member(Node* n) -> string {
                 return d;
             }
         }
-        if (n->text == "bytes") {
+        if (n->text == "bytes" && raw != nullptr && raw->kind == TypeKind::Str) {
             return "((lb_cspan){" + base + acc + "data, " + base + acc + "length})";
         }
         if (n->left != nullptr && n->left->kind == NodeKind::Self) {
@@ -1061,6 +1061,38 @@ auto Emitter::emit_format_call(Node* n) -> string {
         return s;
     }
 
+auto Emitter::emit_as_cspan(Node* n) -> string {
+        if (n == nullptr) {
+            return "((lb_cspan){NULL, 0})";
+        }
+        if (n->kind == NodeKind::Formatted) {
+            int id = tmp();
+            string buf = "_lb_wb" + std::to_string(id);
+            string bn = "_lb_wf" + std::to_string(id);
+            string s = "({ char " + buf + "[1024]; lb_fmtbuf " + bn + " = { " + buf +
+                       ", 1024, 0 }; ";
+            for (Node* p = n->body; p != nullptr; p = p->next) {
+                if (p->kind == NodeKind::FormatText) {
+                    string d = decode_lit(p->text);
+                    s += "(void)lb_fmtbuf_put(&" + bn + ", " + c_escape(d) + ", " +
+                         std::to_string(d.size()) + "); ";
+                } else if (p->kind == NodeKind::FormatField) {
+                    s += "(void)" + emit_display_buf(bn, p->left) + "; ";
+                }
+            }
+            s += "(lb_cspan){ " + bn + ".data, " + bn + ".used }; })";
+            return s;
+        }
+        Type* t = n->ty;
+        if (t != nullptr && (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
+            int id = tmp();
+            string vn = "_lb_sp" + std::to_string(id);
+            return "({ lb_str " + vn + " = " + emit_expr(n) + "; (lb_cspan){ " + vn +
+                   ".data, " + vn + ".length }; })";
+        }
+        return emit_expr(n);
+    }
+
 auto Emitter::emit_args(Node* args) -> string {
         string s;
         bool first = true;
@@ -1069,7 +1101,12 @@ auto Emitter::emit_args(Node* args) -> string {
                 s += ", ";
             }
             first = false;
-            s += emit_expr(a->left);
+            Type* want = a->resolved != nullptr ? a->resolved->ty : nullptr;
+            if (is_u8_cspan(want)) {
+                s += emit_as_cspan(a->left);
+            } else {
+                s += emit_expr(a->left);
+            }
         }
         return s;
     }
@@ -1574,18 +1611,22 @@ auto Emitter::emit_call(Node* n) -> string {
                     string a = args != nullptr ? emit_expr(args) : "((lb_cspan){(void*)8, 0})";
                     string aty = args != nullptr && args->ty != nullptr ? c_type(args->ty) : "lb_cspan";
                     string rty = fail_c_name(n->ty);
+                    Type* payload = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    string tty = c_type(payload);
                     int id = tmp();
                     string an = "_lb_pa" + std::to_string(id);
+                    string rn = "_lb_pr" + std::to_string(id);
                     return "({ const char* _lb_pp = " + pathc + "; " + aty + " " + an + " = " + a +
-                           "; int32_t _lb_ps = 0; int _lb_pe = lb_process_run(_lb_pp, (const char* "
-                           "const*)" +
-                           an + ".data, " + an + ".length, &_lb_ps); " + rty + " _lb_pr" +
-                           std::to_string(id) + "; if (_lb_pe != 0) { _lb_pr" + std::to_string(id) +
-                           ".failed = true; _lb_pr" + std::to_string(id) +
+                           "; int32_t _lb_st = 0; lb_str _lb_so = {NULL, 0}; lb_str _lb_se = {NULL, "
+                           "0}; int _lb_rc = lb_process_run(_lb_pp, (const char* const*)" +
+                           an + ".data, " + an + ".length, lb_get_alloc(), &_lb_st, &_lb_so, "
+                           "&_lb_se); " +
+                           rty + " " + rn + "; if (_lb_rc != 0) { " + rn +
+                           ".failed = true; " + rn +
                            ".error = (lb_error){ .code = 1, .message = (lb_str){\"run\", 3} }; } else "
-                           "{ _lb_pr" +
-                           std::to_string(id) + ".failed = false; _lb_pr" + std::to_string(id) +
-                           ".value = _lb_ps; } _lb_pr" + std::to_string(id) + "; })";
+                           "{ " +
+                           rn + ".failed = false; " + rn + ".value = ((" + tty +
+                           "){ .a0 = _lb_st, .a1 = _lb_so, .a2 = _lb_se }); } " + rn + "; })";
                 }
                 if (lt->name == "files" && callee->text == "write") {
                     Node* parg = n->body != nullptr ? n->body->left : nullptr;
@@ -1595,7 +1636,7 @@ auto Emitter::emit_call(Node* n) -> string {
                                        ? p
                                        : "((" + p + ").data)";
                     string b = n->body != nullptr && n->body->next != nullptr
-                                   ? emit_expr(n->body->next->left)
+                                   ? emit_as_cspan(n->body->next->left)
                                    : "((lb_cspan){NULL,0})";
                     string rty = fail_c_name(n->ty);
                     return "({ const char* _lb_fp = " + pathc + "; lb_cspan _lb_fb = " + b +

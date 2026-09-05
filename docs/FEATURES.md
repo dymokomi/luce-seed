@@ -3,7 +3,8 @@
 Every section of [`language/base.md`](language/base.md) maps to tests. A row
 is never silently omitted: it is `unsupported` until a slice lands.
 
-Status: `done` (gate-green), `partial`, `unsupported`.
+Status: `done` (gate-green), `partial`, `unsupported`, `out of seed` (will
+not land in this tree).
 
 | Section | Topic | Status | Tests |
 | --- | --- | --- | --- |
@@ -11,7 +12,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 3.1 | Confusable punctuation | done | `lex_test` look-alikes |
 | 3.2 | Layout, 4-space indent, delimiter suites | done | `lex_test` layout cases |
 | 3.3 | Comments and `##` documentation | done | `lex_test` comments |
-| 3.4 | Naming (formatter/linter) | unsupported | later |
+| 3.4 | Naming (formatter/linter) | out of seed | later, in `luce-base` |
 | 3.5 | Scope, no shadowing | partial | `check_no_shadow`; modules later |
 | 3.6 | Reserved words; `class`/`spawn`/`weak` refused | done | `lex_test` keywords, `parse_class_belongs_to_full_luce`, `parse_spawn_belongs_to_full_luce`, `parse_weak_belongs_to_full_luce` |
 | 4.1 | `true` `false` `none` | done | `lex_test` keywords |
@@ -37,7 +38,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
 | 21 | Grammar | partial | parser accepts the productions; programs in `testdata/programs/` |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
-| 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` unsupported |
+| 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` out of seed |
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `agree_ptr_int_cast`, `check_nullable_deref`, `check_escape_local` |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
 | 5.5 | `str` as a view | done | `agree_str_length`, `agree_str_bytes`, `agree_str_from_bytes`, `agree_str_cstr`, `agree_str_unchecked`, `agree_str_invalid_utf8` |
@@ -75,7 +76,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `check_try_needs_fallible` |
 | 9.7 | `pub func main(arguments: str[]\|cstr[]) -> i32\|i32!` | done | `agree_main_hello` |
 | 16.3 | `import` / `from … import` | done | `load_and_check_import`, `load_from_import`, `check_unused_import`, `hidden_import_rejected` |
-| 16.4 | `luce.toml` | partial | `[package] name`; source roots default to the manifest directory |
+| 16.4 | `luce.toml` | partial | `[package] name`; extra source roots out of seed |
 | 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
 | 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
@@ -86,17 +87,25 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
 | 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
-| 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`, `agree_hex_bin_pad`; user `Display` not yet |
+| 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`, `agree_writer_fmt`, `agree_hex_bin_pad`; user `Display` out of seed |
 | 5.5 / 9.1 | `fmt`, `format`, `luce.location` | done | `agree_format`, `agree_location` |
 | 16.6 | `io.stdout` / `io.stderr` as `Writer` | done | `agree_io_stderr` |
 | 16.6 | `files.read` / `files.write` / `files.list` | done | `agree_files_roundtrip`, `agree_files_list_missing`, `testdata/programs/list.lucb` |
-| 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb` |
-| 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` unsupported |
+| 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb`; answers `(i32, str, str)!` |
+| 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` out of seed |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
-| 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export later |
+| 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export out of seed |
 | 5.9 / 15.1 | `@T` atomics, `atomic.fence`, `Ordering` | done | `agree_atomic_add`, `agree_atomic_method`, `agree_atomic_cas`, `agree_atomic_wait` |
 | 15.2 | `volatile T*` | done | `agree_volatile_store` |
-| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`; optional `stack`/`name` later |
+| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`; optional `stack`/`name` out of seed |
 | 15.3 | `sync.Mutex` / `Condition` / `Once` / `Semaphore` | done | `agree_sync_mutex`, `agree_sync_once`, `agree_sync_cond`, `agree_sync_sem` |
-| 8.9 | `asm` semantics | partial | `eval_asm_rejected`, `native_asm_add`; interpreter rejects, C backend emits operands |
-| 6, 11–12, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | later |
+| 8.9 | `asm` semantics | partial | `eval_asm_rejected`, `native_asm_add`; interpreter rejects (out of seed), C backend emits operands |
+| 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
+| 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |
+| 11.3 | `ErrorCode.package` | out of seed | integer codes |
+| 19 | MIR / QBE / native backend | out of seed | C plus host `cc` is the seed backend |
+| 24.4 | user `Arena` | done | `testdata/programs/arena.lucb` |
+| 24.13 | Builder as `Writer` | done | `agree_program_builder`, `testdata/programs/builder.lucb` |
+| 24.14 | hash map | done | `testdata/programs/map.lucb` |
+| seed | toy compiler package | done | `agree_program_compile`, `testdata/programs/compile/` |
+| 6, 11–12, 18–20, 22–24 | Rest of semantics, C ABI | out of seed | math, stdlib `Arena`/`PageAllocator`, user `Display` |

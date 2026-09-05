@@ -26,7 +26,7 @@ namespace {
 const char* k_version = "0.1.0";
 
 void print_help(ostream& out) {
-    out << "lucb " << k_version << " — Luce Base bootstrap compiler\n"
+    out << "lucb " << k_version << " — luce-seed, the Luce Base bootstrap compiler\n"
         << "\n"
         << "Usage:\n"
         << "  lucb --version\n"

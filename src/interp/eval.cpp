@@ -1,9 +1,12 @@
 #include "interp/interp_impl.h"
 
 #include "support/literal.h"
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -73,6 +76,36 @@ uint64_t mix64(uint64_t h, uint64_t x) {
 } // namespace
 
 namespace lucb {
+namespace {
+
+Value fail_run(Type* ty) {
+    Value e;
+    e.failed = true;
+    e.kind = TypeKind::Fallible;
+    e.type = ty;
+    e.err_code = 1;
+    e.err_msg = "run";
+    return e;
+}
+
+bool read_pipe_chunk(int fd, string* buf, bool* open) {
+    char tmp[256];
+    ssize_t r = read(fd, tmp, sizeof(tmp));
+    if (r == 0) {
+        *open = false;
+        return true;
+    }
+    if (r < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            return true;
+        }
+        return false;
+    }
+    buf->append(tmp, static_cast<size_t>(r));
+    return true;
+}
+
+} // namespace
 
 auto Interp::make_array(Type* t, vector<Value> elems) -> Value {
         storage.push_back(std::move(elems));
@@ -191,7 +224,14 @@ auto Interp::lvalue(Node* n) -> Value* {
                 return nullptr;
             }
             if (n->text == "length" || n->text == "data" || n->text == "bytes") {
-                return nullptr;
+                Type* raw = n->left != nullptr ? n->left->ty : nullptr;
+                if (is_ptr(raw) && raw->elem != nullptr) {
+                    raw = raw->elem;
+                }
+                if (raw != nullptr &&
+                    (raw->kind == TypeKind::Str || is_span(raw) || is_array(raw))) {
+                    return nullptr;
+                }
             }
             Value* obj = lvalue(n->left);
             if (obj != nullptr && obj->kind == TypeKind::Pointer && obj->ptr != nullptr) {
@@ -551,7 +591,15 @@ auto Interp::eval_member(Node* n) -> Value {
         if (obj.kind == TypeKind::Pointer && obj.ptr != nullptr) {
             obj = *obj.ptr;
         }
-        if (n->text == "length") {
+        Type* raw = n->left != nullptr ? n->left->ty : obj.type;
+        if (is_ptr(raw) && raw->elem != nullptr) {
+            raw = raw->elem;
+        }
+        bool view = raw != nullptr &&
+                    (raw->kind == TypeKind::Str || is_span(raw) || is_array(raw) ||
+                     obj.kind == TypeKind::Str || obj.kind == TypeKind::Span ||
+                     obj.kind == TypeKind::Array);
+        if (view && n->text == "length") {
             if (obj.kind == TypeKind::Str) {
                 return v_int(n->ty, decode_string(obj.str).size());
             }
@@ -561,7 +609,7 @@ auto Interp::eval_member(Node* n) -> Value {
             }
             return v_int(n->ty != nullptr ? n->ty : nullptr, len);
         }
-        if (n->text == "data") {
+        if (view && n->text == "data") {
             Value v;
             v.kind = TypeKind::Pointer;
             v.type = n->ty;
@@ -572,7 +620,8 @@ auto Interp::eval_member(Node* n) -> Value {
             }
             return v;
         }
-        if (n->text == "bytes") {
+        if (view && n->text == "bytes" &&
+            (raw == nullptr || raw->kind == TypeKind::Str || obj.kind == TypeKind::Str)) {
             string d = decode_string(obj.str);
             vector<Value> elems;
             elems.resize(d.size());
@@ -785,6 +834,25 @@ auto Interp::fail_exhausted(Type* fail_ty) -> Value {
         v.err_code = 1;
         v.err_msg = "memory.exhausted";
         return v;
+    }
+
+auto Interp::as_u8_span(const Value& v) -> Value {
+        if (v.kind == TypeKind::Span || v.kind == TypeKind::Array) {
+            return v;
+        }
+        string d = decode_string(v.str);
+        vector<Value> elems;
+        elems.resize(d.size());
+        for (size_t i = 0; i < d.size(); i++) {
+            elems[i] = v_int(nullptr, static_cast<unsigned char>(d[i]));
+            elems[i].kind = TypeKind::U8;
+        }
+        storage.push_back(std::move(elems));
+        Value sp;
+        sp.kind = TypeKind::Span;
+        sp.ptr = storage.back().empty() ? nullptr : storage.back().data();
+        sp.length = storage.back().size();
+        return sp;
     }
 
 auto Interp::ok_payload(Value payload, Type* fail_ty) -> Value {
@@ -2340,33 +2408,92 @@ auto Interp::eval_call(Node* n) -> Value {
                         argv.push_back(store[i].c_str());
                     }
                     argv.push_back(nullptr);
+                    int outp[2];
+                    int errp[2];
+                    if (pipe(outp) != 0) {
+                        return fail_run(n->ty);
+                    }
+                    if (pipe(errp) != 0) {
+                        close(outp[0]);
+                        close(outp[1]);
+                        return fail_run(n->ty);
+                    }
                     pid_t pid = fork();
                     if (pid < 0) {
-                        Value e;
-                        e.failed = true;
-                        e.kind = TypeKind::Fallible;
-                        e.type = n->ty;
-                        e.err_code = 1;
-                        e.err_msg = "run";
-                        return e;
+                        close(outp[0]);
+                        close(outp[1]);
+                        close(errp[0]);
+                        close(errp[1]);
+                        return fail_run(n->ty);
                     }
                     if (pid == 0) {
+                        close(outp[0]);
+                        close(errp[0]);
+                        if (dup2(outp[1], 1) < 0 || dup2(errp[1], 2) < 0) {
+                            _exit(127);
+                        }
+                        close(outp[1]);
+                        close(errp[1]);
                         execvp(prog.c_str(), const_cast<char* const*>(argv.data()));
                         _exit(127);
                     }
-                    int st = 0;
-                    if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
-                        Value e;
-                        e.failed = true;
-                        e.kind = TypeKind::Fallible;
-                        e.type = n->ty;
-                        e.err_code = 1;
-                        e.err_msg = "run";
-                        return e;
+                    close(outp[1]);
+                    close(errp[1]);
+                    fcntl(outp[0], F_SETFL, O_NONBLOCK);
+                    fcntl(errp[0], F_SETFL, O_NONBLOCK);
+                    string captured_out;
+                    string captured_err;
+                    bool oopen = true;
+                    bool eopen = true;
+                    bool io_fail = false;
+                    while ((oopen || eopen) && !io_fail) {
+                        struct pollfd fds[2];
+                        fds[0].fd = oopen ? outp[0] : -1;
+                        fds[0].events = POLLIN;
+                        fds[0].revents = 0;
+                        fds[1].fd = eopen ? errp[0] : -1;
+                        fds[1].events = POLLIN;
+                        fds[1].revents = 0;
+                        int pr = poll(fds, 2, -1);
+                        if (pr < 0) {
+                            if (errno == EINTR) {
+                                continue;
+                            }
+                            io_fail = true;
+                            break;
+                        }
+                        if (oopen && (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+                            if (!read_pipe_chunk(outp[0], &captured_out, &oopen)) {
+                                io_fail = true;
+                            }
+                        }
+                        if (eopen && (fds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+                            if (!read_pipe_chunk(errp[0], &captured_err, &eopen)) {
+                                io_fail = true;
+                            }
+                        }
                     }
-                    return ok_payload(v_int(n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty,
-                                           static_cast<uint64_t>(WEXITSTATUS(st))),
-                                     n->ty);
+                    close(outp[0]);
+                    close(errp[0]);
+                    int st = 0;
+                    if (io_fail || waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
+                        return fail_run(n->ty);
+                    }
+                    strings.push_back(captured_out);
+                    Value ov = v_str(strings.back());
+                    strings.push_back(captured_err);
+                    Value ev = v_str(strings.back());
+                    Type* payload = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    Type* code_t = is_tup(payload) && payload->ntargs > 0 ? payload->args[0]
+                                                                         : nullptr;
+                    Value tup;
+                    tup.kind = TypeKind::Tuple;
+                    tup.type = payload;
+                    tup.fields.push_back(
+                        v_int(code_t, static_cast<uint64_t>(WEXITSTATUS(st))));
+                    tup.fields.push_back(ov);
+                    tup.fields.push_back(ev);
+                    return ok_payload(tup, n->ty);
                 }
                 if (lt->name == "files" && callee->text == "read") {
                     Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
@@ -2405,10 +2532,10 @@ auto Interp::eval_call(Node* n) -> Value {
                     return ok_payload(span, n->ty);
                 }
                 if (lt->name == "files" && callee->text == "write") {
-                    string path;
-                    if (n->body != nullptr && n->body->left != nullptr &&
-                        n->body->left->kind == NodeKind::Literal) {
-                        path = decode_string(n->body->left->text);
+                    Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    string path = cstr_text(pv);
+                    if (path.empty()) {
+                        path = decode_string(pv.str);
                     }
                     Value bv = n->body != nullptr && n->body->next != nullptr
                                    ? eval(n->body->next->left)
@@ -2422,6 +2549,9 @@ auto Interp::eval_call(Node* n) -> Value {
                         e.err_code = 2;
                         e.err_msg = "missing";
                         return e;
+                    }
+                    if (bv.kind == TypeKind::Str || bv.kind == TypeKind::Fmt) {
+                        bv = as_u8_span(bv);
                     }
                     string bytes;
                     if (bv.kind == TypeKind::Span || bv.kind == TypeKind::Array) {
@@ -2683,11 +2813,16 @@ auto Interp::eval_call(Node* n) -> Value {
                 if ((view.u == 1 || view.u == 2) && callee->text == "write") {
                     Value bytes = n->body != nullptr ? eval(n->body->left) : v_unit();
                     string s;
-                    size_t nlen = bytes.length != 0 ? bytes.length : bytes.fields.size();
-                    Value* p = bytes.ptr != nullptr ? bytes.ptr : bytes.fields.data();
-                    for (size_t i = 0; i < nlen; i++) {
-                        s.push_back(static_cast<char>(p[i].u));
+                    if (bytes.kind == TypeKind::Str || bytes.kind == TypeKind::Fmt) {
+                        s = decode_string(bytes.str);
+                    } else {
+                        size_t nlen = bytes.length != 0 ? bytes.length : bytes.fields.size();
+                        Value* p = bytes.ptr != nullptr ? bytes.ptr : bytes.fields.data();
+                        for (size_t i = 0; i < nlen; i++) {
+                            s.push_back(static_cast<char>(p[i].u));
+                        }
                     }
+                    size_t nlen = s.size();
                     if (view.u == 1) {
                         output += s;
                     } else {

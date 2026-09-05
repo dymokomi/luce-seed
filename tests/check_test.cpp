@@ -680,8 +680,23 @@ TEST(check_files_list_ok) {
 TEST(check_process_run_ok) {
     CHECK(check_ok("pub func answer() -> i64!:\n"
                    "    var args: cstr[1] = [\"\"]\n"
-                   "    let code = try process.run(\"/bin/true\", args[0..<0])\n"
+                   "    let (code, out, err) = try process.run(\"/bin/true\", args[0..<0])\n"
+                   "    discard(out)\n"
+                   "    discard(err)\n"
                    "    return i64(code)\n"));
+}
+
+TEST(check_writer_fmt_ok) {
+    CHECK(check_ok("struct Sink implements Writer:\n"
+                   "    var n: usize\n"
+                   "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                   "        self.n += bytes.length\n"
+                   "        return bytes.length\n"
+                   "pub func answer() -> i64!:\n"
+                   "    var s = Sink(n = 0)\n"
+                   "    let w: Writer = &s\n"
+                   "    let n = try w.write(f\"n={1}\")\n"
+                   "    return i64(n)\n"));
 }
 
 TEST(check_hashable_bound_ok) {

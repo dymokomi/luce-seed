@@ -816,7 +816,8 @@ auto Checker::bind_memory() -> void {
         pr_args->ty = intern_sp(ty_cstr, true);
         pr_prog->next = pr_args;
         p_run->right = pr_prog;
-        p_run->ty = ty_i32;
+        Type* pr_ret[3] = {ty_i32, ty_str, ty_str};
+        p_run->ty = intern_tup(pr_ret, 3);
         Node* process = syn_node(NodeKind::Module, "process");
         process->body = p_run;
         Type* process_t = make_type(TypeKind::Module, "process");

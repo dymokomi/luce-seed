@@ -95,6 +95,10 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
             Slot s;
             s.name = p->text;
             s.value = eval(a->left);
+            if (p->ty != nullptr && is_u8_cspan(p->ty) &&
+                (s.value.kind == TypeKind::Str || s.value.kind == TypeKind::Fmt)) {
+                s.value = as_u8_span(s.value);
+            }
             if (p->ty != nullptr) {
                 s.value.type = p->ty;
                 s.value.kind = p->ty->kind;

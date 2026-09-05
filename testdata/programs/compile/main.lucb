@@ -1,0 +1,18 @@
+import emit
+
+pub func answer() -> i64!:
+    var builder = try emit.Builder.create(8)
+    defer builder.destroy()
+    try builder.write(f"int main(void) {{ return 40; }}\n")
+    try files.write("/tmp/lucb_seed_toy.c", builder.text())
+    var args: cstr[3] = ["-o", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
+    let (code, out, err) = try process.run("cc", args)
+    discard(out)
+    if code != 0:
+        return i64(err.length) + 1
+    discard(err)
+    var empty: cstr[1] = [""]
+    let (run_code, run_out, run_err) = try process.run("/tmp/lucb_seed_toy", empty[0..<0])
+    discard(run_out)
+    discard(run_err)
+    return i64(run_code)

@@ -102,10 +102,14 @@ generated header. `cstr`.
 Last. Interpreter rejects `asm` (§8.9); C backend only.
 **Landed.**
 
-## After this compiler
+## Freeze of luce-seed
 
-A new tree, `luce-base`, written in Base, compiled by `lucb`. Same shape as
-Zig after the C++ compiler could emit C:
+This tree is the seed, not a compiler that grows into `luce-base`. The
+freeze gate is `testdata/programs/compile/`: a Base package that writes C
+with a `Writer`, shells out to `cc`, and runs the child.
+
+A new tree, `luce-base`, is written in Base and compiled by `lucb`. Same
+shape as Zig after the C++ compiler could emit C:
 
 1. `lucb` builds `luce-base` to C, host `cc` makes a binary (`zig2`).
 2. That binary's first backend is still C, so it can rebuild itself without
@@ -113,4 +117,8 @@ Zig after the C++ compiler could emit C:
 3. QBE or a machine backend is added in `luce-base`, not here (`zig3`).
 4. Freeze a seed (C dump or wasm) so C++ can go away (`zig1.wasm`).
 
-Out of scope in this repo. See [`DESIGN.md`](DESIGN.md).
+Out of scope in this repo: `f16`, math, stdlib `Arena`/`PageAllocator`,
+user `Display`, `out` parameters, thread `stack`/`name`, `asm` in the
+interpreter, Unicode `for character in text`, span `first`/`last`/`indexed`,
+`ErrorCode.package`, extra `luce.toml` roots, status-form fallible export,
+MIR/QBE/native, formatter, linter. See [`FEATURES.md`](FEATURES.md).

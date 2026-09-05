@@ -499,6 +499,19 @@ TEST(agree_writer_view) {
                  "    return i64(n)\n"));
 }
 
+TEST(agree_writer_fmt) {
+    CHECK(agrees("struct Sink implements Writer:\n"
+                 "    var n: usize\n"
+                 "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                 "        self.n += bytes.length\n"
+                 "        return bytes.length\n"
+                 "pub func answer() -> i64!:\n"
+                 "    var s = Sink(n = 0)\n"
+                 "    let w: Writer = &s\n"
+                 "    let n = try w.write(f\"n={40}\")\n"
+                 "    return i64(n)\n"));
+}
+
 TEST(agree_interface_view) {
     CHECK(agrees("interface Counter:\n"
                  "    mutating func bump() -> i64\n"
@@ -927,6 +940,8 @@ TEST(agree_program_arena) { CHECK(agrees_file("testdata/programs/arena.lucb")); 
 
 TEST(agree_program_map) { CHECK(agrees_file("testdata/programs/map.lucb")); }
 
+TEST(agree_program_builder) { CHECK(agrees_file("testdata/programs/builder.lucb")); }
+
 TEST(agree_user_arena) {
     CHECK(agrees("pub struct Arena implements Allocator:\n"
                  "    var parent: Allocator\n"
@@ -1047,9 +1062,11 @@ TEST(agree_files_list_missing) {
 
 TEST(agree_process_run) {
     CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    var args: cstr[2] = [\"-c\", \"exit 7\"]\n"
-                 "    let code = try process.run(\"/bin/sh\", args)\n"
-                 "    return i64(code)\n"));
+                 "    var args: cstr[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
+                 "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+                 "    if out == \"out\" and err == \"err\":\n"
+                 "        return i64(code)\n"
+                 "    return 0\n"));
 }
 
 TEST(agree_hashable_intern) {

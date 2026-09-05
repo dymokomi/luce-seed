@@ -1,8 +1,11 @@
-# Design of luce-base-c
+# Design of luce-seed
 
-A C++ bootstrap compiler for Luce Base. The language specification is
+A C++ seed compiler for Luce Base. The language specification is
 [`language/base.md`](language/base.md). This file is the architecture of the
 compiler, not of the language.
+
+This repo is the seed. It does not grow into `luce-base`. A feature lands
+here only if `luce-base`'s source will use it.
 
 ## Why this compiler exists
 
@@ -13,11 +16,11 @@ One lexer, one parser, one IR, two languages. That is the wrong bootstrap.
 The intended chain is Zig's, with Luce names:
 
 ```text
-luce-base-c  (C++, this repo)     compiles Luce Base to C, then a binary
+luce-seed  (C++, this repo)      compiles Luce Base to C, then a binary
      ↓
-luce-base    (written in Base)    compiles itself; C first, then native
+luce-base  (written in Base)     compiles itself; C first, then native
      ↓
-luce-full    (written in Base)    compiles full Luce
+luce-full  (written in Base)     compiles full Luce
 ```
 
 This compiler never parses, types, or emits full Luce. `.luc` and `.lucn` are
@@ -127,10 +130,10 @@ zig3       (native / LLVM)           luce-base with QBE or a machine backend
 
 Concretely:
 
-1. **This repo** is Zig's planned C++ stage: compile Luce-Base well enough
-   to write `luce-base`. Product backend is C plus host `cc`. `lucb build`
-   already produces a native executable. C is IR, the same way QBE IL is
-   IR. There is no QBE, LLVM, Wasm, or MIR here.
+1. **This repo (`luce-seed`)** is Zig's planned C++ stage: compile Luce-Base
+   well enough to write `luce-base`. Product backend is C plus host `cc`.
+   `lucb build` already produces a native executable. C is IR, the same way
+   QBE IL is IR. There is no QBE, LLVM, Wasm, or MIR here.
 2. **`luce-base`** (next tree, written in Base) is Zig's self-hosted
    compiler. Its first backend is C, like `zig1`. A machine backend is
    added *there*, like `src/codegen/x86_64.zig`.

@@ -1,8 +1,11 @@
 #include "lucb_rt.h"
 
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -592,15 +595,82 @@ int lb_files_list(lb_iface a, const char* path, lb_span* out) {
     return 0;
 }
 
-int lb_process_run(const char* program, const char* const* args, size_t nargs, int32_t* status) {
+static int lb_store_captured(lb_iface a, const char* src, size_t n, lb_str* out) {
+    if (out == NULL) {
+        return 0;
+    }
+    if (n == 0 || src == NULL) {
+        out->data = "";
+        out->length = 0;
+        return 0;
+    }
+    lb_span_opt got = lb_alloc_call(a, n + 1, 1);
+    if (!got.present || got.value.data == NULL) {
+        return 1;
+    }
+    memcpy(got.value.data, src, n);
+    ((char*)got.value.data)[n] = 0;
+    out->data = (const char*)got.value.data;
+    out->length = n;
+    return 0;
+}
+
+static int lb_read_more(int fd, char** buf, size_t* used, size_t* cap, int* open) {
+    if (*cap - *used < 64) {
+        size_t next = *cap == 0 ? 256 : *cap * 2;
+        char* nbuf = (char*)realloc(*buf, next);
+        if (nbuf == NULL) {
+            return 1;
+        }
+        *buf = nbuf;
+        *cap = next;
+    }
+    ssize_t r = read(fd, *buf + *used, *cap - *used);
+    if (r == 0) {
+        *open = 0;
+        return 0;
+    }
+    if (r < 0) {
+        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0;
+        }
+        return 1;
+    }
+    *used += (size_t)r;
+    return 0;
+}
+
+int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+                   int32_t* status, lb_str* out, lb_str* err) {
     if (program == NULL) {
+        return 1;
+    }
+    int outp[2];
+    int errp[2];
+    if (pipe(outp) != 0) {
+        return 1;
+    }
+    if (pipe(errp) != 0) {
+        close(outp[0]);
+        close(outp[1]);
         return 1;
     }
     pid_t pid = fork();
     if (pid < 0) {
+        close(outp[0]);
+        close(outp[1]);
+        close(errp[0]);
+        close(errp[1]);
         return 1;
     }
     if (pid == 0) {
+        close(outp[0]);
+        close(errp[0]);
+        if (dup2(outp[1], 1) < 0 || dup2(errp[1], 2) < 0) {
+            _exit(127);
+        }
+        close(outp[1]);
+        close(errp[1]);
         const char** argv = (const char**)malloc((nargs + 2) * sizeof(char*));
         if (argv == NULL) {
             _exit(127);
@@ -613,17 +683,64 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, i
         execvp(program, (char* const*)argv);
         _exit(127);
     }
-    int st = 0;
-    if (waitpid(pid, &st, 0) < 0) {
-        return 1;
+    close(outp[1]);
+    close(errp[1]);
+    fcntl(outp[0], F_SETFL, O_NONBLOCK);
+    fcntl(errp[0], F_SETFL, O_NONBLOCK);
+    char* obuf = NULL;
+    char* ebuf = NULL;
+    size_t oused = 0;
+    size_t ocap = 0;
+    size_t eused = 0;
+    size_t ecap = 0;
+    int oopen = 1;
+    int eopen = 1;
+    int fail = 0;
+    while ((oopen || eopen) && !fail) {
+        struct pollfd fds[2];
+        fds[0].fd = oopen ? outp[0] : -1;
+        fds[0].events = POLLIN;
+        fds[0].revents = 0;
+        fds[1].fd = eopen ? errp[0] : -1;
+        fds[1].events = POLLIN;
+        fds[1].revents = 0;
+        int pr = poll(fds, 2, -1);
+        if (pr < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            fail = 1;
+            break;
+        }
+        if (oopen && (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+            if (lb_read_more(outp[0], &obuf, &oused, &ocap, &oopen) != 0) {
+                fail = 1;
+            }
+        }
+        if (eopen && (fds[1].revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+            if (lb_read_more(errp[0], &ebuf, &eused, &ecap, &eopen) != 0) {
+                fail = 1;
+            }
+        }
     }
-    if (WIFEXITED(st)) {
+    close(outp[0]);
+    close(errp[0]);
+    int st = 0;
+    if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
+        fail = 1;
+    }
+    if (!fail) {
         if (status != NULL) {
             *status = (int32_t)WEXITSTATUS(st);
         }
-        return 0;
+        if (lb_store_captured(alloc, obuf, oused, out) != 0 ||
+            lb_store_captured(alloc, ebuf, eused, err) != 0) {
+            fail = 1;
+        }
     }
-    return 1;
+    free(obuf);
+    free(ebuf);
+    return fail;
 }
 
 static uint64_t lb_seed;

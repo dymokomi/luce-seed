@@ -194,6 +194,7 @@ struct Interp {
     Value eval_pad(Node* n);
     Node* find_func(string_view name);
     void load_globals();
+    Value as_u8_span(const Value& v);
     Value call_func(Node* fn, Value* self, Node* args);
     Value eval_call(Node* n);
     string extern_symbol(Node* fn);
