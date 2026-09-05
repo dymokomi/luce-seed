@@ -9,30 +9,125 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static _Thread_local lb_alloc lb_current_alloc = {NULL, -1};
+static _Thread_local lb_iface lb_current_alloc = {NULL, NULL};
 
-lb_alloc lb_heap_alloc(void) {
+lb_alloc lb_heap_raw(void) {
     lb_alloc a;
     a.ctx = NULL;
     a.kind = 0;
     return a;
 }
 
-lb_alloc lb_fixed_alloc(lb_fixed* f) {
+lb_alloc lb_fixed_raw(lb_fixed* f) {
     lb_alloc a;
     a.ctx = f;
     a.kind = 1;
     return a;
 }
 
-lb_alloc lb_get_alloc(void) {
-    if (lb_current_alloc.kind < 0) {
+static lb_span_opt lb_heap_allocate(void* self, size_t size, size_t alignment) {
+    (void)self;
+    lb_span s = lb_alloc_bytes(lb_heap_raw(), size, alignment);
+    lb_span_opt o;
+    if (size != 0 && s.data == NULL) {
+        o.present = false;
+        o.value.data = NULL;
+        o.value.length = 0;
+        return o;
+    }
+    o.present = true;
+    o.value = s;
+    return o;
+}
+
+static bool lb_heap_resize(void* self, lb_span block, size_t size) {
+    (void)self;
+    return size <= block.length;
+}
+
+static void lb_heap_release(void* self, lb_span block) {
+    (void)self;
+    lb_release_bytes(lb_heap_raw(), block);
+}
+
+static const lb_vt_Allocator lb_vt_heap = {
+    .allocate = lb_heap_allocate,
+    .resize = lb_heap_resize,
+    .release = lb_heap_release,
+};
+
+static lb_span_opt lb_fixed_allocate(void* self, size_t size, size_t alignment) {
+    lb_span s = lb_alloc_bytes(lb_fixed_raw((lb_fixed*)self), size, alignment);
+    lb_span_opt o;
+    if (size != 0 && s.data == NULL) {
+        o.present = false;
+        o.value.data = NULL;
+        o.value.length = 0;
+        return o;
+    }
+    o.present = true;
+    o.value = s;
+    return o;
+}
+
+static bool lb_fixed_resize(void* self, lb_span block, size_t size) {
+    lb_span n = lb_resize_bytes(lb_fixed_raw((lb_fixed*)self), block, size);
+    return n.data != NULL || size == 0;
+}
+
+static void lb_fixed_release(void* self, lb_span block) {
+    lb_release_bytes(lb_fixed_raw((lb_fixed*)self), block);
+}
+
+static const lb_vt_Allocator lb_vt_fixed = {
+    .allocate = lb_fixed_allocate,
+    .resize = lb_fixed_resize,
+    .release = lb_fixed_release,
+};
+
+lb_iface lb_heap_alloc(void) {
+    lb_iface a;
+    a.data = NULL;
+    a.vtable = &lb_vt_heap;
+    return a;
+}
+
+lb_iface lb_fixed_alloc(lb_fixed* f) {
+    lb_iface a;
+    a.data = f;
+    a.vtable = &lb_vt_fixed;
+    return a;
+}
+
+lb_iface lb_get_alloc(void) {
+    if (lb_current_alloc.vtable == NULL) {
         lb_current_alloc = lb_heap_alloc();
     }
     return lb_current_alloc;
 }
 
-void lb_set_alloc(lb_alloc a) { lb_current_alloc = a; }
+void lb_set_alloc(lb_iface a) { lb_current_alloc = a; }
+
+lb_span_opt lb_alloc_call(lb_iface a, size_t size, size_t alignment) {
+    if (a.vtable == NULL) {
+        lb_trap("memory.unset");
+    }
+    return ((const lb_vt_Allocator*)a.vtable)->allocate(a.data, size, alignment);
+}
+
+bool lb_resize_call(lb_iface a, lb_span block, size_t size) {
+    if (a.vtable == NULL) {
+        lb_trap("memory.unset");
+    }
+    return ((const lb_vt_Allocator*)a.vtable)->resize(a.data, block, size);
+}
+
+void lb_release_call(lb_iface a, lb_span block) {
+    if (a.vtable == NULL) {
+        return;
+    }
+    ((const lb_vt_Allocator*)a.vtable)->release(a.data, block);
+}
 
 int lb_fmtbuf_put(lb_fmtbuf* b, const char* s, size_t n) {
     if (b == NULL) {
@@ -411,7 +506,7 @@ static int lb_name_cmp(const void* a, const void* b) {
     return 0;
 }
 
-int lb_files_list(lb_alloc a, const char* path, lb_span* out) {
+int lb_files_list(lb_iface a, const char* path, lb_span* out) {
     if (out == NULL) {
         return 1;
     }
@@ -472,8 +567,9 @@ int lb_files_list(lb_alloc a, const char* path, lb_span* out) {
         return 0;
     }
     size_t need = n * sizeof(lb_str) + bytes;
-    lb_span block = lb_alloc_bytes(a, need, sizeof(void*));
-    if (block.data == NULL) {
+    lb_span_opt got = lb_alloc_call(a, need, sizeof(void*));
+    lb_span block = got.value;
+    if (!got.present) {
         for (size_t i = 0; i < n; i++) {
             free(items[i].name);
         }

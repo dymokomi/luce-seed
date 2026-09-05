@@ -107,6 +107,8 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
             a = a->next;
         }
         frames.push_back(frame);
+        bool saved_ret = returning;
+        Value saved_retv = ret;
         returning = false;
         Node* saved_fn = current_fn;
         current_fn = fn;
@@ -126,7 +128,8 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
             }
         }
         Value result = returning ? ret : v_unit();
-        returning = false;
+        returning = saved_ret;
+        ret = saved_ret ? saved_retv : ret;
         frames.pop_back();
         if ((fn->flags & FlagFallible) != 0 && !result.failed) {
             result.failed = false;

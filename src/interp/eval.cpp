@@ -807,7 +807,70 @@ auto Interp::as_alloc(Node* n) -> Value {
             a.u = 1;
             return a;
         }
+        if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr) {
+            Value* p = lvalue(n);
+            Value a;
+            a.kind = TypeKind::Interface;
+            a.ptr = p;
+            a.type = t;
+            a.u = 2;
+            return a;
+        }
         return eval(n);
+    }
+
+auto Interp::invoke_method(Value* self, Node* st, string_view name, const vector<Value>& args)
+    -> Value {
+        Node* method = nullptr;
+        if (st != nullptr) {
+            for (Node* m = st->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::Func && m->text == name) {
+                    method = m;
+                    break;
+                }
+            }
+        }
+        if (method == nullptr || self == nullptr) {
+            fail("no allocator method");
+            return v_unit();
+        }
+        Frame frame;
+        Slot ss;
+        ss.name = "self";
+        ss.value = *self;
+        frame.slots.push_back(ss);
+        Node* p = method->right;
+        size_t i = 0;
+        while (p != nullptr && i < args.size()) {
+            Slot s;
+            s.name = p->text;
+            s.value = args[i];
+            if (p->ty != nullptr) {
+                s.value.type = p->ty;
+                s.value.kind = p->ty->kind;
+            }
+            frame.slots.push_back(s);
+            p = p->next;
+            i++;
+        }
+        frames.push_back(frame);
+        bool saved_ret = returning;
+        returning = false;
+        Node* saved_fn = current_fn;
+        current_fn = method;
+        exec(method->body);
+        current_fn = saved_fn;
+        Frame& top = frames.back();
+        for (size_t k = 0; k < top.slots.size(); k++) {
+            if (top.slots[k].name == "self") {
+                *self = top.slots[k].value;
+                break;
+            }
+        }
+        Value result = returning ? ret : v_unit();
+        returning = saved_ret;
+        frames.pop_back();
+        return result;
     }
 
 auto Interp::bump_fixed(Value* fb, size_t size, size_t align) -> bool {
@@ -835,8 +898,31 @@ auto Interp::take_bytes(const Value& a, size_t size, size_t align) -> bool {
         if (size == 0) {
             return true;
         }
-        if (a.kind == TypeKind::Allocator && a.ptr != nullptr) {
+        if (a.kind == TypeKind::Allocator && a.ptr != nullptr && a.u == 1) {
             return bump_fixed(a.ptr, size, align);
+        }
+        if ((a.kind == TypeKind::Interface || a.u == 2) && a.ptr != nullptr) {
+            Node* st = a.ptr->type != nullptr ? a.ptr->type->decl : nullptr;
+            if (st == nullptr && a.type != nullptr) {
+                st = a.type->decl;
+            }
+            Value sz;
+            sz.kind = TypeKind::Usize;
+            sz.u = size;
+            Value al;
+            al.kind = TypeKind::Usize;
+            al.u = align < 1 ? 1 : align;
+            vector<Value> args;
+            args.push_back(sz);
+            args.push_back(al);
+            Value r = invoke_method(a.ptr, st, "allocate", args);
+            if (trapped) {
+                return false;
+            }
+            if (r.kind == TypeKind::Optional || is_opt(r.type)) {
+                return r.present;
+            }
+            return !r.failed;
         }
         return true;
     }

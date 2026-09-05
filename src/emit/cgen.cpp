@@ -198,6 +198,10 @@ string c_type(Type* t) {
         return q + c_type(e) + "*";
     }
     if (is_opt(t)) {
+        Type* e = t->elem;
+        if (is_span(e) && e->elem != nullptr && e->elem->kind == TypeKind::U8 && !e->is_const) {
+            return "lb_span_opt";
+        }
         return opt_c_name(t);
     }
     if (is_fail(t)) {

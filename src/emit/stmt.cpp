@@ -46,7 +46,7 @@ auto Emitter::emit_free(Node* n) -> void {
         string e = emit_expr(n->left);
         if (is_ptr(t)) {
             string et = c_type(t->elem);
-            line("lb_release_bytes(" + a + ", (lb_span){ (void*)(" + e + "), sizeof(" + et +
+            line("lb_release_call(" + a + ", (lb_span){ (void*)(" + e + "), sizeof(" + et +
                  ") });");
             return;
         }
@@ -54,7 +54,7 @@ auto Emitter::emit_free(Node* n) -> void {
             string et = c_type(t->elem);
             int id = tmp();
             string sn = "_lb_s" + std::to_string(id);
-            line("{ lb_span " + sn + " = " + e + "; lb_release_bytes(" + a + ", (lb_span){ " + sn +
+            line("{ lb_span " + sn + " = " + e + "; lb_release_call(" + a + ", (lb_span){ " + sn +
                  ".data, " + sn + ".length * sizeof(" + et + ") }); }");
             return;
         }
@@ -66,7 +66,7 @@ auto Emitter::emit_with(Node* n) -> void {
         string save = "_lb_as" + std::to_string(id);
         line("{");
         indent++;
-        line("lb_alloc " + save + " = lb_get_alloc();");
+        line("lb_iface " + save + " = lb_get_alloc();");
         line("lb_set_alloc(" + emit_allocator(n->left) + ");");
         Scope sc;
         sc.restore_alloc = true;
@@ -140,7 +140,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
                        (n->ty->kind == TypeKind::Struct || n->ty->kind == TypeKind::Union ||
                         n->ty->kind == TypeKind::Enum || is_array(n->ty) || is_span(n->ty) ||
                         n->ty->kind == TypeKind::Str || is_opt(n->ty) ||
-                        n->ty->kind == TypeKind::Allocator || is_tup(n->ty))) {
+                        n->ty->kind == TypeKind::Allocator ||
+                        n->ty->kind == TypeKind::Interface || is_tup(n->ty))) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";

@@ -923,6 +923,46 @@ TEST(agree_program_spawn) { CHECK(agrees_file("testdata/programs/spawn.lucb")); 
 
 TEST(agree_program_hash) { CHECK(agrees_file("testdata/programs/hash.lucb")); }
 
+TEST(agree_program_arena) { CHECK(agrees_file("testdata/programs/arena.lucb")); }
+
+TEST(agree_user_arena) {
+    CHECK(agrees("pub struct Arena implements Allocator:\n"
+                 "    var parent: Allocator\n"
+                 "    var block: u8[]\n"
+                 "    var used: usize\n"
+                 "    pub static func over(parent: Allocator, capacity: usize) -> Arena!:\n"
+                 "        return Arena(parent = parent, block = try alloc(capacity, 8) in parent, "
+                 "used = 0)\n"
+                 "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                 "        var align = alignment\n"
+                 "        if align < 1:\n"
+                 "            align = 1\n"
+                 "        var start = self.used\n"
+                 "        let rem = start % align\n"
+                 "        if rem != 0:\n"
+                 "            start = start + (align - rem)\n"
+                 "        if start > self.block.length:\n"
+                 "            return none\n"
+                 "        if size > self.block.length - start:\n"
+                 "            return none\n"
+                 "        let end = start + size\n"
+                 "        self.used = end\n"
+                 "        return self.block[start..<end]\n"
+                 "    pub mutating func resize(block: u8[], size: usize) -> bool:\n"
+                 "        return size <= block.length\n"
+                 "    pub mutating func release(block: u8[]):\n"
+                 "        discard(block.length)\n"
+                 "    pub mutating func destroy():\n"
+                 "        free(self.block) in self.parent\n"
+                 "pub func answer() -> i64!:\n"
+                 "    var arena = try Arena.over(memory.allocator, 64)\n"
+                 "    defer arena.destroy()\n"
+                 "    with arena:\n"
+                 "        let p = try new i64\n"
+                 "        *p = 40\n"
+                 "        return *p\n"));
+}
+
 TEST(agree_memory_copy) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    var dst: u8[4] = [0, 0, 0, 0]\n"

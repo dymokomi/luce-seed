@@ -145,16 +145,33 @@ typedef struct lb_fixed {
     size_t used;
 } lb_fixed;
 
-lb_alloc lb_heap_alloc(void);
-lb_alloc lb_fixed_alloc(lb_fixed* f);
+typedef struct lb_span_opt {
+    lb_span value;
+    bool present;
+} lb_span_opt;
+
+typedef struct lb_vt_Allocator {
+    lb_span_opt (*allocate)(void* self, size_t size, size_t alignment);
+    bool (*resize)(void* self, lb_span block, size_t size);
+    void (*release)(void* self, lb_span block);
+} lb_vt_Allocator;
+
+lb_alloc lb_heap_raw(void);
+lb_alloc lb_fixed_raw(lb_fixed* f);
 lb_span lb_alloc_bytes(lb_alloc a, size_t size, size_t align);
 lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size);
 void lb_release_bytes(lb_alloc a, lb_span block);
-lb_alloc lb_get_alloc(void);
-void lb_set_alloc(lb_alloc a);
+
+lb_iface lb_heap_alloc(void);
+lb_iface lb_fixed_alloc(lb_fixed* f);
+lb_iface lb_get_alloc(void);
+void lb_set_alloc(lb_iface a);
+lb_span_opt lb_alloc_call(lb_iface a, size_t size, size_t alignment);
+bool lb_resize_call(lb_iface a, lb_span block, size_t size);
+void lb_release_call(lb_iface a, lb_span block);
 
 int lb_utf8_ok(const char* s, size_t n);
-int lb_files_list(lb_alloc a, const char* path, lb_span* out);
+int lb_files_list(lb_iface a, const char* path, lb_span* out);
 int lb_process_run(const char* program, const char* const* args, size_t nargs, int32_t* status);
 
 uint64_t lb_hash_seed(void);

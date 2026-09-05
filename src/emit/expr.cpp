@@ -70,7 +70,7 @@ auto Emitter::produces_opt(Node* n) -> bool {
 
 auto Emitter::wrap_opt(Type* t, const string& e) -> string {
         Type* elem = t != nullptr ? t->elem : nullptr;
-        return "((" + opt_c_name(t) + "){ .value = (" + c_type(elem) + ")(" + e +
+        return "((" + c_type(t) + "){ .value = (" + c_type(elem) + ")(" + e +
                "), .present = true })";
     }
 
@@ -235,8 +235,12 @@ auto Emitter::emit_expr(Node* n) -> string {
             }
             if (src != nullptr && src->kind == TypeKind::Struct && src->decl != nullptr &&
                 n->ty->decl != nullptr) {
-                return "((lb_iface){ (void*)(" + e + "), &lb_vt_" + string(src->decl->text) + "_" +
-                       string(n->ty->decl->text) + " })";
+                string data = e;
+                if (n->kind == NodeKind::Name || n->kind == NodeKind::Member) {
+                    data = "&(" + e + ")";
+                }
+                return "((lb_iface){ (void*)(" + data + "), &lb_vt_" + string(src->decl->text) +
+                       "_" + string(n->ty->decl->text) + " })";
             }
         }
         return e;
@@ -1439,8 +1443,8 @@ auto Emitter::emit_call(Node* n) -> string {
                            rty + " _lb_fr; if (_lb_f == NULL) { _lb_fr.failed = true; _lb_fr.error = "
                            "(lb_error){ .code = 2, .message = (lb_str){\"missing\", 7} }; } else { "
                            "fseek(_lb_f, 0, SEEK_END); long _lb_n = ftell(_lb_f); rewind(_lb_f); "
-                           "if (_lb_n < 0) _lb_n = 0; lb_span _lb_b = lb_alloc_bytes(lb_get_alloc(), "
-                           "(size_t)_lb_n, 1); if (_lb_n > 0 && _lb_b.data == NULL) { _lb_fr.failed = "
+                           "if (_lb_n < 0) _lb_n = 0; lb_span_opt _lb_ao = lb_alloc_call(lb_get_alloc(), "
+                           "(size_t)_lb_n, 1); lb_span _lb_b = _lb_ao.value; if (_lb_n > 0 && !_lb_ao.present) { _lb_fr.failed = "
                            "true; _lb_fr.error = (lb_error){ .code = 1, .message = "
                            "(lb_str){\"memory.exhausted\", 16} }; fclose(_lb_f); } else { "
                            "if (_lb_n > 0) fread(_lb_b.data, 1, (size_t)_lb_n, _lb_f); "
@@ -1495,12 +1499,26 @@ auto Emitter::emit_call(Node* n) -> string {
                     int id = tmp();
                     string bn = "_lb_gb" + std::to_string(id);
                     string gn = "_lb_gg" + std::to_string(id);
-                    return "({ lb_span " + bn + " = " + emit_expr(block) + "; lb_span " + gn +
-                           " = lb_resize_bytes(lb_get_alloc(), " + bn + ", (size_t)(" +
-                           emit_expr(size) + ")); " + rty + " _lb_gr" + std::to_string(id) +
-                           "; if (" + gn +
-                           ".data == NULL) { _lb_gr" + std::to_string(id) +
-                           " = " + emit_exhausted_lit(n->ty) + "; } else { _lb_gr" +
+                    return "({ lb_span " + bn + " = " + emit_expr(block) + "; size_t _lb_gs" +
+                           std::to_string(id) + " = (size_t)(" + emit_expr(size) +
+                           "); lb_iface _lb_ga" + std::to_string(id) +
+                           " = lb_get_alloc(); lb_span " + gn + "; if (lb_resize_call(_lb_ga" +
+                           std::to_string(id) + ", " + bn + ", _lb_gs" + std::to_string(id) +
+                           ")) { " + gn + ".data = " + bn + ".data; " + gn +
+                           ".length = _lb_gs" + std::to_string(id) + "; } else { lb_span_opt _lb_go" +
+                           std::to_string(id) + " = lb_alloc_call(_lb_ga" + std::to_string(id) +
+                           ", _lb_gs" + std::to_string(id) +
+                           ", sizeof(void*)); if (!_lb_go" + std::to_string(id) + ".present) { " +
+                           gn + ".data = NULL; " + gn + ".length = 0; } else { if (" + bn +
+                           ".length > 0 && " + bn + ".data != NULL) memcpy(_lb_go" +
+                           std::to_string(id) + ".value.data, " + bn + ".data, " + bn +
+                           ".length < _lb_gs" + std::to_string(id) + " ? " + bn +
+                           ".length : _lb_gs" + std::to_string(id) +
+                           "); lb_release_call(_lb_ga" + std::to_string(id) + ", " + bn + "); " +
+                           gn + " = _lb_go" + std::to_string(id) + ".value; } } " + rty +
+                           " _lb_gr" + std::to_string(id) + "; if (" + gn +
+                           ".data == NULL && _lb_gs" + std::to_string(id) + " != 0) { _lb_gr" +
+                           std::to_string(id) + " = " + emit_exhausted_lit(n->ty) + "; } else { _lb_gr" +
                            std::to_string(id) + ".failed = false; _lb_gr" + std::to_string(id) +
                            ".value = " + gn + "; } _lb_gr" + std::to_string(id) + "; })";
                 }
@@ -1722,6 +1740,11 @@ auto Emitter::emit_allocator(Node* n) -> string {
         if (t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
             return "lb_fixed_alloc(&(" + emit_expr(n) + "))";
         }
+        if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr &&
+            n->ty != nullptr && n->ty->kind != TypeKind::Interface) {
+            string vt = "lb_vt_" + string(t->decl->text) + "_Allocator";
+            return "((lb_iface){ (void*)(" + emit_addr(n) + "), &" + vt + " })";
+        }
         return emit_expr(n);
     }
 
@@ -1733,7 +1756,7 @@ auto Emitter::emit_new(Node* n) -> string {
         Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
         string rty = fail_c_name(payload);
         string s = "({ ";
-        s += "lb_alloc " + an + " = " + emit_allocator(n->right) + "; ";
+        s += "lb_iface " + an + " = " + emit_allocator(n->right) + "; ";
         if (is_span(payload)) {
             Type* elem = payload->elem;
             Node* count = n->type != nullptr ? n->type->right : nullptr;
@@ -1744,10 +1767,11 @@ auto Emitter::emit_new(Node* n) -> string {
             s += "if (" + cn + " != 0 && sizeof(" + et + ") > ((size_t)-1) / " + cn + ") { ";
             s += rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
             s += "size_t _lb_bytes" + std::to_string(id) + " = sizeof(" + et + ") * " + cn + "; ";
-            s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_bytes" + std::to_string(id) +
-                 ", _Alignof(" + et + ")); ";
-            s += "if (_lb_bytes" + std::to_string(id) + " != 0 && " + bn +
-                 ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+            s += "lb_span_opt _lb_ao" + std::to_string(id) + " = lb_alloc_call(" + an +
+                 ", _lb_bytes" + std::to_string(id) + ", _Alignof(" + et + ")); ";
+            s += "lb_span " + bn + " = _lb_ao" + std::to_string(id) + ".value; ";
+            s += "if (_lb_bytes" + std::to_string(id) + " != 0 && !_lb_ao" + std::to_string(id) +
+                 ".present) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
             s += "if (" + bn + ".data != NULL) memset(" + bn + ".data, 0, _lb_bytes" +
                  std::to_string(id) + "); ";
             s += rn + ".value.data = " + bn + ".data; ";
@@ -1759,11 +1783,12 @@ auto Emitter::emit_new(Node* n) -> string {
         Type* elem = is_ptr(payload) ? payload->elem : payload;
         string et = c_type(elem);
         string pn = "_lb_p" + std::to_string(id);
-        s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", sizeof(" + et + "), _Alignof(" + et +
-             ")); ";
+        s += "lb_span_opt _lb_ao" + std::to_string(id) + " = lb_alloc_call(" + an + ", sizeof(" +
+             et + "), _Alignof(" + et + ")); ";
+        s += "lb_span " + bn + " = _lb_ao" + std::to_string(id) + ".value; ";
         s += rty + " " + rn + "; ";
-        s += "if (sizeof(" + et + ") != 0 && " + bn + ".data == NULL) { " + rn + " = " +
-             emit_exhausted_lit(payload) + "; } else { ";
+        s += "if (sizeof(" + et + ") != 0 && !_lb_ao" + std::to_string(id) + ".present) { " + rn +
+             " = " + emit_exhausted_lit(payload) + "; } else { ";
         s += et + "* " + pn + " = (" + et + "*)" + bn + ".data; ";
         if (n->body != nullptr && n->body->kind == NodeKind::CaseValue) {
             s += "if (" + pn + ") *" + pn + " = " + emit_enum_value(n->body) + "; ";
@@ -1787,7 +1812,7 @@ auto Emitter::emit_alloc(Node* n) -> string {
         Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
         string rty = fail_c_name(payload);
         string s = "({ ";
-        s += "lb_alloc " + an + " = " + emit_allocator(n->right) + "; ";
+        s += "lb_iface " + an + " = " + emit_allocator(n->right) + "; ";
         s += rty + " " + rn + "; ";
         if (n->type == nullptr) {
             string sz = emit_expr(n->body != nullptr ? n->body->left : nullptr);
@@ -1796,10 +1821,11 @@ auto Emitter::emit_alloc(Node* n) -> string {
                                       : nullptr);
             s += "size_t _lb_sz" + std::to_string(id) + " = (size_t)(" + sz + "); ";
             s += "size_t _lb_al" + std::to_string(id) + " = (size_t)(" + al + "); ";
-            s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_sz" + std::to_string(id) +
-                 ", _lb_al" + std::to_string(id) + "); ";
-            s += "if (_lb_sz" + std::to_string(id) + " != 0 && " + bn +
-                 ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+            s += "lb_span_opt _lb_ao" + std::to_string(id) + " = lb_alloc_call(" + an +
+                 ", _lb_sz" + std::to_string(id) + ", _lb_al" + std::to_string(id) + "); ";
+            s += "lb_span " + bn + " = _lb_ao" + std::to_string(id) + ".value; ";
+            s += "if (_lb_sz" + std::to_string(id) + " != 0 && !_lb_ao" + std::to_string(id) +
+                 ".present) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
             s += rn + ".value = " + bn + "; " + rn + ".failed = false; } ";
             s += rn + "; })";
             return s;
@@ -1812,10 +1838,11 @@ auto Emitter::emit_alloc(Node* n) -> string {
         s += "if (" + cn + " != 0 && sizeof(" + et + ") > ((size_t)-1) / " + cn + ") { ";
         s += rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
         s += "size_t _lb_bytes" + std::to_string(id) + " = sizeof(" + et + ") * " + cn + "; ";
-        s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_bytes" + std::to_string(id) +
-             ", _Alignof(" + et + ")); ";
-        s += "if (_lb_bytes" + std::to_string(id) + " != 0 && " + bn +
-             ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+        s += "lb_span_opt _lb_ao" + std::to_string(id) + " = lb_alloc_call(" + an +
+             ", _lb_bytes" + std::to_string(id) + ", _Alignof(" + et + ")); ";
+        s += "lb_span " + bn + " = _lb_ao" + std::to_string(id) + ".value; ";
+        s += "if (_lb_bytes" + std::to_string(id) + " != 0 && !_lb_ao" + std::to_string(id) +
+             ".present) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
         s += rn + ".value.data = " + bn + ".data; ";
         s += rn + ".value.length = " + cn + "; ";
         s += rn + ".failed = false; } } ";

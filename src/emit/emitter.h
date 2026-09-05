@@ -223,7 +223,7 @@ struct Emitter {
 
     bool produces_opt(Node* n);
     string wrap_opt(Type* t, const string& e);
-    string none_opt(Type* t) { return "((" + opt_c_name(t) + "){ .present = false })"; }
+    string none_opt(Type* t) { return "((" + c_type(t) + "){ .present = false })"; }
 
     bool fn_fallible() {
         return current_fn != nullptr && (current_fn->flags & FlagFallible) != 0;

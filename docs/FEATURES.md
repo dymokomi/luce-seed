@@ -79,7 +79,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
-| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena`; `memory.grow` `agree_memory_grow`, `agree_memory_grow_fixed` |
+| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user `implements` works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
 | 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer`, `agree_generic_span` |
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |

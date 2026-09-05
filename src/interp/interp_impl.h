@@ -173,6 +173,7 @@ struct Interp {
     Value as_alloc(Node* n);
     bool bump_fixed(Value* fb, size_t size, size_t align);
     bool take_bytes(const Value& a, size_t size, size_t align);
+    Value invoke_method(Value* self, Node* st, string_view name, const vector<Value>& args);
     Value eval_new(Node* n);
     Value eval_alloc(Node* n);
     Value eval_unary(Node* n);

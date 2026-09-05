@@ -1,0 +1,40 @@
+pub struct Arena implements Allocator:
+    var parent: Allocator
+    var block: u8[]
+    var used: usize
+
+    pub static func over(parent: Allocator, capacity: usize) -> Arena!:
+        return Arena(parent = parent, block = try alloc(capacity, 16) in parent, used = 0)
+
+    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:
+        var align = alignment
+        if align < 1:
+            align = 1
+        var start = self.used
+        let rem = start % align
+        if rem != 0:
+            start = start + (align - rem)
+        if start > self.block.length:
+            return none
+        if size > self.block.length - start:
+            return none
+        let end = start + size
+        self.used = end
+        return self.block[start..<end]
+
+    pub mutating func resize(block: u8[], size: usize) -> bool:
+        return size <= block.length
+
+    pub mutating func release(block: u8[]):
+        discard(block.length)
+
+    pub mutating func destroy():
+        free(self.block) in self.parent
+
+pub func answer() -> i64!:
+    var arena = try Arena.over(memory.allocator, 64)
+    defer arena.destroy()
+    with arena:
+        let p = try new i64
+        *p = 40
+        return *p

@@ -301,7 +301,8 @@ auto Emitter::emit_global(Node* g) -> void {
                    (g->ty->kind == TypeKind::Struct || g->ty->kind == TypeKind::Union ||
                     g->ty->kind == TypeKind::Enum || is_array(g->ty) || is_opt(g->ty) ||
                     is_span(g->ty) || (g->ty->kind == TypeKind::Str) ||
-                    g->ty->kind == TypeKind::Allocator)) {
+                    g->ty->kind == TypeKind::Allocator ||
+                    g->ty->kind == TypeKind::Interface)) {
             init = "{0}";
         }
         line(tl + ty + " " + name + " = " + init + ";");

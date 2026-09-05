@@ -453,12 +453,38 @@ auto Checker::is_fixed(Type* t) -> bool {
         return t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer";
     }
 
+auto Checker::is_alloc_type(Type* t) -> bool {
+        if (t == nullptr) {
+            return false;
+        }
+        if (t->kind == TypeKind::Allocator) {
+            return true;
+        }
+        if (t->kind == TypeKind::Interface && t->decl != nullptr && t->decl->text == "Allocator") {
+            return true;
+        }
+        if (t->kind == TypeKind::Struct && t->decl != nullptr &&
+            struct_implements(t->decl, ty_alloc)) {
+            return true;
+        }
+        return is_fixed(t);
+    }
+
 auto Checker::check_in_allocator(Node* n) -> Type* {
         if (n == nullptr) {
             return ty_alloc;
         }
         Type* t = check_expr(n);
-        if (t != nullptr && t->kind == TypeKind::Allocator) {
+        if (t != nullptr &&
+            (t->kind == TypeKind::Allocator ||
+             (t->kind == TypeKind::Interface && t->decl != nullptr && t->decl->text == "Allocator"))) {
+            return t;
+        }
+        if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr &&
+            struct_implements(t->decl, ty_alloc)) {
+            if (!is_mut_place(n)) {
+                fail_n(n, "lucb.check.mut", "`with`/`in` needs a `var` allocator");
+            }
             return t;
         }
         if (is_fixed(t)) {
@@ -559,9 +585,36 @@ auto Checker::check_with(Node* n) -> void {
     }
 
 auto Checker::bind_memory() -> void {
-        if (ty_alloc == nullptr) {
-            ty_alloc = make_type(TypeKind::Allocator, "Allocator");
-        }
+        Node* al_alloc = syn_node(NodeKind::Func, "allocate");
+        al_alloc->flags |= FlagMutating;
+        Node* al_sz = syn_node(NodeKind::Param, "size");
+        al_sz->ty = ty_usize;
+        Node* al_al = syn_node(NodeKind::Param, "alignment");
+        al_al->ty = ty_usize;
+        al_sz->next = al_al;
+        al_alloc->right = al_sz;
+        al_alloc->ty = intern_opt(intern_sp(ty_u8, false));
+        Node* al_resize = syn_node(NodeKind::Func, "resize");
+        al_resize->flags |= FlagMutating;
+        Node* rs_block = syn_node(NodeKind::Param, "block");
+        rs_block->ty = intern_sp(ty_u8, false);
+        Node* rs_size = syn_node(NodeKind::Param, "size");
+        rs_size->ty = ty_usize;
+        rs_block->next = rs_size;
+        al_resize->right = rs_block;
+        al_resize->ty = ty_bool;
+        Node* al_rel = syn_node(NodeKind::Func, "release");
+        al_rel->flags |= FlagMutating;
+        Node* rl_block = syn_node(NodeKind::Param, "block");
+        rl_block->ty = intern_sp(ty_u8, false);
+        al_rel->right = rl_block;
+        al_rel->ty = t_unit();
+        al_alloc->next = al_resize;
+        al_resize->next = al_rel;
+        Node* alloc_iface = syn_node(NodeKind::Interface, "Allocator");
+        alloc_iface->body = al_alloc;
+        ty_alloc = intern_iface(alloc_iface, false);
+        alloc_iface->ty = ty_alloc;
         Node* data = syn_node(NodeKind::Field, "data");
         data->ty = intern_ptr(ty_u8, false, false, false);
         Node* cap = syn_node(NodeKind::Field, "cap");

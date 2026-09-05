@@ -622,6 +622,21 @@ TEST(check_luce_location_ok) {
                    "    return i64(loc.line)\n"));
 }
 
+TEST(check_arena_implements_ok) {
+    CHECK(check_ok("pub struct Arena implements Allocator:\n"
+                   "    var parent: Allocator\n"
+                   "    var block: u8[]\n"
+                   "    var used: usize\n"
+                   "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                   "        return none\n"
+                   "    pub mutating func resize(block: u8[], size: usize) -> bool:\n"
+                   "        return false\n"
+                   "    pub mutating func release(block: u8[]):\n"
+                   "        discard(block.length)\n"
+                   "pub func answer() -> i64:\n"
+                   "    return 0\n"));
+}
+
 TEST(check_memory_copy_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n"
                    "    var dst: u8[4] = [0, 0, 0, 0]\n"

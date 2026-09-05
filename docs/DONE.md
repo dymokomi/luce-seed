@@ -2,6 +2,13 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## User `Allocator`
+
+`Allocator` is the interface of §12.4. `new` / `alloc` / `free` / `with` /
+`in` call `allocate` / `resize` / `release`. Heap and `FixedBuffer` remain
+the builtin implementations. A user `Arena implements Allocator` can be
+made current. Evidence: `agree_user_arena`, `testdata/programs/arena.lucb`.
+
 ## Memory, text, listing, spawn, hash
 
 `memory.copy` / `move` / `set`, `memory.read[T]` / `write[T]`, and
