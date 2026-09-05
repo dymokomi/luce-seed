@@ -720,7 +720,8 @@ auto Emitter::emit_call(Node* n) -> string {
             }
             return name + "(" + args + ")";
         }
-        string recv = emit_addr(obj);
+        // A pointer-typed receiver already is the address the method takes.
+        string recv = is_ptr(obj != nullptr ? obj->ty : nullptr) ? emit_expr(obj) : emit_addr(obj);
         if (args.empty()) {
             return name + "(" + recv + ")";
         }

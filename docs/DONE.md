@@ -3,6 +3,18 @@
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 This tree is **luce-seed-0.4**, the seed `luce-base` is written against.
 
+## Found by luce-base's first two slices
+
+Writing the lexer and parser in Base found: `x == none` on a tagged
+optional; `self.use(self.take())` losing the receiver mutation made by the
+argument in the oracle (arguments now evaluate before the receiver is
+copied, and only `mutating` methods write it back); a method called through
+a pointer-typed local taking `&p` instead of `p` in C; a diamond of imports
+checking a module before its dependency (modules are now ordered
+dependencies-first); and two `test` declarations colliding on a truncated
+pointer in their C names (tests are numbered). Each is pinned under
+`testdata/programs/`.
+
 ## 0.4: the seed for luce-base
 
 Every compile and run works in a scratch directory that is removed when it

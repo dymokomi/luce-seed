@@ -96,13 +96,10 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
         fail("stack overflow");
         return v_unit();
     }
+    // Arguments are evaluated before the receiver is copied into the frame:
+    // `self.use(self.take())` must see the mutation `take()` made.
     Frame frame;
-    if (self != nullptr) {
-        Slot s;
-        s.name = "self";
-        s.value = *self;
-        frame.slots.push_back(s);
-    }
+    vector<Slot> params;
     Node* p = fn->right;
     Node* a = args;
     while (p != nullptr && a != nullptr) {
@@ -120,9 +117,18 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
         if (trapped) {
             return v_unit();
         }
-        frame.slots.push_back(s);
+        params.push_back(s);
         p = p->next;
         a = a->next;
+    }
+    if (self != nullptr) {
+        Slot s;
+        s.name = "self";
+        s.value = *self;
+        frame.slots.push_back(s);
+    }
+    for (size_t i = 0; i < params.size(); i++) {
+        frame.slots.push_back(params[i]);
     }
     frames.push_back(frame);
     bool saved_ret = returning;
@@ -132,7 +138,8 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
     current_fn = fn;
     exec(fn->body);
     current_fn = saved_fn;
-    if (self != nullptr && !frames.empty()) {
+    // Only a `mutating` method may change its receiver (base.md §9.5).
+    if (self != nullptr && (fn->flags & FlagMutating) != 0 && !frames.empty()) {
         Slot* ss = nullptr;
         Frame& top = frames.back();
         for (size_t i = 0; i < top.slots.size(); i++) {

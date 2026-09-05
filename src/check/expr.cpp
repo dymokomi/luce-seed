@@ -579,8 +579,16 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         }
         return t_bool();
     }
-    Type* L = check_expr(n->left, nullptr);
-    Type* R = check_expr(n->right, nullptr);
+    // `x == none`: the literal takes the other operand's optional type.
+    bool none_right = n->right != nullptr && n->right->kind == NodeKind::Literal &&
+                      n->right->op == TokenKind::KwNone;
+    bool none_left = n->left != nullptr && n->left->kind == NodeKind::Literal &&
+                     n->left->op == TokenKind::KwNone;
+    Type* L = none_left ? nullptr : check_expr(n->left, nullptr);
+    Type* R = none_right ? check_expr(n->right, L) : check_expr(n->right, nullptr);
+    if (none_left) {
+        L = check_expr(n->left, R);
+    }
     if (is_atomic(L)) {
         L = L->elem;
     }

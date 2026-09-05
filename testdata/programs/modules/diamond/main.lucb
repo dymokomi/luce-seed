@@ -1,0 +1,6 @@
+import b
+pub func answer() -> i64!:
+    var p = b.P.create()
+    let node = try p.make()
+    defer free(node)
+    return node.v

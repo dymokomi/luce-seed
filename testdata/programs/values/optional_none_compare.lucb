@@ -1,0 +1,19 @@
+struct N:
+    var next: N*?
+pub func answer() -> i64:
+    var b = N(next = none)
+    var a = N(next = &b)
+    let m: i64? = 4
+    let z: i64? = none
+    var score: i64 = 0
+    if a.next != none:
+        score += 10
+    if b.next == none:
+        score += 10
+    if m != none:
+        score += 10
+    if z == none:
+        score += 10
+    if none == z:
+        score += 0
+    return score

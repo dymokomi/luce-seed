@@ -29,6 +29,8 @@ struct Emitter {
     vector<Type*> tups;
     vector<Type*> fns;
     vector<Type*> noted_structs;
+    vector<Node*> test_nodes; // `test` declarations in emission order
+    string test_name(Node* t);
     Node* current_fn = nullptr;
     string src_file = "t.lucb";
     bool wrote_writer_rt = false;

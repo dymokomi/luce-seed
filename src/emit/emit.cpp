@@ -230,8 +230,19 @@ auto Emitter::emit_defs(Node* mod) -> void {
     }
 }
 
+// Tests are numbered in declaration order; a truncated pointer collided.
+auto Emitter::test_name(Node* t) -> string {
+    for (size_t i = 0; i < test_nodes.size(); i++) {
+        if (test_nodes[i] == t) {
+            return "lb_test_" + std::to_string(i);
+        }
+    }
+    test_nodes.push_back(t);
+    return "lb_test_" + std::to_string(test_nodes.size() - 1);
+}
+
 auto Emitter::emit_test_sig(Node* t, bool define) -> void {
-    string name = "lb_test_" + std::to_string(reinterpret_cast<uintptr_t>(t) & 0xffffu);
+    string name = test_name(t);
     if (!define) {
         line("lb_r_unit " + name + "(void);");
         return;

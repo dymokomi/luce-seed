@@ -276,6 +276,53 @@ bool parse_manifest_text(const string& text, const string& root, Manifest* out, 
     return true;
 }
 
+// The checker, emitter, and oracle walk `files` from the back, so a module
+// must come after everything it imports. Loading appends in discovery
+// order, which a diamond (`main` imports `a` and `b`, `b` imports `a`)
+// breaks; this puts the entry first and the rest in reverse dependency
+// order behind it.
+static void visit_dependencies(Program& program, size_t index, vector<bool>& seen,
+                               vector<size_t>& post_order) {
+    if (seen[index]) {
+        return;
+    }
+    seen[index] = true;
+    Node* module = program.files[index].module;
+    for (Node* d = module != nullptr ? module->body : nullptr; d != nullptr; d = d->next) {
+        if ((d->kind != NodeKind::Import && d->kind != NodeKind::FromImport) ||
+            d->resolved == nullptr) {
+            continue;
+        }
+        for (size_t j = 0; j < program.files.size(); j++) {
+            if (program.files[j].module == d->resolved) {
+                visit_dependencies(program, j, seen, post_order);
+                break;
+            }
+        }
+    }
+    post_order.push_back(index);
+}
+
+static void order_dependencies_first(Program& program) {
+    if (program.files.size() < 3) {
+        return;
+    }
+    vector<bool> seen(program.files.size(), false);
+    vector<size_t> post_order; // dependencies before dependents, entry last
+    visit_dependencies(program, 0, seen, post_order);
+    for (size_t i = 0; i < program.files.size(); i++) {
+        visit_dependencies(program, i, seen, post_order);
+    }
+    vector<LoadedModule> ordered;
+    ordered.push_back(std::move(program.files[0]));
+    for (size_t k = post_order.size(); k-- > 0;) {
+        if (post_order[k] != 0) {
+            ordered.push_back(std::move(program.files[post_order[k]]));
+        }
+    }
+    program.files = std::move(ordered);
+}
+
 bool load_program(const string& path, Program& program, Arena& arena, DiagnosticBag& diagnostics) {
     program.arena = &arena;
     program.files.clear();
@@ -331,7 +378,11 @@ bool load_program(const string& path, Program& program, Arena& arena, Diagnostic
             name = rel;
         }
     }
-    return load_one(program, entry, name, diagnostics, stack);
+    if (!load_one(program, entry, name, diagnostics, stack)) {
+        return false;
+    }
+    order_dependencies_first(program);
+    return true;
 }
 
 } // namespace lucb

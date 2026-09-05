@@ -1,0 +1,13 @@
+struct N:
+    var v: i64
+    func has(bit: i64) -> bool:
+        return (self.v & bit) != 0
+pub func answer() -> i64:
+    var n = N(v = 6)
+    let p: N* = &n
+    var score: i64 = 0
+    if p.has(2):
+        score += 20
+    if not p.has(1):
+        score += 20
+    return score

@@ -550,6 +550,29 @@ auto Emitter::emit_binary(Node* n) -> string {
     }
     Type* lt = n->left != nullptr ? n->left->ty : nullptr;
     Type* rt = n->right != nullptr ? n->right->ty : nullptr;
+    // Tagged optionals: `x == none` is a presence test; `x == y` compares
+    // presence, then the payloads when both are present.
+    bool tagged = (is_opt(lt) && !is_ptr(lt)) || (is_opt(rt) && !is_ptr(rt));
+    if (tagged && (op == TokenKind::EqEq || op == TokenKind::NotEq)) {
+        bool none_left = n->left->kind == NodeKind::Literal && n->left->op == TokenKind::KwNone;
+        bool none_right = n->right->kind == NodeKind::Literal && n->right->op == TokenKind::KwNone;
+        string test;
+        if (none_left || none_right) {
+            int id = tmp();
+            string on = "_lb_on" + std::to_string(id);
+            string side = none_left ? R : L;
+            test = "({ " + c_type(none_left ? rt : lt) + " " + on + " = " + side + "; !" + on +
+                   ".present; })";
+        } else {
+            int id = tmp();
+            string a = "_lb_oa" + std::to_string(id);
+            string b = "_lb_ob" + std::to_string(id);
+            test = "({ " + c_type(lt) + " " + a + " = " + L + "; " + c_type(rt) + " " + b + " = " +
+                   R + "; (" + a + ".present == " + b + ".present) && (!" + a + ".present || " + a +
+                   ".value == " + b + ".value); })";
+        }
+        return op == TokenKind::EqEq ? "(" + test + ")" : "(!" + test + ")";
+    }
     if (is_ptr(lt) || is_ptr(rt)) {
         if (op == TokenKind::EqEq) {
             return "(" + L + " == " + R + ")";

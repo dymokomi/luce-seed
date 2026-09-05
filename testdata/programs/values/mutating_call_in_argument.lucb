@@ -1,0 +1,16 @@
+struct Cursor:
+    var items: i64[4]
+    var pos: usize
+    mutating func take() -> i64:
+        let v = self.items[self.pos]
+        self.pos += 1
+        return v
+    func twice(v: i64) -> i64:
+        return v * 2
+    mutating func next_twice() -> i64:
+        return self.twice(self.take())
+pub func answer() -> i64:
+    var c = Cursor(items = [5, 7, 9, 11], pos = 0)
+    let a = c.next_twice()
+    let b = c.next_twice()
+    return a + b + i64(c.pos) + 14
