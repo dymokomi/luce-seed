@@ -42,7 +42,7 @@ not land in this tree).
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `agree_ptr_int_cast`, `check_nullable_deref`, `check_escape_local` |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
 | 5.5 | `str` as a view | done | `agree_str_length`, `agree_str_bytes`, `agree_str_from_bytes`, `agree_str_cstr`, `agree_str_unchecked`, `agree_str_invalid_utf8` |
-| 5.6 | Function types `func(A, B) -> R` | done | `agree_func_value`, `agree_alias_func`, `check_func_type_ok`, `check_func_no_zero` |
+| 5.6 | Function types `func(A, B) -> R` | done | `agree_func_value`, `agree_alias_func`, `agree_program_fnptr_table`, `check_func_type_ok`, `check_func_no_zero` |
 | 5.7 | Tuples `(i64, str)` | done | `agree_tuple`, `eval_tuple`, `check_tuple_ok` |
 | 5.10 | Type aliases | done | `agree_type_alias`, `eval_type_alias`, `check_type_alias_ok`, `check_alias_recursive` |
 | 5.11 | `sizeof`, `offsetof`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_sizeof_ptr`, `agree_offsetof_packed` |
@@ -59,8 +59,8 @@ not land in this tree).
 | 7.9 | `discard` | done | `agree_discard`, `eval_discard`, `check_discard_ok`, `check_discard_fallible` |
 | 9.2 | Default parameters | done | `agree_default_args`, `agree_named_default`, `eval_default_args` |
 | 9.3 | Multiple results / tuples | done | `agree_tuple` |
-| 9.4 | Function values | done | `agree_func_value`, `agree_method_value`, `agree_func_to_fallible`, `check_func_must_be_called` |
-| 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `check_explicit_self_rejected` |
+| 9.4 | Function values | done | `agree_func_value`, `agree_method_value`, `agree_func_to_fallible`, `agree_program_fnptr_table`, `check_func_must_be_called` |
+| 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `agree_program_enum_methods`, `check_enum_method`, `check_explicit_self_rejected` |
 | 9.6 | Capture-free lambdas | done | `agree_lambda`, `eval_lambda`, `check_lambda_ok`, `check_lambda_capture_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
@@ -72,8 +72,8 @@ not land in this tree).
 | 8.5 | Labeled `break`/`continue` | done | `agree_labeled_break`, `agree_break` |
 | 8.8 | `defer` | done | `agree_defer` |
 | 8.8 | `errdefer` | done | `eval_errdefer`, `agree_errdefer` |
-| 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let` |
-| 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `check_try_needs_fallible` |
+| 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let`, `agree_program_checked_else`; `else return none` |
+| 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `agree_program_inline_catch`, `check_try_needs_fallible` |
 | 9.7 | `pub func main(arguments: str[]\|cstr[]) -> i32\|i32!` | done | `agree_main_hello` |
 | 16.3 | `import` / `from … import` | done | `load_and_check_import`, `load_from_import`, `check_unused_import`, `hidden_import_rejected` |
 | 16.4 | `luce.toml` | partial | `[package] name`; extra source roots out of seed |
@@ -94,15 +94,15 @@ not land in this tree).
 | 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb`; answers `(i32, str, str)!` |
 | 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` out of seed |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
-| 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export out of seed |
+| 17.6 | Export header | partial | `header_export_func`, `header_export_span`, `lucb header`; spans in parameter position are pointer plus count; status-form fallible export out of seed |
 | 5.9 / 15.1 | `@T` atomics, `atomic.fence`, `Ordering` | done | `agree_atomic_add`, `agree_atomic_method`, `agree_atomic_cas`, `agree_atomic_wait` |
 | 15.2 | `volatile T*` | done | `agree_volatile_store` |
-| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`; optional `stack`/`name` out of seed |
-| 15.3 | `sync.Mutex` / `Condition` / `Once` / `Semaphore` | done | `agree_sync_mutex`, `agree_sync_once`, `agree_sync_cond`, `agree_sync_sem` |
+| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`, `agree_program_thread_mod`; `import thread` / `import sync`; optional `stack`/`name` out of seed |
+| 15.3 | `sync.Mutex` / `Condition` / `Once` / `Semaphore` | done | `agree_sync_mutex`, `agree_sync_once`, `agree_sync_cond`, `agree_sync_sem`, `agree_program_thread_mod` |
 | 8.9 | `asm` semantics | partial | `eval_asm_rejected`, `native_asm_add`; interpreter rejects (out of seed), C backend emits operands |
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
 | 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |
-| 11.3 | `ErrorCode.package` | out of seed | integer codes |
+| 11.3 | `ErrorCode.package` | done | `agree_program_errorcode`, `check_errorcode_package_ok`; integer codes still accepted by `error` |
 | 19 | MIR / QBE / native backend | out of seed | C plus host `cc` is the seed backend |
 | 24.4 | user `Arena` | done | `testdata/programs/arena.lucb` |
 | 24.13 | Builder as `Writer` | done | `agree_program_builder`, `testdata/programs/builder.lucb` |

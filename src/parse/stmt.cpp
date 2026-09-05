@@ -138,7 +138,8 @@ auto Parser::parse_simple_stmt() -> Node* {
             take();
             Node* n = make(NodeKind::Recover, start.span);
             n->left = parse_expression();
-            expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+            expect_stmt_newline(n->left);
+            n->span = span_from(start);
             return n;
         }
         if (at(TokenKind::KwFree)) {

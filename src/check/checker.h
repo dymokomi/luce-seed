@@ -46,6 +46,7 @@ struct Checker {
     Type* ty_untyped = nullptr;
     Type* ty_void = nullptr;
     Type* ty_err = nullptr;
+    Type* ty_errcode = nullptr;
     Type* ty_cstr = nullptr;
     Type* ty_alloc = nullptr;
     Type* ty_fixed = nullptr;
@@ -78,6 +79,8 @@ struct Checker {
     bool fallible_fn = false;
     bool in_catch = false;
     Type* catch_type = nullptr;
+    bool in_top_const = false;
+    vector<uint32_t> package_codes;
     vector<string_view> loop_labels;
 
     
@@ -486,6 +489,7 @@ struct Checker {
     Type* check_print(Node* n);
     Type* check_format(Node* n);
     Type* check_error(Node* n);
+    Type* check_error_code_package(Node* n);
     Type* check_else(Node* n, Type* expected);
     Type* check_catch(Node* n, Type* expected);
     bool pattern_covers_rest(Node* pat);

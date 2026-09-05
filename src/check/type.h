@@ -34,6 +34,7 @@ enum class TypeKind : uint8_t {
     Optional,
     Fallible,
     ErrorVal,
+    ErrorCode,
     Enum,
     Union,
     Module,

@@ -263,6 +263,9 @@ auto Emitter::emit_stmt(Node* n) -> void {
         case NodeKind::Recover:
             if (!catch_var.empty()) {
                 line(catch_var + " = " + emit_expr(n->left) + ";");
+                if (!catch_done.empty()) {
+                    line("goto " + catch_done + ";");
+                }
             } else {
                 string e = emit_expr(n->left);
                 if (fn_fallible()) {

@@ -100,6 +100,23 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
         case NodeKind::Else:
             t = check_else(n, expected);
             break;
+        case NodeKind::Return: {
+            Type* rt = t_unit();
+            if (n->left != nullptr) {
+                rt = check_expr(n->left, return_type);
+            }
+            if (return_type != nullptr && !type_eq(rt, return_type) && !can_widen(rt, return_type) &&
+                !can_ptr_convert(rt, return_type, n->left) && !type_eq(rt, t_never())) {
+                fail_n(n, "lucb.check.type", "return type is " + type_name(rt) + ", expected " +
+                                                 type_name(return_type));
+            }
+            t = t_never();
+            break;
+        }
+        case NodeKind::Break:
+        case NodeKind::Continue:
+            t = t_never();
+            break;
         case NodeKind::Catch:
             t = check_catch(n, expected);
             break;
@@ -146,7 +163,10 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
             t = t_error();
             break;
         }
-        t = coerce(n, t, expected);
+        if (n->kind != NodeKind::Return && n->kind != NodeKind::Break &&
+            n->kind != NodeKind::Continue) {
+            t = coerce(n, t, expected);
+        }
         n->ty = t;
         return t;
     }
@@ -183,6 +203,9 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             }
             if (dest != nullptr && dest->kind == TypeKind::UntypedInt) {
                 dest = t_i64();
+            }
+            if (dest != nullptr && dest->kind == TypeKind::ErrorCode) {
+                return is_opt(expected) ? expected : dest;
             }
             if (dest == nullptr || !is_int(dest)) {
                 fail_n(n, "lucb.check.type",
@@ -442,7 +465,8 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
             if (is_opt(want) && want->elem != nullptr) {
                 want = want->elem;
             }
-            if (is_func(want) || (want != nullptr && is_func(want) && want->is_nullable)) {
+            if (is_func(want) || is_void_ptr(want) ||
+                (want != nullptr && is_func(want) && want->is_nullable)) {
                 return ft;
             }
             fail_n(n, "lucb.check.type", "a function must be called");
@@ -814,6 +838,10 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
                 }
                 return t_bool();
             }
+            if ((L != nullptr && L->kind == TypeKind::ErrorCode) ||
+                (R != nullptr && R->kind == TypeKind::ErrorCode)) {
+                return t_bool();
+            }
             bool u8_char = (L != nullptr && R != nullptr &&
                             ((L->kind == TypeKind::U8 && R->kind == TypeKind::Char) ||
                              (L->kind == TypeKind::Char && R->kind == TypeKind::U8)));
@@ -948,6 +976,11 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
             }
             n->resolved = nullptr;
             return ty_alloc;
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
+            callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
+            callee->text == "package") {
+            return check_error_code_package(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             return check_method_call(n);
@@ -1197,6 +1230,12 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
         if (is_int(src) && is_int_enum(dest)) {
             return true;
         }
+        if (src != nullptr && src->kind == TypeKind::ErrorCode && is_int(dest)) {
+            return true;
+        }
+        if (is_int(src) && dest != nullptr && dest->kind == TypeKind::ErrorCode) {
+            return true;
+        }
         if (dest->kind == TypeKind::Str) {
             if (src->kind == TypeKind::CStr) {
                 return true;
@@ -1408,13 +1447,54 @@ auto Checker::check_error(Node* n) -> Type* {
         if (count != 2) {
             fail_n(n, "lucb.check.call", "`error` takes a code and a message");
         } else {
-            check_expr(n->body->left, nullptr);
+            Type* code = check_expr(n->body->left, ty_errcode);
+            if (code != nullptr && code->kind != TypeKind::ErrorCode && !is_int(code) &&
+                code->kind != TypeKind::UntypedInt) {
+                fail_n(n->body, "lucb.check.type", "`error` code must be `ErrorCode`");
+            }
             Type* msg = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_str());
             if (!type_eq(msg, t_str())) {
                 fail_n(n, "lucb.check.type", "`error` message must be `str`");
             }
         }
         return t_never();
+    }
+
+auto Checker::check_error_code_package(Node* n) -> Type* {
+        if (!in_top_const) {
+            fail_n(n, "lucb.check.type",
+                   "`ErrorCode.package` is only a top-level constant initialiser");
+            return ty_errcode != nullptr ? ty_errcode : t_error();
+        }
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`ErrorCode.package` takes one integer");
+            return ty_errcode != nullptr ? ty_errcode : t_error();
+        }
+        Node* arg = n->body != nullptr ? n->body->left : nullptr;
+        Type* at = check_expr(arg, ty_u32);
+        (void)at;
+        uint64_t v = 0;
+        if (!const_u64(arg, &v)) {
+            fail_n(n, "lucb.check.type", "`ErrorCode.package` needs a constant");
+            return ty_errcode != nullptr ? ty_errcode : t_error();
+        }
+        if (v > 0xffffffffu) {
+            fail_n(n, "lucb.check.number", "`ErrorCode.package` needs a `u32`");
+            return ty_errcode != nullptr ? ty_errcode : t_error();
+        }
+        uint32_t code = static_cast<uint32_t>(v);
+        for (size_t i = 0; i < package_codes.size(); i++) {
+            if (package_codes[i] == code) {
+                fail_n(n, "lucb.check.shadow", "duplicate `ErrorCode.package` value");
+                break;
+            }
+        }
+        package_codes.push_back(code);
+        if (n->left != nullptr) {
+            n->left->ty = intern_func(&ty_u32, 1, ty_errcode, false);
+            n->left->resolved = nullptr;
+        }
+        return ty_errcode;
     }
 
 auto Checker::check_else(Node* n, Type* expected) -> Type* {
@@ -2213,8 +2293,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
                             }
                         }
                         if (n->body != nullptr && n->body->next != nullptr) {
-                            Type* ct = check_expr(n->body->next->left, nullptr);
-                            if (!is_ptr(ct) && ct->kind != TypeKind::Void) {
+                            Type* want = intern_ptr(ty_void, false, false, true);
+                            Type* ct = check_expr(n->body->next->left, want);
+                            if (!is_ptr(ct) && (ct == nullptr || ct->kind != TypeKind::Void)) {
                                 fail_n(n, "lucb.check.type", "`thread.spawn` context needs a pointer");
                             }
                         }
@@ -2415,7 +2496,8 @@ auto Checker::check_method_call(Node* n) -> Type* {
             return t_i64();
         }
         if (recv == nullptr ||
-            (recv->kind != TypeKind::Struct && recv->kind != TypeKind::Union) ||
+            (recv->kind != TypeKind::Struct && recv->kind != TypeKind::Union &&
+             recv->kind != TypeKind::Enum) ||
             recv->decl == nullptr) {
             fail_n(n, "lucb.check.type", "methods are called on structs");
             return t_error();
@@ -2587,6 +2669,16 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
             }
             n->resolved = field;
             return field->ty;
+        }
+        if (ot != nullptr && ot->kind == TypeKind::ErrorVal) {
+            if (n->text == "code") {
+                return ty_errcode != nullptr ? ty_errcode : ty_i32;
+            }
+            if (n->text == "message") {
+                return t_str();
+            }
+            fail_n(n, "lucb.check.name", "no field `" + string(n->text) + "`");
+            return t_error();
         }
         if (ot != nullptr && is_enum(ot) && ot->decl != nullptr) {
             Node* cse = enum_case(ot->decl, n->text);

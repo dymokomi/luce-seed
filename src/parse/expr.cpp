@@ -54,7 +54,30 @@ auto Parser::parse_else_rest(Node* n) -> Node* {
         take();
         Node* e = make(NodeKind::Else, n->span);
         e->left = n;
-        e->right = parse_else_expr();
+        if (at(TokenKind::KwReturn) || at(TokenKind::KwBreak) || at(TokenKind::KwContinue)) {
+            Token start = cur();
+            Token t = take();
+            if (t.kind == TokenKind::KwReturn) {
+                Node* r = make(NodeKind::Return, start.span);
+                if (!at(TokenKind::Newline) && !at(TokenKind::Dedent) &&
+                    !at(TokenKind::EndOfFile) && !at(TokenKind::RParen) && !at(TokenKind::Comma) &&
+                    !at(TokenKind::RBracket)) {
+                    r->left = parse_else_expr();
+                }
+                r->span = span_from(start);
+                e->right = r;
+            } else {
+                Node* j = make(t.kind == TokenKind::KwBreak ? NodeKind::Break : NodeKind::Continue,
+                               start.span);
+                if (at(TokenKind::Name)) {
+                    j->text = take().text;
+                }
+                j->span = span_from(start);
+                e->right = j;
+            }
+        } else {
+            e->right = parse_else_expr();
+        }
         return e;
     }
 

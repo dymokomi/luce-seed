@@ -954,6 +954,20 @@ TEST(agree_program_generic_list) { CHECK(agrees_file("testdata/programs/generic_
 
 TEST(agree_program_builder) { CHECK(agrees_file("testdata/programs/builder.lucb")); }
 
+TEST(agree_program_enum_methods) { CHECK(agrees_file("testdata/programs/enum_methods.lucb")); }
+
+TEST(agree_program_fnptr_table) { CHECK(agrees_file("testdata/programs/fnptr_table.lucb")); }
+
+TEST(agree_program_checked_else) { CHECK(agrees_file("testdata/programs/checked_else.lucb")); }
+
+TEST(agree_program_inline_catch) { CHECK(agrees_file("testdata/programs/inline_catch.lucb")); }
+
+TEST(agree_program_errorcode) { CHECK(agrees_file("testdata/programs/errorcode.lucb")); }
+
+TEST(agree_program_thread_mod) { CHECK(agrees_file("testdata/programs/thread_mod.lucb")); }
+
+TEST(agree_program_export_span) { CHECK(agrees_file("testdata/programs/export_span.lucb")); }
+
 TEST(agree_user_arena) {
     CHECK(agrees("pub struct Arena implements Allocator:\n"
                  "    var parent: Allocator\n"
@@ -1293,6 +1307,31 @@ TEST(agree_alias_func) {
                  "pub func answer() -> i64:\n"
                  "    let op: Binop = add\n"
                  "    return op(4, 5)\n"));
+}
+
+TEST(header_export_span) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb",
+                                       "export func checksum(data: const u8[]) -> u32:\n"
+                                       "    var sum: u32 = 0\n"
+                                       "    for byte in data:\n"
+                                       "        sum = sum +% byte\n"
+                                       "    return sum\n"
+                                       "pub func answer() -> i64:\n"
+                                       "    return 0\n",
+                                       diagnostics);
+    CHECK(source.ok());
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    CHECK(diagnostics.empty());
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    CHECK(diagnostics.empty());
+    CHECK(parsed.module != nullptr);
+    CHECK(check_module(parsed.module, arena, diagnostics, "t.lucb"));
+    std::string h = lucb::emit_header(parsed.module);
+    CHECK(h.find("uint32_t checksum(") != std::string::npos);
+    CHECK(h.find("const uint8_t*") != std::string::npos);
+    CHECK(h.find("size_t") != std::string::npos);
 }
 
 TEST(header_export_func) {

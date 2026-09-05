@@ -518,6 +518,18 @@ auto Interp::eval_uncast(Node* n) -> Value {
             }
             return eval(n->right);
         }
+        case NodeKind::Return:
+            ret = n->left != nullptr ? eval(n->left) : v_unit();
+            returning = true;
+            return ret;
+        case NodeKind::Break:
+            breaking = true;
+            jump_label = n->text;
+            return v_unit();
+        case NodeKind::Continue:
+            continuing = true;
+            jump_label = n->text;
+            return v_unit();
         default:
             fail("unsupported expression at runtime");
             return v_unit();
@@ -629,6 +641,15 @@ auto Interp::eval_member(Node* n) -> Value {
                 v.ptr = &obj.fields[0];
             }
             return v;
+        }
+        if (obj.kind == TypeKind::ErrorVal ||
+            (raw != nullptr && raw->kind == TypeKind::ErrorVal)) {
+            if (n->text == "code") {
+                return v_int(n->ty, obj.u);
+            }
+            if (n->text == "message") {
+                return v_str(obj.str);
+            }
         }
         if (view && n->text == "bytes" &&
             (raw == nullptr || raw->kind == TypeKind::Str || obj.kind == TypeKind::Str)) {
@@ -1313,11 +1334,13 @@ auto Interp::arith(Type* t, const Value& L, const Value& R, TokenKind op) -> Val
             int64_t a = as_s(L, t);
             int64_t b = as_s(R, t);
             int64_t r = 0;
-            if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
+            if (op == TokenKind::Plus || op == TokenKind::PlusQuestion ||
+                op == TokenKind::Minus || op == TokenKind::MinusQuestion ||
+                op == TokenKind::Star || op == TokenKind::StarQuestion) {
                 bool ov = false;
-                if (op == TokenKind::Plus) {
+                if (op == TokenKind::Plus || op == TokenKind::PlusQuestion) {
                     ov = __builtin_add_overflow(a, b, &r);
-                } else if (op == TokenKind::Minus) {
+                } else if (op == TokenKind::Minus || op == TokenKind::MinusQuestion) {
                     ov = __builtin_sub_overflow(a, b, &r);
                 } else {
                     ov = __builtin_mul_overflow(a, b, &r);
@@ -1371,21 +1394,21 @@ auto Interp::arith(Type* t, const Value& L, const Value& R, TokenKind op) -> Val
             uint64_t a = as_u(L, t);
             uint64_t b = as_u(R, t);
             uint64_t maxv = int_max_unsigned(bits);
-            if (op == TokenKind::Plus) {
+            if (op == TokenKind::Plus || op == TokenKind::PlusQuestion) {
                 if (bits >= 64 ? a > UINT64_MAX - b : a + b > maxv) {
                     fail("integer overflow");
                     return v_unit();
                 }
                 return v_int(t, a + b);
             }
-            if (op == TokenKind::Minus) {
+            if (op == TokenKind::Minus || op == TokenKind::MinusQuestion) {
                 if (a < b) {
                     fail("integer overflow");
                     return v_unit();
                 }
                 return v_int(t, a - b);
             }
-            if (op == TokenKind::Star) {
+            if (op == TokenKind::Star || op == TokenKind::StarQuestion) {
                 if (b != 0 && a > maxv / b) {
                     fail("integer overflow");
                     return v_unit();
@@ -1774,6 +1797,12 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         if (is_int_enum(src) && is_int(dest)) {
             return v_int(dest, as_u(x, src->elem != nullptr ? src->elem : dest));
         }
+        if (src != nullptr && src->kind == TypeKind::ErrorCode && is_int(dest)) {
+            return v_int(dest, x.u);
+        }
+        if (is_int(src) && dest != nullptr && dest->kind == TypeKind::ErrorCode) {
+            return v_int(dest, as_u(x, src));
+        }
         if (is_int(src) && is_int_enum(dest)) {
             uint64_t u = as_u(x, src);
             if (checked && dest->decl != nullptr) {
@@ -2090,6 +2119,12 @@ auto Interp::eval_call(Node* n) -> Value {
                 fail(msg);
             }
             return v_unit();
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
+            callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
+            callee->text == "package") {
+            Value a = n->body != nullptr ? eval(n->body->left) : v_unit();
+            return v_int(n->ty, a.u);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;

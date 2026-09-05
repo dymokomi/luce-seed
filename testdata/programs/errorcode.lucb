@@ -1,0 +1,11 @@
+pub let not_found: ErrorCode = ErrorCode.package(7)
+func find(x: i64) -> i64!:
+    if x < 0:
+        error(not_found, "missing")
+    return x
+pub func answer() -> i64:
+    let v = find(-1) catch failure:
+        if failure.code == not_found:
+            recover 40
+        recover 1
+    return v

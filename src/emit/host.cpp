@@ -1,4 +1,5 @@
 #include "emit/host.h"
+#include "emit/runtime_embed.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -41,18 +42,26 @@ string host_cc() {
     return "cc";
 }
 
+bool write_text(const string& path, const char* text, string* error) {
+    std::ofstream out(path);
+    if (!out) {
+        if (error != nullptr) {
+            *error = "could not write " + path;
+        }
+        return false;
+    }
+    out << text;
+    return true;
+}
+
 } // namespace
 
 string runtime_dir() {
-#ifdef LUCB_RUNTIME_DIR
-    return LUCB_RUNTIME_DIR;
-#else
     return "src/runtime";
-#endif
 }
 
 bool compile_c(const string& c_source, const string& exe_path, string* error,
-               bool link_answer_start) {
+               bool link_answer_start, bool release) {
     char tmpl[] = "/tmp/lucbXXXXXX";
     char* dir = mkdtemp(tmpl);
     if (dir == nullptr) {
@@ -63,21 +72,24 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
     }
     string dir_path = dir;
     string src_path = dir_path + "/gen.c";
-    std::ofstream out(src_path);
-    if (!out) {
-        if (error != nullptr) {
-            *error = "could not write generated C";
-        }
+    if (!write_text(src_path, c_source.c_str(), error)) {
         return false;
     }
-    out << c_source;
-    out.close();
+    if (!write_text(dir_path + "/lucb_rt.h", lucb_rt_h(), error)) {
+        return false;
+    }
+    if (!write_text(dir_path + "/lucb_rt.c", lucb_rt_c(), error)) {
+        return false;
+    }
+    if (link_answer_start && !write_text(dir_path + "/start.c", lucb_start_c(), error)) {
+        return false;
+    }
 
-    string rt = runtime_dir();
-    string cmd = host_cc() + " -std=gnu11 -O0 -I " + shell_quote(rt) + " " + shell_quote(src_path) +
-                 " " + shell_quote(rt + "/lucb_rt.c");
+    const char* opt = release ? "-O2" : "-O0";
+    string cmd = host_cc() + " -std=gnu11 " + opt + " -I " + shell_quote(dir_path) + " " +
+                 shell_quote(src_path) + " " + shell_quote(dir_path + "/lucb_rt.c");
     if (link_answer_start) {
-        cmd += " " + shell_quote(rt + "/start.c");
+        cmd += " " + shell_quote(dir_path + "/start.c");
     }
     cmd += " -lm -pthread -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());

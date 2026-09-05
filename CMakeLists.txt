@@ -20,6 +20,21 @@ function(lucb_warnings target)
     endif()
 endfunction()
 
+set(LUCB_EMBED_CPP "${CMAKE_CURRENT_BINARY_DIR}/runtime_embed.cpp")
+add_custom_command(
+    OUTPUT "${LUCB_EMBED_CPP}"
+    COMMAND ${CMAKE_COMMAND}
+        -DRT_DIR=${CMAKE_SOURCE_DIR}/src/runtime
+        -DOUT=${LUCB_EMBED_CPP}
+        -P ${CMAKE_SOURCE_DIR}/cmake/embed_runtime.cmake
+    DEPENDS
+        src/runtime/lucb_rt.h
+        src/runtime/lucb_rt.c
+        src/runtime/start.c
+        cmake/embed_runtime.cmake
+    COMMENT "Embed lucb runtime sources"
+)
+
 set(LUCB_CORE_SOURCES
     src/support/arena.cpp
     src/support/diagnostics.cpp
@@ -46,12 +61,11 @@ set(LUCB_CORE_SOURCES
     src/emit/stmt.cpp
     src/emit/host.cpp
     src/pkg/package.cpp
+    ${LUCB_EMBED_CPP}
 )
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
 target_include_directories(lucb_core PUBLIC src)
-target_compile_definitions(lucb_core PUBLIC
-    LUCB_RUNTIME_DIR="${CMAKE_SOURCE_DIR}/src/runtime")
 lucb_warnings(lucb_core)
 
 add_executable(lucb src/main.cpp)

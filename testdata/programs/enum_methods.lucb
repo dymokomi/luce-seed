@@ -1,0 +1,15 @@
+enum Token:
+    number(value: i64)
+    ident(name: str)
+    eof
+
+    func weight() -> i64:
+        match self:
+            .number(value): return value
+            .ident(name): return i64(name.length)
+            .eof: return 0
+
+pub func answer() -> i64:
+    var t = Token.ident(name = "hello")
+    let u = Token.number(value = 35)
+    return t.weight() + u.weight()

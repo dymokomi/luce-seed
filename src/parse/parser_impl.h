@@ -381,6 +381,9 @@ struct Parser {
         if (ends_with_suite(expr)) {
             return;
         }
+        if (at(TokenKind::RParen) || at(TokenKind::Comma) || at(TokenKind::RBracket)) {
+            return;
+        }
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
     }
 

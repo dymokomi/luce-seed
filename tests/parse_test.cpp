@@ -446,3 +446,19 @@ TEST(parse_asm) {
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("(asm \"x86_64\"") != std::string::npos);
 }
+
+TEST(parse_else_return) {
+    Parsed p("func bump(start: usize, size: usize) -> usize?:\n"
+             "    let end = start +? size else return none\n"
+             "    return end\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(return") != std::string::npos);
+}
+
+TEST(parse_inline_catch_recover) {
+    Parsed p("func f() -> i64:\n"
+             "    discard(g() catch failure: recover 0)\n"
+             "    return 1\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(recover") != std::string::npos);
+}

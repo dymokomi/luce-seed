@@ -120,6 +120,8 @@ string type_name(const Type* t) {
         return type_name(t->elem) + "!";
     case TypeKind::ErrorVal:
         return "Error";
+    case TypeKind::ErrorCode:
+        return "ErrorCode";
     case TypeKind::Enum:
         return t->decl != nullptr ? string(t->decl->text) : "<enum>";
     case TypeKind::Union:
@@ -512,6 +514,7 @@ int type_size(const Type* t) {
     case TypeKind::I32:
     case TypeKind::U32:
     case TypeKind::F32:
+    case TypeKind::ErrorCode:
         return 4;
     case TypeKind::I64:
     case TypeKind::U64:
@@ -657,6 +660,8 @@ const char* c_type_name(const Type* t) {
         return "uint16_t";
     case TypeKind::U32:
         return "uint32_t";
+    case TypeKind::ErrorCode:
+        return "uint32_t";
     case TypeKind::U64:
         return "uint64_t";
     case TypeKind::Usize:
@@ -708,7 +713,8 @@ bool is_zeroable(const Type* t) {
         return is_zeroable(t->elem);
     }
     if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Unit ||
-        t->kind == TypeKind::Str || t->kind == TypeKind::Char || t->kind == TypeKind::Span) {
+        t->kind == TypeKind::Str || t->kind == TypeKind::Char || t->kind == TypeKind::Span ||
+        t->kind == TypeKind::ErrorCode) {
         return true;
     }
     if (is_ptr(t) && t->is_nullable) {

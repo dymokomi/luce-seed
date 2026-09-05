@@ -1,0 +1,6 @@
+func bump(start: usize, size: usize) -> usize?:
+    let end = start +? size else return none
+    return end
+pub func answer() -> i64:
+    let v = bump(30, 10) else 0
+    return i64(v)

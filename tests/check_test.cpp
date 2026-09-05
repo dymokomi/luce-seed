@@ -754,3 +754,54 @@ TEST(check_process_shadow) {
                     "    return process()\n",
                     "lucb.check.shadow"));
 }
+
+TEST(check_errorcode_package_ok) {
+    CHECK(check_ok("pub let missing: ErrorCode = ErrorCode.package(1)\n"
+                   "pub func answer() -> i64:\n"
+                   "    return 0\n"));
+}
+
+TEST(check_errorcode_package_duplicate) {
+    CHECK(check_has("pub let a: ErrorCode = ErrorCode.package(1)\n"
+                    "pub let b: ErrorCode = ErrorCode.package(1)\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.shadow"));
+}
+
+TEST(check_errorcode_package_not_const) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let c: ErrorCode = ErrorCode.package(1)\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_enum_method) {
+    CHECK(check_ok("enum Token:\n"
+                   "    number(value: i64)\n"
+                   "    eof\n"
+                   "    func weight() -> i64:\n"
+                   "        match self:\n"
+                   "            .number(value): return value\n"
+                   "            .eof: return 0\n"
+                   "pub func answer() -> i64:\n"
+                   "    return Token.eof.weight()\n"));
+}
+
+TEST(check_import_thread) {
+    CHECK(check_ok("import thread\n"
+                   "func run(context: void*):\n"
+                   "    discard(context)\n"
+                   "pub func answer() -> i64!:\n"
+                   "    var n: i64 = 0\n"
+                   "    let h = try thread.spawn(run, (void*)(&n))\n"
+                   "    try h.join()\n"
+                   "    return n\n"));
+}
+
+TEST(check_export_span) {
+    CHECK(check_ok("export func checksum(data: const u8[]) -> u32:\n"
+                   "    return 0\n"
+                   "pub func answer() -> i64:\n"
+                   "    return 0\n"));
+}

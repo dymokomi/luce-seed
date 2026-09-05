@@ -15,7 +15,7 @@ struct RunResult {
 string runtime_dir();
 
 bool compile_c(const string& c_source, const string& exe_path, string* error,
-               bool link_answer_start = true);
+               bool link_answer_start = true, bool release = false);
 
 RunResult run_exe(const string& exe_path, const vector<string>& args = {});
 

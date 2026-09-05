@@ -67,6 +67,12 @@ auto Checker::named_scalar(string_view name) -> Type* {
         if (name == "fmt") {
             return ty_fmt;
         }
+        if (name == "Error") {
+            return ty_err;
+        }
+        if (name == "ErrorCode") {
+            return ty_errcode;
+        }
         return nullptr;
     }
 
@@ -645,7 +651,7 @@ auto Checker::bind_memory() -> void {
         Node* heap_g = syn_node(NodeKind::Const, "heap");
         heap_g->ty = ty_alloc;
         Node* exh = syn_node(NodeKind::Const, "exhausted");
-        exh->ty = ty_i32;
+        exh->ty = ty_errcode != nullptr ? ty_errcode : ty_i32;
         Node* m_copy = syn_node(NodeKind::Func, "copy");
         Node* cp_to = syn_node(NodeKind::Param, "to");
         cp_to->ty = intern_sp(ty_u8, false);
@@ -792,7 +798,7 @@ auto Checker::bind_memory() -> void {
         f_write->right = wp;
         f_write->ty = t_unit();
         Node* f_miss = syn_node(NodeKind::Const, "missing");
-        f_miss->ty = ty_i32;
+        f_miss->ty = ty_errcode != nullptr ? ty_errcode : ty_i32;
         Node* f_list = syn_node(NodeKind::Func, "list");
         f_list->flags |= FlagFallible;
         Node* lp = syn_node(NodeKind::Param, "path");
@@ -896,7 +902,7 @@ auto Checker::bind_memory() -> void {
         Node* sp_entry = syn_node(NodeKind::Param, "entry");
         sp_entry->ty = intern_ptr(ty_void, false, false, false);
         Node* sp_ctx = syn_node(NodeKind::Param, "context");
-        sp_ctx->ty = intern_ptr(ty_void, false, false, false);
+        sp_ctx->ty = intern_ptr(ty_void, false, false, true);
         sp_entry->next = sp_ctx;
         spawn->right = sp_entry;
         spawn->ty = ht;
@@ -1095,7 +1101,8 @@ auto Checker::is_core_name(string_view name) -> bool {
                named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt" ||
                name == "FixedBuffer" || name == "memory" || name == "fmt" || name == "format" ||
                name == "luce" || name == "io" || name == "files" || name == "process" ||
-               name == "Writer" || name == "Location";
+               name == "Writer" || name == "Location" || name == "Error" || name == "ErrorCode" ||
+               name == "thread" || name == "sync" || name == "atomic" || name == "c";
     }
 
 auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
@@ -1303,6 +1310,7 @@ auto Checker::resolve_type(Node* n) -> Type* {
         if (dot != string_view::npos && dot > 0 && dot + 1 < n->text.size()) {
             Binding* mb = lookup(n->text.substr(0, dot));
             if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
+                mark_import(mb);
                 Node* d = pub_member(mb->type->decl, n->text.substr(dot + 1));
                 if (d != nullptr) {
                     Type* t = decl_type(d);
@@ -1362,7 +1370,7 @@ auto Checker::is_c_repr(Type* t) -> bool {
             return true;
         }
         if (is_ptr(t) || t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
-            is_int_enum(t) || is_func(t)) {
+            is_int_enum(t) || is_func(t) || is_span(t) || t->kind == TypeKind::ErrorCode) {
             return true;
         }
         return false;
@@ -1393,6 +1401,8 @@ auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
         }
         if (fn->ty != nullptr && fn->ty->kind == TypeKind::Str) {
             fail_n(fn, "lucb.check.type", where);
+        } else if (fn->ty != nullptr && is_span(fn->ty)) {
+            fail_n(fn, "lucb.check.type", "a span cannot be an `export` or `extern` result");
         } else if (fn->ty != nullptr && !is_c_repr(fn->ty)) {
             fail_n(fn, "lucb.check.type", "this type is not C-representable");
         }
@@ -1667,6 +1677,15 @@ auto Checker::collect_module(Node* mod) -> void {
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func || d->kind == NodeKind::ExternFunc) {
+                resolve_sig(d);
+                Binding* b = lookup(d->text);
+                if (b != nullptr && b->decl == d) {
+                    b->type = d->ty;
+                }
+            }
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
             if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union ||
                  d->kind == NodeKind::ExternStruct || d->kind == NodeKind::ExternUnion) &&
                 !is_generic_decl(d)) {
@@ -1710,7 +1729,10 @@ auto Checker::collect_module(Node* mod) -> void {
             } else if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
                 Type* t = d->type != nullptr ? resolve_type(d->type) : nullptr;
                 if (d->left != nullptr) {
+                    bool saved_const = in_top_const;
+                    in_top_const = d->kind == NodeKind::Const;
                     Type* init = check_expr(d->left, t);
+                    in_top_const = saved_const;
                     if (t == nullptr) {
                         if (init != nullptr && init->kind == TypeKind::UntypedInt) {
                             init = coerce(d->left, init, t_i64());
@@ -1873,6 +1895,13 @@ auto Checker::bind_imports(Node* mod) -> void {
             }
             seen.push_back(d->text);
             Node* other = d->resolved;
+            if (other == nullptr) {
+                Binding* b = lookup(d->text);
+                if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
+                    other = b->decl;
+                    d->resolved = other;
+                }
+            }
             if (other == nullptr || other->kind != NodeKind::Module) {
                 fail_n(d, "lucb.check.import", "cannot find module `" + string(d->text) + "`");
                 continue;
@@ -1881,6 +1910,11 @@ auto Checker::bind_imports(Node* mod) -> void {
                 string alias = d->left != nullptr && !d->left->text.empty()
                                    ? string(d->left->text)
                                    : last_component(d->text);
+                Binding* existing = lookup(keep(alias));
+                if (existing != nullptr && existing->decl == other) {
+                    existing->import_src = d;
+                    continue;
+                }
                 Type* mt = make_type(TypeKind::Module, d->text);
                 mt->decl = other;
                 bind(keep(alias), mt, false, other, d);
@@ -2065,6 +2099,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
+    c.ty_errcode = c.make_type(TypeKind::ErrorCode, "ErrorCode");
     c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
     c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
     c.check_module(module);
@@ -2102,6 +2137,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
+    c.ty_errcode = c.make_type(TypeKind::ErrorCode, "ErrorCode");
     c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
     c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {

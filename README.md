@@ -43,6 +43,7 @@ lucb lex   <file.lucb>     # print tokens
 lucb dump  <file.lucb>     # print the parse tree
 lucb eval  <file.lucb>     # run pub func answer() -> i64
 lucb build <file.lucb> -o <exe>
+lucb build <file.lucb> --release -o <exe>
 lucb build <file.lucb> --emit=c -o <file.c>
 ```
 

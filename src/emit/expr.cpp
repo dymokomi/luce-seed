@@ -187,9 +187,11 @@ auto Emitter::emit_catch(Node* n) -> string {
             vty = "int";
         }
         string saved_catch = catch_var;
+        string saved_done = catch_done;
         string saved_out = out;
         int saved_indent = indent;
         catch_var = vn;
+        catch_done = "_lb_cd" + std::to_string(id);
         out = {};
         indent = 0;
         emit_stmt(n->body);
@@ -197,6 +199,7 @@ auto Emitter::emit_catch(Node* n) -> string {
         out = saved_out;
         indent = saved_indent;
         catch_var = saved_catch;
+        catch_done = saved_done;
         Type* payload = is_fail(ft) ? ft->elem : nullptr;
         string s = "({ ";
         s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
@@ -206,6 +209,7 @@ auto Emitter::emit_catch(Node* n) -> string {
             s += "lb_error " + ident("lb_", n->text) + " = " + rn + ".error; ";
         }
         s += body;
+        s += "_lb_cd" + std::to_string(id) + ": ;";
         s += " } else { ";
         if (payload != nullptr && payload->kind != TypeKind::Unit) {
             s += vn + " = " + rn + ".value; ";
@@ -339,6 +343,31 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         case NodeKind::Match:
         case NodeKind::MatchExpr:
             return emit_match_expr(n);
+        case NodeKind::Return: {
+            if (n->left != nullptr && n->left->kind == NodeKind::Call && n->left->left != nullptr &&
+                n->left->left->kind == NodeKind::Name && n->left->left->text == "trap") {
+                return emit_expr(n->left);
+            }
+            if (is_error_call(n->left)) {
+                return "return " + emit_expr(n->left);
+            }
+            if (n->left == nullptr) {
+                if (fn_fallible()) {
+                    return "return " + wrap_ok("0");
+                }
+                return "return";
+            }
+            string e = emit_expr(n->left);
+            if (fn_fallible()) {
+                e = wrap_ok(e);
+            }
+            return "return " + e;
+        }
+        case NodeKind::Break:
+            return n->text.empty() ? string("break") : string("goto _lb_break_") + string(n->text);
+        case NodeKind::Continue:
+            return n->text.empty() ? string("continue")
+                                   : string("goto _lb_cont_") + string(n->text);
         default:
             return "/* unsupported expr */ 0";
         }
@@ -680,6 +709,12 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
         }
         if (is_int_enum(st) && is_int(dest)) {
             return down_cast(dest, e);
+        }
+        if (st != nullptr && st->kind == TypeKind::ErrorCode && is_int(dest)) {
+            return down_cast(dest, e);
+        }
+        if (is_int(st) && dest != nullptr && dest->kind == TypeKind::ErrorCode) {
+            return "(uint32_t)(" + e + ")";
         }
         int mode = checked ? 0 : 1;
         if (is_float(st) && is_int(dest)) {
@@ -1111,6 +1146,50 @@ auto Emitter::emit_args(Node* args) -> string {
         return s;
     }
 
+auto Emitter::emit_direct_call(Node* fn, Node* owner, Node* args) -> string {
+        string name = func_ident(fn, owner);
+        bool split = fn != nullptr && (fn->flags & FlagExport) != 0;
+        if (split) {
+            split = false;
+            for (Node* p = fn != nullptr ? fn->right : nullptr; p != nullptr; p = p->next) {
+                if (is_span(p->ty)) {
+                    split = true;
+                    break;
+                }
+            }
+        }
+        if (!split) {
+            return name + "(" + emit_args(args) + ")";
+        }
+        string s = "({ ";
+        string alist;
+        bool first = true;
+        Node* p = fn->right;
+        Node* a = args;
+        while (p != nullptr) {
+            if (!first) {
+                alist += ", ";
+            }
+            first = false;
+            if (is_span(p->ty)) {
+                int id = tmp();
+                string tn = "_lb_xa" + std::to_string(id);
+                string e = a != nullptr && a->left != nullptr ? emit_expr(a->left)
+                                                              : string("((lb_cspan){(void*)8,0})");
+                s += c_type(p->ty) + " " + tn + " = " + e + "; ";
+                alist += tn + ".data, " + tn + ".length";
+            } else {
+                alist += a != nullptr && a->left != nullptr ? emit_expr(a->left) : string("0");
+            }
+            p = p->next;
+            if (a != nullptr) {
+                a = a->next;
+            }
+        }
+        s += name + "(" + alist + "); })";
+        return s;
+    }
+
 auto Emitter::emit_extern_args(Node* n) -> string {
         string s;
         bool first = true;
@@ -1139,6 +1218,12 @@ auto Emitter::emit_extern_args(Node* n) -> string {
 
 auto Emitter::emit_call(Node* n) -> string {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
+            callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
+            callee->text == "package") {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            return "(uint32_t)(" + (arg != nullptr ? emit_expr(arg) : string("0")) + ")";
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
             return emit_format_call(n);
         }
@@ -1717,12 +1802,14 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
-            string name = func_ident(n->resolved, nullptr);
-            string args = emit_args(n->body);
-            if (n->resolved->kind == NodeKind::ExternFunc && n->body != nullptr) {
-                args = emit_extern_args(n);
+            string call;
+            if (n->resolved->kind == NodeKind::ExternFunc) {
+                string name = func_ident(n->resolved, nullptr);
+                string args = n->body != nullptr ? emit_extern_args(n) : emit_args(n->body);
+                call = name + "(" + args + ")";
+            } else {
+                call = emit_direct_call(n->resolved, nullptr, n->body);
             }
-            string call = name + "(" + args + ")";
             Type* rt = n->ty != nullptr ? n->ty : n->resolved->ty;
             if (n->resolved->kind == NodeKind::ExternFunc && needs_null_foreign(rt)) {
                 int id = tmp();

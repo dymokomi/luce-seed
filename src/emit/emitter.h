@@ -28,6 +28,7 @@ struct Emitter {
     string emit_src_location(Node* n);
     int temps = 0;
     string catch_var;
+    string catch_done;
 
     struct Scope {
         vector<Node*> defers;
@@ -254,6 +255,7 @@ struct Emitter {
     string emit_slice(Node* n);
     string emit_array_lit(Node* n);
     string emit_span_make(Node* n);
+    string emit_direct_call(Node* fn, Node* owner, Node* args);
     string emit_addr(Node* n);
     string vt_type_name(Type* iface);
     string vt_instance_name(Node* st, Node* iface);
@@ -301,7 +303,7 @@ struct Emitter {
     void note_type(Type* t);
     void walk_types(Node* n);
     void emit_type_forwards(Node* mod);
-    void emit_array_typedefs();
+    void emit_array_typedefs(bool funcs);
     void emit_tup_typedefs();
     void emit_fn_typedefs();
     void emit_opt_typedefs();

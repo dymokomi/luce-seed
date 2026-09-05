@@ -36,6 +36,7 @@ void print_help(ostream& out) {
         << "  lucb dump  <file.lucb>     print the parse tree\n"
         << "  lucb eval  <file.lucb>     run `answer()` or `main` in the interpreter\n"
         << "  lucb build <file.lucb> -o <exe>   emit C and compile\n"
+        << "  lucb build <file.lucb> --release -o <exe>\n"
         << "  lucb build <file.lucb> --emit=c -o <file.c>\n"
         << "  lucb header <file.lucb> [-o file.h]  write the export header\n"
         << "  lucb test  <file.lucb>     run `test` declarations\n";
@@ -160,10 +161,13 @@ int cmd_build(int argc, char** argv) {
     string in_path;
     string out_path;
     bool emit_c_only = false;
+    bool release = false;
     for (int i = 2; i < argc; i++) {
         string_view a = argv[i];
         if (a == "--emit=c") {
             emit_c_only = true;
+        } else if (a == "--release") {
+            release = true;
         } else if (a == "-o") {
             if (i + 1 >= argc) {
                 cerr << "lucb: -o needs an argument\n";
@@ -208,7 +212,7 @@ int cmd_build(int argc, char** argv) {
         return 0;
     }
     string error;
-    if (!lucb::compile_c(c, out_path, &error, link_answer)) {
+    if (!lucb::compile_c(c, out_path, &error, link_answer, release)) {
         cerr << error;
         if (error.empty() || error.back() != '\n') {
             cerr << '\n';

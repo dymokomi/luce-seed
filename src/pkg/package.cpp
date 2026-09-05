@@ -119,6 +119,12 @@ string resolve_file(const Program& program, string_view dotted) {
 bool load_one(Program& program, const string& path, const string& name, DiagnosticBag& diagnostics,
               vector<string>& stack);
 
+bool is_std_module(string_view name) {
+    return name == "memory" || name == "luce" || name == "io" || name == "files" ||
+           name == "process" || name == "c" || name == "atomic" || name == "thread" ||
+           name == "sync";
+}
+
 bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vector<string>& stack) {
     Node* module = program.files[idx].module;
     if (module == nullptr) {
@@ -129,6 +135,9 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
             continue;
         }
         string dep = string(d->text);
+        if (is_std_module(dep)) {
+            continue;
+        }
         string here = program.files[idx].path;
         for (size_t i = 0; i < stack.size(); i++) {
             if (stack[i] == dep) {

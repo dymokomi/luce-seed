@@ -1,0 +1,8 @@
+func risky(n: i64) -> i64!:
+    if n > 100:
+        error(2, "too big")
+    return n
+pub func answer() -> i64:
+    let a = risky(500) catch failure: recover 40
+    discard(risky(1) catch failure: recover 0)
+    return a

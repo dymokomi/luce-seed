@@ -3,6 +3,21 @@
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 This tree is **luce-seed-0.1**.
 
+## Remaining audit items
+
+Methods on payload enums, arrays of function values, `+? else return none`,
+inline `catch`/`recover` in a call, `ErrorCode.package` as a top-level
+constant, `import thread` / `import sync`, and `export` of `const u8[]` as
+pointer plus count. `lucb build --release` passes `-O2`. Runtime C is
+embedded in the `lucb` binary. Evidence: `agree_program_enum_methods`,
+`agree_program_fnptr_table`, `agree_program_checked_else`,
+`agree_program_inline_catch`, `agree_program_errorcode`,
+`agree_program_thread_mod`, `agree_program_export_span`,
+`header_export_span`.
+
+An array of functions is written `(func(A) -> R)[N]`; `func(A) -> R[N]` is
+a function that returns an array, per the grammar of §21.
+
 ## Oracle, recursive structs, and first-day compiler holes
 
 `if let` / `while let` over a function that returns `T?` now agree: the

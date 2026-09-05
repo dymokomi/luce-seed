@@ -120,5 +120,5 @@ shape as Zig after the C++ compiler could emit C:
 Out of scope in this repo: `f16`, math, stdlib `Arena`/`PageAllocator`,
 user `Display`, `out` parameters, thread `stack`/`name`, `asm` in the
 interpreter, Unicode `for character in text`, span `first`/`last`/`indexed`,
-`ErrorCode.package`, extra `luce.toml` roots, status-form fallible export,
-MIR/QBE/native, formatter, linter. See [`FEATURES.md`](FEATURES.md).
+extra `luce.toml` roots, status-form fallible export, MIR/QBE/native,
+formatter, linter. See [`FEATURES.md`](FEATURES.md).

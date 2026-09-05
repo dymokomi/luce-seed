@@ -136,7 +136,13 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
                 sig += ", ";
             }
             first = false;
-            sig += c_type(p->ty) + " " + ident("lb_", p->text);
+            if ((fn->flags & FlagExport) != 0 && is_span(p->ty)) {
+                string q = p->ty->is_const ? "const " : "";
+                sig += q + c_type(p->ty->elem) + "* " + string(p->text) + ", size_t " +
+                       string(p->text) + "_len";
+            } else {
+                sig += c_type(p->ty) + " " + ident("lb_", p->text);
+            }
         }
         if (first) {
             sig += "void";
@@ -149,6 +155,17 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         line(sig + " {");
         indent++;
         if ((fn->flags & FlagExport) != 0) {
+            for (Node* p = fn->right; p != nullptr; p = p->next) {
+                if (!is_span(p->ty)) {
+                    continue;
+                }
+                string pn = ident("lb_", p->text);
+                string data = string(p->text);
+                string len = data + "_len";
+                string cast = p->ty->is_const ? "(const void*)" : "(void*)";
+                line(c_type(p->ty) + " " + pn + " = { " + data + " != NULL ? " + cast + data +
+                     " : " + cast + "8, " + data + " != NULL ? " + len + " : 0 };");
+            }
             if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
                 line("if (self == NULL) lb_trap(\"null_foreign\");");
             }
@@ -456,13 +473,18 @@ auto Emitter::emit_type_forwards(Node* mod) -> void {
         }
     }
 
-auto Emitter::emit_array_typedefs() -> void {
+auto Emitter::emit_array_typedefs(bool funcs) -> void {
+        bool any = false;
         for (size_t i = 0; i < arrays.size(); i++) {
             Type* t = arrays[i];
+            if (is_func(t->elem) != funcs) {
+                continue;
+            }
             line("typedef struct " + array_c_name(t) + " { " + c_type(t->elem) + " d[" +
                  std::to_string(t->length) + "]; } " + array_c_name(t) + ";");
+            any = true;
         }
-        if (!arrays.empty()) {
+        if (any) {
             out += '\n';
         }
     }
@@ -584,11 +606,6 @@ auto Emitter::emit_decls(Node* mod) -> void {
             return;
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
-                emit_global(d);
-            }
-        }
-        for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
                 continue;
             }
@@ -624,7 +641,8 @@ auto Emitter::emit_decls(Node* mod) -> void {
                 line("extern " + c_type(d->ty) + " " + string(d->text) + ";");
             } else if (d->kind == NodeKind::Func) {
                 emit_sig(d, nullptr, false);
-            } else if (d->kind == NodeKind::Struct) {
+            } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
+                       d->kind == NodeKind::Union) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
                         emit_sig(m, d, false);
@@ -632,6 +650,11 @@ auto Emitter::emit_decls(Node* mod) -> void {
                 }
             } else if (d->kind == NodeKind::Test) {
                 emit_test_sig(d, false);
+            }
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
+                emit_global(d);
             }
         }
     }
@@ -644,7 +667,8 @@ auto Emitter::emit_defs(Node* mod) -> void {
             if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
                 continue;
             }
-            if (d->kind == NodeKind::Struct) {
+            if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
+                d->kind == NodeKind::Union) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
                         emit_sig(m, d, true);
@@ -807,10 +831,11 @@ auto Emitter::emit_module(Node* mod) -> void {
         collect_from(mod);
         emit_type_forwards(mod);
         emit_types(mod);
-        emit_array_typedefs();
+        emit_array_typedefs(false);
         emit_tup_typedefs();
         emit_opt_typedefs();
         emit_fn_typedefs();
+        emit_array_typedefs(true);
         emit_decls(mod);
         emit_ifaces(mod);
         out += '\n';
@@ -853,10 +878,11 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_types(modules[static_cast<size_t>(i)]);
         }
-        emit_array_typedefs();
+        emit_array_typedefs(false);
         emit_tup_typedefs();
         emit_opt_typedefs();
         emit_fn_typedefs();
+        emit_array_typedefs(true);
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_decls(modules[static_cast<size_t>(i)]);
         }
