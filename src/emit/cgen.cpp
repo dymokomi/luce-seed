@@ -111,6 +111,25 @@ string tup_c_name(Type* t) {
     return s;
 }
 
+string fn_c_name(Type* t) {
+    string s = "lb_fn";
+    if (t == nullptr) {
+        return s;
+    }
+    for (int i = 0; i < t->ntargs; i++) {
+        s += "_";
+        s += sanitize_type_name(type_name(t->args[i]));
+    }
+    s += "_to_";
+    Type* r = t->elem;
+    if (r == nullptr || r->kind == TypeKind::Unit || r->kind == TypeKind::Never) {
+        s += "unit";
+    } else {
+        s += sanitize_type_name(type_name(r));
+    }
+    return s;
+}
+
 string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
@@ -141,6 +160,9 @@ string c_type(Type* t) {
     }
     if (t->kind == TypeKind::Tuple) {
         return tup_c_name(t);
+    }
+    if (t->kind == TypeKind::Func) {
+        return fn_c_name(t);
     }
     if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
         (t->kind == TypeKind::Enum && !is_int_enum(t))) {

@@ -20,6 +20,7 @@ struct Value {
     string_view str;
     vector<Value> fields;
     Value* ptr = nullptr;
+    Node* fn = nullptr;
     size_t length = 0;
     bool present = true;
     bool failed = false;

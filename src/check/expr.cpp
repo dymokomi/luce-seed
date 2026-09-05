@@ -62,7 +62,13 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
             t = check_literal(n, expected);
             break;
         case NodeKind::Name:
-            t = check_name(n);
+            t = check_name(n, expected);
+            break;
+        case NodeKind::Lambda:
+            t = check_lambda(n, expected);
+            break;
+        case NodeKind::Tuple:
+            t = check_tuple_expr(n, expected);
             break;
         case NodeKind::Self:
             t = check_self(n);
@@ -235,6 +241,16 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             (type_eq(got->elem, expected) || can_widen(got->elem, expected))) {
             return expected;
         }
+        if (is_func(got) && is_func(expected) && func_converts(got, expected)) {
+            if (n != nullptr && n->resolved != nullptr &&
+                (n->resolved->kind == NodeKind::Func ||
+                 n->resolved->kind == NodeKind::ExternFunc) &&
+                !is_fail(got->elem) && is_fail(expected->elem) &&
+                (n->resolved->flags & FlagFallible) == 0) {
+                n->resolved = make_fail_thunk(n->resolved, expected);
+            }
+            return expected;
+        }
         if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
             if (is_array(got) && is_span(expected) && place_is_local(n)) {
                 mark_local(n);
@@ -404,7 +420,7 @@ auto Checker::check_literal(Node* n, Type* expected) -> Type* {
         return t_error();
     }
 
-auto Checker::check_name(Node* n) -> Type* {
+auto Checker::check_name(Node* n, Type* expected) -> Type* {
         Binding* b = lookup(n->text);
         if (b == nullptr) {
             fail_n(n, "lucb.check.name", "unknown name `" + string(n->text) + "`");
@@ -412,8 +428,23 @@ auto Checker::check_name(Node* n) -> Type* {
         }
         n->resolved = b->decl;
         mark_import(b);
+        if (lambda_depth > 0 && b->depth > 1 && b->depth < lambda_depth) {
+            NodeKind k = b->decl != nullptr ? b->decl->kind : NodeKind::Name;
+            if (k == NodeKind::Let || k == NodeKind::Var || k == NodeKind::Param) {
+                fail_n(n, "lucb.check.type", "a lambda cannot capture");
+                return t_error();
+            }
+        }
         if (b->decl != nullptr &&
             (b->decl->kind == NodeKind::Func || b->decl->kind == NodeKind::ExternFunc)) {
+            Type* ft = func_type_of(b->decl, nullptr);
+            Type* want = expected;
+            if (is_opt(want) && want->elem != nullptr) {
+                want = want->elem;
+            }
+            if (is_func(want) || (want != nullptr && is_func(want) && want->is_nullable)) {
+                return ft;
+            }
             fail_n(n, "lucb.check.type", "a function must be called");
             return t_error();
         }
@@ -427,6 +458,10 @@ auto Checker::check_self(Node* n) -> Type* {
         Binding* b = lookup("self");
         if (b == nullptr) {
             fail_n(n, "lucb.check.self", "`self` is only valid in a method");
+            return t_error();
+        }
+        if (lambda_depth > 0 && b->depth < lambda_depth) {
+            fail_n(n, "lucb.check.type", "a lambda cannot capture");
             return t_error();
         }
         n->resolved = b->decl;
@@ -879,6 +914,9 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             return check_assert(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+            return check_discard(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
             if (count_args(n->body) != 0) {
                 fail_n(n, "lucb.check.call", "`CAllocator()` takes no arguments");
@@ -920,8 +958,16 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
                 }
                 return check_func_call(n, b->decl, nullptr);
             }
+            if (b->type != nullptr && is_func(b->type)) {
+                callee->ty = b->type;
+                return check_fnptr_call(n, b->type);
+            }
             fail_n(n, "lucb.check.type", "`" + string(callee->text) + "` is not callable");
             return t_error();
+        }
+        Type* ct = check_expr(callee, nullptr);
+        if (is_func(ct)) {
+            return check_fnptr_call(n, ct);
         }
         fail_n(n, "lucb.check.unsupported", "this call is not in the scalar core yet");
         return t_error();
@@ -943,7 +989,7 @@ auto Checker::type_from_expr_or_name(Node* a) -> Type* {
             Binding* b = lookup(a->text);
             if (b != nullptr && b->decl != nullptr &&
                 (b->decl->kind == NodeKind::Struct || b->decl->kind == NodeKind::Enum ||
-                 b->decl->kind == NodeKind::Union)) {
+                 b->decl->kind == NodeKind::Union || b->decl->kind == NodeKind::TypeAlias)) {
                 a->ty = b->type;
                 a->resolved = b->decl;
                 return b->type;
@@ -1076,6 +1122,17 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
             return true;
         }
         if ((src->kind == TypeKind::Usize || src->kind == TypeKind::Isize) && is_ptr(dest)) {
+            return true;
+        }
+        if (is_func(src) && is_ptr(dest) && dest->elem != nullptr &&
+            dest->elem->kind == TypeKind::Void) {
+            return true;
+        }
+        if (is_ptr(src) && src->elem != nullptr && src->elem->kind == TypeKind::Void &&
+            is_func(dest)) {
+            return true;
+        }
+        if (is_func(src) && is_func(dest) && func_converts(src, dest)) {
             return true;
         }
         if (is_int(src) && is_int(dest)) {
@@ -1221,6 +1278,12 @@ auto Checker::check_else(Node* n, Type* expected) -> Type* {
             (void)fb;
             return inner;
         }
+        if (is_func(left) && left->is_nullable) {
+            Type* inner = intern_func(left->args, left->ntargs, left->elem, false);
+            Type* fb = check_expr(n->right, expected != nullptr ? expected : inner);
+            (void)fb;
+            return inner;
+        }
         fail_n(n, "lucb.check.type", "`else` needs an optional");
         return t_error();
     }
@@ -1303,14 +1366,19 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                             fail_n(pat, "lucb.check.call", "wrong number of payload fields");
                         }
                     }
-                } else if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
-                    if (pat->left->op == TokenKind::KwTrue) {
-                        saw_true = true;
-                    }
-                    if (pat->left->op == TokenKind::KwFalse) {
-                        saw_false = true;
+                } else if (pat->left != nullptr) {
+                    if (pat->left->kind == NodeKind::Literal) {
+                        if (pat->left->op == TokenKind::KwTrue) {
+                            saw_true = true;
+                        }
+                        if (pat->left->op == TokenKind::KwFalse) {
+                            saw_false = true;
+                        }
                     }
                     check_expr(pat->left, scrut);
+                    if (pat->right != nullptr) {
+                        check_expr(pat->right, scrut);
+                    }
                 }
             }
             if (arm->type != nullptr) {
@@ -1447,6 +1515,7 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
 auto Checker::check_func_call(Node* n, Node* fn, Node* recv) -> Type* {
         n->resolved = fn;
         Node* params = fn->right;
+        fill_call_args(n, params);
         Node* args = n->body;
         // Skip implicit self: methods don't list self.
         int nparams = count_args(params);
@@ -1482,6 +1551,256 @@ auto Checker::check_func_call(Node* n, Node* fn, Node* recv) -> Type* {
             return intern_fail(result);
         }
         return result;
+    }
+
+auto Checker::fill_call_args(Node* n, Node* params) -> void {
+        if (n == nullptr) {
+            return;
+        }
+        vector<Node*> plist;
+        for (Node* p = params; p != nullptr; p = p->next) {
+            if (p->flags & FlagVariadic) {
+                continue;
+            }
+            plist.push_back(p);
+        }
+        int nparams = static_cast<int>(plist.size());
+        vector<Node*> chosen(static_cast<size_t>(nparams), nullptr);
+        int pos = 0;
+        bool seen_named = false;
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            if (!a->text.empty()) {
+                seen_named = true;
+                int idx = -1;
+                for (int i = 0; i < nparams; i++) {
+                    if (plist[static_cast<size_t>(i)]->text == a->text) {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (idx < 0) {
+                    fail_n(a, "lucb.check.call",
+                           "unknown argument `" + string(a->text) + "`");
+                    continue;
+                }
+                if (chosen[static_cast<size_t>(idx)] != nullptr) {
+                    fail_n(a, "lucb.check.call",
+                           "duplicate argument `" + string(a->text) + "`");
+                    continue;
+                }
+                chosen[static_cast<size_t>(idx)] = a;
+            } else {
+                if (seen_named) {
+                    fail_n(a, "lucb.check.call", "positional arguments must come first");
+                    continue;
+                }
+                if (pos >= nparams) {
+                    fail_n(n, "lucb.check.call", "wrong number of arguments");
+                    break;
+                }
+                chosen[static_cast<size_t>(pos)] = a;
+                pos++;
+            }
+        }
+        Node* filled = nullptr;
+        Node** tail = &filled;
+        for (int i = 0; i < nparams; i++) {
+            Node* a = chosen[static_cast<size_t>(i)];
+            Node* p = plist[static_cast<size_t>(i)];
+            if (a == nullptr) {
+                if (p->left == nullptr) {
+                    fail_n(n, "lucb.check.call",
+                           "missing argument `" + string(p->text) + "`");
+                    continue;
+                }
+                a = arena->make<Node>();
+                a->kind = NodeKind::Param;
+                a->text = p->text;
+                a->span = n->span;
+                bool loc = p->left->kind == NodeKind::Call && p->left->left != nullptr &&
+                           p->left->left->kind == NodeKind::Name &&
+                           p->left->left->text == "location";
+                if (loc) {
+                    Node* call = arena->make<Node>();
+                    call->kind = NodeKind::Call;
+                    call->span = n->span;
+                    Node* nm = arena->make<Node>();
+                    nm->kind = NodeKind::Name;
+                    nm->text = "location";
+                    nm->span = n->span;
+                    call->left = nm;
+                    a->left = call;
+                } else {
+                    a->left = clone_node(p->left);
+                }
+            }
+            a->next = nullptr;
+            *tail = a;
+            tail = &a->next;
+        }
+        n->body = filled;
+    }
+
+auto Checker::check_fnptr_call(Node* n, Type* ft) -> Type* {
+        if (ft != nullptr && ft->is_nullable) {
+            fail_n(n, "lucb.check.type", "unwrap a nullable function with `if let` or `else`");
+            return t_error();
+        }
+        int nparams = ft != nullptr ? ft->ntargs : 0;
+        int nargs = count_args(n->body);
+        if (nparams != nargs) {
+            fail_n(n, "lucb.check.call", "wrong number of arguments");
+        }
+        Node* a = n->body;
+        int i = 0;
+        while (a != nullptr && i < nparams) {
+            Type* want = ft->args[i];
+            Type* at = check_expr(a->left, want);
+            if (!type_eq(at, want) && !can_widen(at, want) && !can_ptr_convert(at, want, a->left) &&
+                !(is_func(at) && is_func(want) && func_converts(at, want))) {
+                fail_n(a, "lucb.check.type", "argument has type " + type_name(at) + ", expected " +
+                                                 type_name(want));
+            }
+            a = a->next;
+            i++;
+        }
+        Type* result = ft != nullptr && ft->elem != nullptr ? ft->elem : t_unit();
+        return result;
+    }
+
+auto Checker::check_discard(Node* n) -> Type* {
+        n->resolved = nullptr;
+        if (count_args(n->body) != 1) {
+            fail_n(n, "lucb.check.call", "`discard` takes one argument");
+            return t_unit();
+        }
+        Type* t = check_expr(n->body->left, nullptr);
+        if (is_fail(t)) {
+            fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
+        }
+        return t_unit();
+    }
+
+auto Checker::check_tuple_expr(Node* n, Type* expected) -> Type* {
+        int nfields = 0;
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            nfields++;
+        }
+        if (nfields < 2 || nfields > 8) {
+            fail_n(n, "lucb.check.type", "a tuple needs between 2 and 8 elements");
+            return t_error();
+        }
+        Type* elems[8];
+        Node* e = n->body;
+        for (int i = 0; i < nfields; i++) {
+            Type* want = nullptr;
+            if (is_tup(expected) && i < expected->ntargs) {
+                want = expected->args[i];
+            }
+            elems[i] = check_expr(e, want);
+            if (elems[i] != nullptr && elems[i]->kind == TypeKind::UntypedInt && want == nullptr) {
+                elems[i] = coerce(e, elems[i], t_i64());
+                e->ty = elems[i];
+            }
+            e = e->next;
+        }
+        return intern_tup(elems, nfields);
+    }
+
+auto Checker::check_lambda(Node* n, Type* expected) -> Type* {
+        Type* ft = expected;
+        if (is_opt(ft) && ft->elem != nullptr && is_func(ft->elem)) {
+            ft = ft->elem;
+        }
+        if (ft != nullptr && is_func(ft) && ft->is_nullable) {
+            ft = intern_func(ft->args, ft->ntargs, ft->elem, false);
+        }
+        if (ft != nullptr && !is_func(ft)) {
+            fail_n(n, "lucb.check.type", "a lambda needs a function type");
+            return t_error();
+        }
+        int nparams = 0;
+        for (Node* p = n->right; p != nullptr; p = p->next) {
+            nparams++;
+        }
+        if (is_func(ft) && ft->ntargs != nparams) {
+            fail_n(n, "lucb.check.call", "wrong number of arguments");
+        }
+        int saved_lambda = lambda_depth;
+        push_scope();
+        lambda_depth = depth;
+        int i = 0;
+        for (Node* p = n->right; p != nullptr; p = p->next) {
+            Type* pt = nullptr;
+            if (p->type != nullptr) {
+                pt = resolve_type(p->type);
+            } else if (is_func(ft) && i < ft->ntargs) {
+                pt = ft->args[i];
+            } else {
+                fail_n(p, "lucb.check.type", "a lambda parameter needs a type");
+                pt = t_error();
+            }
+            if (is_func(ft) && i < ft->ntargs && pt != nullptr && !type_eq(pt, ft->args[i]) &&
+                !can_widen(pt, ft->args[i])) {
+                fail_n(p, "lucb.check.type", "parameter has type " + type_name(pt));
+            }
+            p->ty = pt;
+            bind(p->text, pt, false, p);
+            i++;
+        }
+        Type* want_ret = is_func(ft) ? ft->elem : nullptr;
+        Type* body = n->body != nullptr ? check_expr(n->body, want_ret) : t_unit();
+        if (body != nullptr && body->kind == TypeKind::UntypedInt && want_ret == nullptr) {
+            body = coerce(n->body, body, t_i64());
+            if (n->body != nullptr) {
+                n->body->ty = body;
+            }
+        }
+        pop_scope();
+        lambda_depth = saved_lambda;
+        if (is_func(ft)) {
+            n->ty = intern_func(ft->args, ft->ntargs, ft->elem, false);
+        } else {
+            vector<Type*> ps;
+            for (Node* p = n->right; p != nullptr; p = p->next) {
+                ps.push_back(p->ty != nullptr ? p->ty : t_error());
+            }
+            n->ty = intern_func(ps.empty() ? nullptr : ps.data(), static_cast<int>(ps.size()), body,
+                                false);
+        }
+        if (!checking_generic_template) {
+            Node* syn = arena->make<Node>();
+            syn->kind = NodeKind::Func;
+            syn->text = keep("_lam" + std::to_string(nlambda++));
+            syn->span = n->span;
+            syn->right = n->right;
+            syn->ty = n->ty != nullptr && n->ty->elem != nullptr ? n->ty->elem : t_unit();
+            if (n->ty != nullptr && is_fail(n->ty->elem)) {
+                syn->flags |= FlagFallible;
+                syn->ty = n->ty->elem->elem != nullptr ? n->ty->elem->elem : t_unit();
+            }
+            Node* block = arena->make<Node>();
+            block->kind = NodeKind::Block;
+            block->span = n->span;
+            Node* ret = arena->make<Node>();
+            ret->kind = NodeKind::Return;
+            ret->span = n->span;
+            if (syn->ty != nullptr && syn->ty->kind != TypeKind::Unit) {
+                ret->left = n->body;
+                block->body = ret;
+            } else {
+                Node* es = arena->make<Node>();
+                es->kind = NodeKind::ExprStmt;
+                es->left = n->body;
+                es->span = n->span;
+                es->next = ret;
+                block->body = es;
+            }
+            syn->body = block;
+            pending_clones.push_back(syn);
+            n->resolved = syn;
+        }
+        return n->ty;
     }
 
 auto Checker::is_cstr(Type* t) -> bool {
@@ -1951,6 +2270,18 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
                 n->left->resolved = b->decl;
                 n->left->ty = b->type;
                 return b->type;
+            }
+            if (b != nullptr && b->decl != nullptr &&
+                (b->decl->kind == NodeKind::Struct || b->decl->kind == NodeKind::Enum ||
+                 b->decl->kind == NodeKind::Union)) {
+                Node* method = struct_member(b->decl, n->text, NodeKind::Func);
+                if (method != nullptr) {
+                    n->resolved = method;
+                    n->left->resolved = b->decl;
+                    n->left->ty = b->type;
+                    Node* owner = (method->flags & FlagStatic) != 0 ? nullptr : b->decl;
+                    return func_type_of(method, owner);
+                }
             }
         }
         if (ot != nullptr && is_union(ot) && ot->decl != nullptr) {

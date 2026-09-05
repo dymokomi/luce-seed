@@ -44,6 +44,7 @@ enum class TypeKind : uint8_t {
     Fmt,
     Atomic,
     Tuple,
+    Func,
 };
 
 struct Type {
@@ -112,6 +113,9 @@ inline bool is_atomic(const Type* t) {
 }
 inline bool is_tup(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Tuple;
+}
+inline bool is_func(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Func;
 }
 Type* elem_of(const Type* t);
 int type_offset(const Type* t, string_view field);

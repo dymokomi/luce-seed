@@ -9,7 +9,7 @@
 
 namespace lucb {
 
-const uint32_t k_type_flags_unsupported = FlagFuncType;
+const uint32_t k_type_flags_unsupported = 0;
 
 struct Binding {
     string_view name;
@@ -69,6 +69,8 @@ struct Checker {
     vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
+    int lambda_depth = 0;
+    int nlambda = 0;
     Node* current_fn = nullptr;
     Node* current_struct = nullptr;
     Type* return_type = nullptr;
@@ -376,6 +378,15 @@ struct Checker {
     Type* intern_sp(Type* elem, bool is_const);
     Type* intern_atomic(Type* elem);
     Type* intern_tup(Type** elems, int n);
+    Type* intern_func(Type** params, int n, Type* result, bool nullable);
+    Type* func_type_of(Node* fn, Node* owner = nullptr);
+    bool func_converts(Type* from, Type* to);
+    Node* make_fail_thunk(Node* fn, Type* ft);
+    void fill_call_args(Node* n, Node* params);
+    Type* check_fnptr_call(Node* n, Type* ft);
+    Type* check_lambda(Node* n, Type* expected);
+    Type* check_tuple_expr(Node* n, Type* expected);
+    Type* check_discard(Node* n);
     bool atomic_ok(Type* t);
     void check_asm(Node* n);
     Node* syn_node(NodeKind k, const char* name);
@@ -440,7 +451,7 @@ struct Checker {
     bool can_ptr_convert(Type* from, Type* to, Node* n);
     Type* unify_int(Type* a, Type* b);
     Type* check_literal(Node* n, Type* expected);
-    Type* check_name(Node* n);
+    Type* check_name(Node* n, Type* expected = nullptr);
     Type* check_self(Node* n);
     Type* check_unary(Node* n, Type* expected);
     Type* as_index_type(Node* n);

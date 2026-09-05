@@ -2,6 +2,15 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## Base coverage — aliases, func values, tuples
+
+Type aliases, `func(A, B) -> R` types and function values, capture-free
+lambdas, `discard`, default parameters (including named skip and
+`location()` at the call site), tuple expressions and multiple results,
+match-expression C emit, and `errdefer` C emit on the failure path.
+Interpreter and C backend agree. Evidence: `tests/agree_test.cpp`,
+`tests/eval_test.cpp`, `tests/check_test.cpp`, `tests/parse_test.cpp`.
+
 ## M0 — Skeleton
 
 CMake, the `lucb` driver (`--help`, `--version`, `check`, `lex`), arena,
@@ -79,7 +88,7 @@ Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 `error`, `catch`, `recover`. Exhaustive `match` on integers, bools, and
 optionals. `for` over `0..<n` / `1..=n`. Labeled `break`/`continue`.
 `defer` LIFO on scope exit. `+?` overflow yields `none`. Interpreter and
-C backend agree. `errdefer` runs in the interpreter. Evidence:
+C backend agree. `errdefer` runs on the failure path in both. Evidence:
 `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 
 ## M6 — Pointers, arrays, spans, `str`

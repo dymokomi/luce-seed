@@ -19,16 +19,16 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 4.3 | Float literals | done | `lex_test` numbers |
 | 4.4 | Characters, strings, bytes, raw, formatted | done | `lex_test` strings, `parse_formatted_string` |
 | 4.5 | Array literals | done | `parse_array_literal`, `agree_array_infer` |
-| 5 | Types as syntax | partial | `parse_pointer_and_span_types`; scalars checked in M5 |
+| 5 | Types as syntax | done | `parse_pointer_and_span_types`; scalars, aliases, func types, tuples |
 | 7.3 | No chained comparisons; `not a == b` refused | done | `parse_chained_comparison`, `parse_not_before_comparison` |
 | 7.6 | Indexing and slicing | done | `agree_array_index`, `agree_slice`, `agree_slice_from_zero`, `agree_index_oob_traps` |
 | 7.7 | Pointer `*`, `&`, `p+n` | done | `agree_pointer_deref`, `agree_assign_through_pointer` |
-| 8 | Control flow syntax | partial | if/while/for/match/defer/labels in `parse_test`; match expressions interpret (`eval_match_expr`), C emit later |
+| 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
 | 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
-| 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test`; field defaults `agree_field_default`; no type aliases, `func` values, default args, or `discard` yet |
+| 9–10 | Func/struct/enum/union/interface syntax | done | `parse_test`; field defaults `agree_field_default`; aliases, `func` values, default args, `discard` |
 | 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
@@ -38,6 +38,9 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `agree_ptr_int_cast`, `check_nullable_deref`, `check_escape_local` |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
 | 5.5 | `str` as a view | partial | `agree_str_length`, `agree_str_bytes`; `str(bytes)` as `str!` waits |
+| 5.6 | Function types `func(A, B) -> R` | done | `agree_func_value`, `agree_alias_func`, `check_func_type_ok`, `check_func_no_zero` |
+| 5.7 | Tuples `(i64, str)` | done | `agree_tuple`, `eval_tuple`, `check_tuple_ok` |
+| 5.10 | Type aliases | done | `agree_type_alias`, `eval_type_alias`, `check_type_alias_ok`, `check_alias_recursive` |
 | 5.11 | `sizeof`, `offsetof`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_sizeof_ptr`, `agree_offsetof_packed` |
 | 6.6 | Address-of and escape | partial | `check_escape_local`, `agree_escape_global`; stores into escaped params later |
 | 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`, `check_never_null_zero`; never-null pointers still require an initialiser |
@@ -48,7 +51,13 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 7.2 | Checked `+ - *`, wrapping `%`, saturating `|`, `+?` | done | `agree_u8_wrap`, `agree_u8_overflow_traps`, `agree_u8_saturating`, `agree_overflow_optional` |
 | 7.3 | Bits, shifts, `and`/`or`/`not` | done | `agree_bits`, `agree_shift`, `eval_bool_and_or` |
 | 7.5 | Widening, `T(x)`, `(T)x` | done | `agree_widen`, `agree_c_cast_truncates`, `parse_cast_vs_call` |
+| 7.8 | Match expressions | done | `agree_match_expr`, `eval_match_expr` |
+| 7.9 | `discard` | done | `agree_discard`, `eval_discard`, `check_discard_ok`, `check_discard_fallible` |
+| 9.2 | Default parameters | done | `agree_default_args`, `agree_named_default`, `eval_default_args` |
+| 9.3 | Multiple results / tuples | done | `agree_tuple` |
+| 9.4 | Function values | done | `agree_func_value`, `agree_method_value`, `agree_func_to_fallible`, `check_func_must_be_called` |
 | 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `check_explicit_self_rejected` |
+| 9.6 | Capture-free lambdas | done | `agree_lambda`, `eval_lambda`, `check_lambda_ok`, `check_lambda_capture_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
 | 5.8 | Optionals `T?`, `none`, `else`, `if let` | done | `agree_optional_else`, `agree_if_let`, `check_optional_ok` |
@@ -58,7 +67,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 10.4 | Unions | done | `agree_union` |
 | 8.5 | Labeled `break`/`continue` | done | `agree_labeled_break`, `agree_break` |
 | 8.8 | `defer` | done | `agree_defer` |
-| 8.8 | `errdefer` | partial | `eval_errdefer`; C emit skips it |
+| 8.8 | `errdefer` | done | `eval_errdefer`, `agree_errdefer` |
 | 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let` |
 | 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `check_try_needs_fallible` |
 | 9.7 | `pub func main(arguments: str[]\|cstr[]) -> i32\|i32!` | done | `agree_main_hello` |

@@ -369,27 +369,11 @@ TEST(check_fmt_stored) {
                     "lucb.check.type"));
 }
 
-TEST(check_lambda_unsupported) {
+TEST(check_lambda_needs_type) {
     CHECK(check_has("pub func answer() -> i64:\n"
                     "    let add = (x, y) => x + y\n"
                     "    return 0\n",
-                    "lucb.check.unsupported"));
-}
-
-TEST(check_type_alias_unsupported) {
-    CHECK(check_has("type Count = i64\n"
-                    "pub func answer() -> i64:\n"
-                    "    return 0\n",
-                    "lucb.check.unsupported"));
-}
-
-TEST(check_func_type_unsupported) {
-    CHECK(check_has("func add(a: i64, b: i64) -> i64:\n"
-                    "    return a + b\n"
-                    "pub func answer() -> i64:\n"
-                    "    let operation: func(i64, i64) -> i64 = add\n"
-                    "    return 0\n",
-                    "lucb.check.unsupported"));
+                    "lucb.check.type"));
 }
 
 TEST(check_array_infer_ok) {
@@ -546,4 +530,81 @@ TEST(check_keyword_enum_ok) {
                    "            return 0\n"
                    "        .func:\n"
                    "            return 1\n"));
+}
+
+TEST(check_type_alias_ok) {
+    CHECK(check_ok("type Pixel = i64\n"
+                   "pub func answer() -> i64:\n"
+                   "    let p: Pixel = 7\n"
+                   "    return p\n"));
+}
+
+TEST(check_func_type_ok) {
+    CHECK(check_ok("func add(a: i64, b: i64) -> i64:\n"
+                   "    return a + b\n"
+                   "pub func answer() -> i64:\n"
+                   "    let operation: func(i64, i64) -> i64 = add\n"
+                   "    return operation(2, 3)\n"));
+}
+
+TEST(check_lambda_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    let add: func(i64, i64) -> i64 = (x, y) => x + y\n"
+                   "    return add(2, 3)\n"));
+}
+
+TEST(check_lambda_capture_rejected) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let n = 1\n"
+                    "    let f: func(i64) -> i64 = (x) => x + n\n"
+                    "    return f(1)\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_discard_ok) {
+    CHECK(check_ok("func bump(n: i64) -> i64:\n"
+                   "    return n + 1\n"
+                   "pub func answer() -> i64:\n"
+                   "    discard(bump(3))\n"
+                   "    return 1\n"));
+}
+
+TEST(check_discard_fallible) {
+    CHECK(check_has("func boom() -> i64!:\n"
+                    "    return 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    discard(boom())\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_default_args_ok) {
+    CHECK(check_ok("func add(a: i64, b: i64 = 1) -> i64:\n"
+                   "    return a + b\n"
+                   "pub func answer() -> i64:\n"
+                   "    return add(3)\n"));
+}
+
+TEST(check_tuple_ok) {
+    CHECK(check_ok("func pair() -> (i64, i64):\n"
+                   "    return (1, 2)\n"
+                   "pub func answer() -> i64:\n"
+                   "    let (a, b) = pair()\n"
+                   "    return a + b\n"));
+}
+
+TEST(check_alias_recursive) {
+    CHECK(check_has("type A = B\n"
+                    "type B = A\n"
+                    "pub func answer() -> i64:\n"
+                    "    let x: A = 1\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_func_no_zero) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    var f: func() -> i64\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
 }

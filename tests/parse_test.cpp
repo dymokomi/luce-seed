@@ -180,6 +180,34 @@ TEST(parse_lambda) {
     CHECK(p.dump().find("(lambda") != std::string::npos);
 }
 
+TEST(parse_type_alias) {
+    Parsed p("type Pixel = f32[4]\n"
+             "type Callback = func(void*, i32) -> unit\n"
+             "func f(p: Pixel) -> i64:\n"
+             "    return 0\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(alias \"Pixel\"") != std::string::npos);
+    CHECK(p.dump().find("(alias \"Callback\"") != std::string::npos);
+}
+
+TEST(parse_tuple_expr) {
+    Parsed p("func f() -> (i64, i64):\n    return (1, 2)\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(tuple") != std::string::npos);
+}
+
+TEST(parse_discard) {
+    Parsed p("func f():\n    discard(1)\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("\"discard\"") != std::string::npos);
+}
+
+TEST(parse_default_args) {
+    Parsed p("func f(n: i64 = 1, at: Location = location()) -> i64:\n    return n\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("\"location\"") != std::string::npos);
+}
+
 TEST(parse_cast_vs_call) {
     Parsed p("func f(value: i64) -> u8:\n"
              "    let low = (u8)value\n"

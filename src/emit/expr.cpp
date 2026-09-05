@@ -120,7 +120,7 @@ auto Emitter::emit_try(Node* n) -> string {
         Type* payload = is_fail(ft) ? ft->elem : ft;
         string s = "({ ";
         s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
-        s += "if (" + rn + ".failed) { " + snapshot_defers();
+        s += "if (" + rn + ".failed) { " + snapshot_defers(true);
         string fnr = fn_c_ret(current_fn);
         if (fn_fallible() && fnr != rty) {
             s += "return ((" + fnr + "){ .error = " + rn + ".error, .failed = true }); } ";
@@ -232,6 +232,10 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
                 return emit_enum_value(n);
             }
+            if (n->resolved != nullptr &&
+                (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
+                return func_ident(n->resolved, nullptr);
+            }
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::ExternVar) {
                 return string(n->text);
             }
@@ -260,7 +264,33 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
                 return emit_enum_value(n);
             }
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
+                Node* owner = n->left != nullptr ? n->left->resolved : nullptr;
+                if (owner != nullptr && owner->kind != NodeKind::Struct &&
+                    owner->kind != NodeKind::Enum && owner->kind != NodeKind::Union) {
+                    owner = nullptr;
+                }
+                return func_ident(n->resolved, owner);
+            }
             return emit_member(n);
+        case NodeKind::Lambda:
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
+                return func_ident(n->resolved, nullptr);
+            }
+            return "((void*)0)";
+        case NodeKind::Tuple: {
+            string s = "((" + tup_c_name(n->ty) + "){";
+            bool first = true;
+            for (Node* e = n->body; e != nullptr; e = e->next) {
+                if (!first) {
+                    s += ", ";
+                }
+                first = false;
+                s += emit_expr(e);
+            }
+            s += "})";
+            return s;
+        }
         case NodeKind::Conditional:
             return "(" + emit_expr(n->type) + " ? " + emit_expr(n->left) + " : " +
                    emit_expr(n->right) + ")";
@@ -286,7 +316,7 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             return emit_alloc(n);
         case NodeKind::Match:
         case NodeKind::MatchExpr:
-            return "/* match-expr */ 0";
+            return emit_match_expr(n);
         default:
             return "/* unsupported expr */ 0";
         }
@@ -1092,6 +1122,10 @@ auto Emitter::emit_call(Node* n) -> string {
                 }
             }
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+            Node* arg = n->body != nullptr ? n->body->left : nullptr;
+            return "((void)(" + emit_expr(arg) + "))";
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Node* cond = n->body != nullptr ? n->body->left : nullptr;
             string msg = "\"assert failed\"";
@@ -1227,6 +1261,11 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
             return emit_enum_value(n);
+        }
+        if (callee != nullptr && is_func(callee->ty) &&
+            (n->resolved == nullptr ||
+             (n->resolved->kind != NodeKind::Func && n->resolved->kind != NodeKind::ExternFunc))) {
+            return "(" + emit_expr(callee) + ")(" + emit_args(n->body) + ")";
         }
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {

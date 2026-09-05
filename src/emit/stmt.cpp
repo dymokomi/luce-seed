@@ -5,35 +5,35 @@
 
 namespace lucb {
 
-auto Emitter::run_defers(const vector<Node*>& d) -> void {
+auto Emitter::run_defers(const vector<Node*>& d, bool failing) -> void {
         for (int i = static_cast<int>(d.size()) - 1; i >= 0; i--) {
             Node* dn = d[static_cast<size_t>(i)];
-            if (dn->kind == NodeKind::Errdefer) {
+            if (dn->kind == NodeKind::Errdefer && !failing) {
                 continue;
             }
             line(emit_expr(dn->left) + ";");
         }
     }
 
-auto Emitter::unwind_scope(const Scope& sc) -> void {
-        run_defers(sc.defers);
+auto Emitter::unwind_scope(const Scope& sc, bool failing) -> void {
+        run_defers(sc.defers, failing);
         if (sc.restore_alloc) {
             line("lb_set_alloc(" + sc.alloc_save + ");");
         }
     }
 
-auto Emitter::run_defers_from(int from) -> void {
+auto Emitter::run_defers_from(int from, bool failing) -> void {
         for (int i = static_cast<int>(scopes.size()) - 1; i >= from; i--) {
-            unwind_scope(scopes[static_cast<size_t>(i)]);
+            unwind_scope(scopes[static_cast<size_t>(i)], failing);
         }
     }
 
-auto Emitter::snapshot_defers() -> string {
+auto Emitter::snapshot_defers(bool failing) -> string {
         string saved = out;
         int saved_indent = indent;
         out = {};
         indent = 0;
-        run_defers_from(0);
+        run_defers_from(0, failing);
         string s = out;
         out = saved;
         indent = saved_indent;
@@ -140,7 +140,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
                        (n->ty->kind == TypeKind::Struct || n->ty->kind == TypeKind::Union ||
                         n->ty->kind == TypeKind::Enum || is_array(n->ty) || is_span(n->ty) ||
                         n->ty->kind == TypeKind::Str || is_opt(n->ty) ||
-                        n->ty->kind == TypeKind::Allocator)) {
+                        n->ty->kind == TypeKind::Allocator || is_tup(n->ty))) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";
@@ -326,7 +326,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             break;
         case NodeKind::ExprStmt:
             if (is_error_call(n->left)) {
-                run_defers_from(0);
+                run_defers_from(0, true);
                 line("return " + emit_expr(n->left) + ";");
             } else {
                 line(emit_expr(n->left) + ";");
@@ -473,7 +473,7 @@ auto Emitter::emit_return(Node* n) -> void {
                 int id = tmp();
                 string t = "_lb_ret" + std::to_string(id);
                 line(fn_c_ret(current_fn) + " " + t + " = " + e + ";");
-                run_defers_from(0);
+                run_defers_from(0, true);
                 line("return " + t + ";");
             } else {
                 line("return " + e + ";");
@@ -586,7 +586,7 @@ auto Emitter::emit_for_range(Node* n) -> void {
         }
     }
 
-auto Emitter::emit_match(Node* n) -> void {
+auto Emitter::emit_match(Node* n, const string& dest) -> void {
         Type* st = n->left != nullptr ? n->left->ty : nullptr;
         int id = tmp();
         string sv = "_lb_m" + std::to_string(id);
@@ -602,13 +602,30 @@ auto Emitter::emit_match(Node* n) -> void {
                                pat->resolved->kind == NodeKind::EnumCase) {
                         line("case " + std::to_string(emit_case_int(st->decl, pat->resolved)) +
                              "LL:");
+                    } else if (pat->op == TokenKind::DotDotLt || pat->op == TokenKind::DotDotEq) {
+                        string lo = emit_expr(pat->left);
+                        string hi = emit_expr(pat->right);
+                        if (pat->op == TokenKind::DotDotLt) {
+                            line("case " + lo + " ... (" + hi + " - 1LL):");
+                        } else {
+                            line("case " + lo + " ... " + hi + ":");
+                        }
                     } else if (pat->left != nullptr) {
                         line("case " + emit_expr(pat->left) + ":");
                     }
                 }
                 line("{");
                 indent++;
-                emit_stmt(arm->body);
+                if (!dest.empty()) {
+                    if (arm->type != nullptr) {
+                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                             emit_expr(arm->body) + "; break; }");
+                    } else {
+                        line(dest + " = " + emit_expr(arm->body) + ";");
+                    }
+                } else {
+                    emit_stmt(arm->body);
+                }
                 line("break;");
                 indent--;
                 line("}");
@@ -647,7 +664,16 @@ auto Emitter::emit_match(Node* n) -> void {
                         b = b->next;
                     }
                 }
-                emit_stmt(arm->body);
+                if (!dest.empty()) {
+                    if (arm->type != nullptr) {
+                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                             emit_expr(arm->body) + "; break; }");
+                    } else {
+                        line(dest + " = " + emit_expr(arm->body) + ";");
+                    }
+                } else {
+                    emit_stmt(arm->body);
+                }
                 line("break;");
                 indent--;
                 line("}");
@@ -682,11 +708,37 @@ auto Emitter::emit_match(Node* n) -> void {
                 if (!bind.empty()) {
                     line(bind);
                 }
-                emit_stmt(arm->body);
+                if (!dest.empty()) {
+                    if (arm->type != nullptr) {
+                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                             emit_expr(arm->body) + "; }");
+                    } else {
+                        line(dest + " = " + emit_expr(arm->body) + ";");
+                    }
+                } else {
+                    emit_stmt(arm->body);
+                }
                 indent--;
                 line("}");
             }
         }
+    }
+
+auto Emitter::emit_match_expr(Node* n) -> string {
+        int id = tmp();
+        string rv = "_lb_mr" + std::to_string(id);
+        string saved = out;
+        int saved_indent = indent;
+        out = {};
+        indent = 0;
+        Type* rt = n->ty;
+        line(c_type(rt) + " " + rv + ";");
+        emit_match(n, rv);
+        line(rv + ";");
+        string body = out;
+        out = saved;
+        indent = saved_indent;
+        return "({\n" + body + "})";
     }
 
 auto Emitter::emit_if(Node* n) -> void {

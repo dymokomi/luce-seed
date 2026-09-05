@@ -967,6 +967,108 @@ TEST(native_asm_add) {
     CHECK(both.native.out.find("8") != std::string::npos);
 }
 
+TEST(agree_type_alias) {
+    CHECK(agrees("type Pixel = i64\n"
+                 "pub func answer() -> i64:\n"
+                 "    let p: Pixel = 7\n"
+                 "    return p\n"));
+}
+
+TEST(agree_func_value) {
+    CHECK(agrees("func add(a: i64, b: i64) -> i64:\n"
+                 "    return a + b\n"
+                 "pub func answer() -> i64:\n"
+                 "    let operation: func(i64, i64) -> i64 = add\n"
+                 "    return operation(2, 3)\n"));
+}
+
+TEST(agree_lambda) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let add: func(i64, i64) -> i64 = (x, y) => x + y\n"
+                 "    return add(2, 3)\n"));
+}
+
+TEST(agree_discard) {
+    CHECK(agrees("func bump(n: i64) -> i64:\n"
+                 "    print(n)\n"
+                 "    return n + 1\n"
+                 "pub func answer() -> i64:\n"
+                 "    discard(bump(3))\n"
+                 "    return 1\n"));
+}
+
+TEST(agree_default_args) {
+    CHECK(agrees("func add(a: i64, b: i64 = 1) -> i64:\n"
+                 "    return a + b\n"
+                 "pub func answer() -> i64:\n"
+                 "    return add(3)\n"));
+}
+
+TEST(agree_named_default) {
+    CHECK(agrees("func f(a: i64, b: i64 = 1, c: i64 = 2) -> i64:\n"
+                 "    return a + b + c\n"
+                 "pub func answer() -> i64:\n"
+                 "    return f(10, c = 5)\n"));
+}
+
+TEST(agree_tuple) {
+    CHECK(agrees("func divide(value: i64, divisor: i64) -> (i64, i64):\n"
+                 "    return (value // divisor, value % divisor)\n"
+                 "pub func answer() -> i64:\n"
+                 "    let (q, r) = divide(17, 5)\n"
+                 "    return q * 10 + r\n"));
+}
+
+TEST(agree_match_expr) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let n: i64 = 2\n"
+                 "    let k = match n:\n"
+                 "        1 => 10\n"
+                 "        2 => 20\n"
+                 "        _ => 0\n"
+                 "    return k\n"));
+}
+
+TEST(agree_errdefer) {
+    CHECK(agrees("func boom() -> i64!:\n"
+                 "    errdefer print(3)\n"
+                 "    error(1, \"nope\")\n"
+                 "    return 0\n"
+                 "pub func answer() -> i64:\n"
+                 "    return boom() catch e:\n"
+                 "        recover 2\n"));
+}
+
+TEST(agree_method_value) {
+    CHECK(agrees("struct Point:\n"
+                 "    pub let x: i64\n"
+                 "    pub let y: i64\n"
+                 "    func sum() -> i64:\n"
+                 "        return self.x + self.y\n"
+                 "pub func answer() -> i64:\n"
+                 "    let p = Point(x = 2, y = 3)\n"
+                 "    let f: func(const Point*) -> i64 = Point.sum\n"
+                 "    return f(&p)\n"));
+}
+
+TEST(agree_func_to_fallible) {
+    CHECK(agrees("func add(a: i64, b: i64) -> i64:\n"
+                 "    return a + b\n"
+                 "pub func answer() -> i64:\n"
+                 "    let op: func(i64, i64) -> i64! = add\n"
+                 "    return op(2, 3) catch e:\n"
+                 "        recover 0\n"));
+}
+
+TEST(agree_alias_func) {
+    CHECK(agrees("type Binop = func(i64, i64) -> i64\n"
+                 "func add(a: i64, b: i64) -> i64:\n"
+                 "    return a + b\n"
+                 "pub func answer() -> i64:\n"
+                 "    let op: Binop = add\n"
+                 "    return op(4, 5)\n"));
+}
+
 TEST(header_export_func) {
     DiagnosticBag diagnostics;
     Source source = Source::from_bytes("t.lucb",

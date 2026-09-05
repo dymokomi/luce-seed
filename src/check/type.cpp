@@ -149,6 +149,21 @@ string type_name(const Type* t) {
         s += ")";
         return s;
     }
+    case TypeKind::Func: {
+        string s = "func(";
+        for (int i = 0; i < t->ntargs; i++) {
+            if (i != 0) {
+                s += ", ";
+            }
+            s += type_name(t->args[i]);
+        }
+        s += ") -> ";
+        s += type_name(t->elem);
+        if (t->is_nullable) {
+            s = "(" + s + ")?";
+        }
+        return s;
+    }
     }
     return "<unknown>";
 }
@@ -400,7 +415,7 @@ int type_align(const Type* t) {
     }
     if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str ||
         t->kind == TypeKind::CStr || t->kind == TypeKind::Allocator ||
-        t->kind == TypeKind::Interface) {
+        t->kind == TypeKind::Interface || t->kind == TypeKind::Func) {
         return static_cast<int>(sizeof(void*));
     }
     if (t->kind == TypeKind::Array) {
@@ -513,6 +528,7 @@ int type_size(const Type* t) {
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Pointer:
     case TypeKind::CStr:
+    case TypeKind::Func:
         return static_cast<int>(sizeof(void*));
     case TypeKind::Allocator:
         return static_cast<int>(sizeof(void*) + sizeof(int));
@@ -698,8 +714,19 @@ bool is_zeroable(const Type* t) {
     if (is_ptr(t) && t->is_nullable) {
         return true;
     }
+    if (is_func(t) && t->is_nullable) {
+        return true;
+    }
     if (is_array(t)) {
         return is_zeroable(t->elem);
+    }
+    if (is_tup(t)) {
+        for (int i = 0; i < t->ntargs; i++) {
+            if (!is_zeroable(t->args[i])) {
+                return false;
+            }
+        }
+        return t->ntargs > 0;
     }
     if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator ||
         t->kind == TypeKind::Param) {

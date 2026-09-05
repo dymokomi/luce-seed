@@ -331,6 +331,22 @@ auto Emitter::note_tup(Type* t) -> void {
         tups.push_back(t);
     }
 
+auto Emitter::note_fn(Type* t) -> void {
+        if (t == nullptr || t->kind != TypeKind::Func) {
+            return;
+        }
+        for (int i = 0; i < t->ntargs; i++) {
+            note_type(t->args[i]);
+        }
+        note_type(t->elem);
+        for (size_t i = 0; i < fns.size(); i++) {
+            if (fns[i] == t) {
+                return;
+            }
+        }
+        fns.push_back(t);
+    }
+
 auto Emitter::note_type(Type* t) -> void {
         if (t == nullptr || t->kind == TypeKind::Param) {
             return;
@@ -365,6 +381,9 @@ auto Emitter::note_type(Type* t) -> void {
         }
         if (t->kind == TypeKind::Tuple) {
             note_tup(t);
+        }
+        if (t->kind == TypeKind::Func) {
+            note_fn(t);
         }
         if (t->kind == TypeKind::Struct && t->decl != nullptr) {
             for (Node* m = t->decl->body; m != nullptr; m = m->next) {
@@ -427,6 +446,33 @@ auto Emitter::emit_tup_typedefs() -> void {
             line(s);
         }
         if (!tups.empty()) {
+            out += '\n';
+        }
+    }
+
+auto Emitter::emit_fn_typedefs() -> void {
+        for (size_t i = 0; i < fns.size(); i++) {
+            Type* t = fns[i];
+            string ret = "void";
+            if (t->elem != nullptr && t->elem->kind != TypeKind::Unit &&
+                t->elem->kind != TypeKind::Never) {
+                ret = c_type(t->elem);
+            }
+            string s = "typedef " + ret + " (*" + fn_c_name(t) + ")(";
+            if (t->ntargs == 0) {
+                s += "void";
+            } else {
+                for (int j = 0; j < t->ntargs; j++) {
+                    if (j != 0) {
+                        s += ", ";
+                    }
+                    s += c_type(t->args[j]);
+                }
+            }
+            s += ");";
+            line(s);
+        }
+        if (!fns.empty()) {
             out += '\n';
         }
     }
@@ -717,12 +763,14 @@ auto Emitter::emit_module(Node* mod) -> void {
         opts.clear();
         fails.clear();
         tups.clear();
+        fns.clear();
         collect_from(mod);
         emit_type_forwards(mod);
         emit_types(mod);
         emit_array_typedefs();
         emit_tup_typedefs();
         emit_opt_typedefs();
+        emit_fn_typedefs();
         emit_decls(mod);
         emit_ifaces(mod);
         out += '\n';
@@ -750,6 +798,7 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         opts.clear();
         fails.clear();
         tups.clear();
+        fns.clear();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             collect_from(modules[static_cast<size_t>(i)]);
         }
@@ -762,6 +811,7 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         emit_array_typedefs();
         emit_tup_typedefs();
         emit_opt_typedefs();
+        emit_fn_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_decls(modules[static_cast<size_t>(i)]);
         }

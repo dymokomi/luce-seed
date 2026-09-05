@@ -194,6 +194,9 @@ auto Checker::intern_opt(Type* elem) -> Type* {
         if (elem != nullptr && elem->kind == TypeKind::Interface && !elem->is_nullable) {
             return intern_iface(elem->decl, true);
         }
+        if (is_func(elem) && !elem->is_nullable) {
+            return intern_func(elem->args, elem->ntargs, elem->elem, true);
+        }
         for (size_t i = 0; i < interned.size(); i++) {
             Type* t = interned[i];
             if (t->kind == TypeKind::Optional && t->elem == elem) {
@@ -277,6 +280,146 @@ auto Checker::intern_tup(Type** elems, int n) -> Type* {
         t->name = keep(type_name(t));
         interned.push_back(t);
         return t;
+    }
+
+auto Checker::intern_func(Type** params, int n, Type* result, bool nullable) -> Type* {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind != TypeKind::Func || t->ntargs != n || t->elem != result ||
+                t->is_nullable != nullable) {
+                continue;
+            }
+            bool same = true;
+            for (int j = 0; j < n; j++) {
+                if (t->args[j] != params[j]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Func, {});
+        t->elem = result;
+        t->ntargs = n;
+        t->is_nullable = nullable;
+        if (n > 0) {
+            t->args = static_cast<Type**>(arena->alloc(sizeof(Type*) * static_cast<size_t>(n),
+                                                       alignof(Type*)));
+            for (int j = 0; j < n; j++) {
+                t->args[j] = params[j];
+            }
+        }
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+auto Checker::func_type_of(Node* fn, Node* owner) -> Type* {
+        vector<Type*> ps;
+        if (owner != nullptr && fn != nullptr && (fn->flags & FlagStatic) == 0) {
+            bool mut = (fn->flags & FlagMutating) != 0;
+            ps.push_back(intern_ptr(owner->ty != nullptr ? owner->ty : t_error(), !mut, false,
+                                    false));
+        }
+        if (fn != nullptr) {
+            for (Node* p = fn->right; p != nullptr; p = p->next) {
+                if (p->flags & FlagVariadic) {
+                    continue;
+                }
+                ps.push_back(p->ty != nullptr ? p->ty : t_error());
+            }
+        }
+        Type* result = fn != nullptr && fn->ty != nullptr ? fn->ty : t_unit();
+        if (fn != nullptr && (fn->flags & FlagFallible) != 0 && !is_fail(result)) {
+            result = intern_fail(result);
+        }
+        return intern_func(ps.empty() ? nullptr : ps.data(), static_cast<int>(ps.size()), result,
+                           false);
+    }
+
+auto Checker::make_fail_thunk(Node* fn, Type* ft) -> Node* {
+        if (fn == nullptr || ft == nullptr) {
+            return fn;
+        }
+        Node* syn = arena->make<Node>();
+        syn->kind = NodeKind::Func;
+        syn->text = keep("_th" + std::to_string(nlambda++));
+        syn->flags = FlagFallible;
+        Type* payload = is_fail(ft->elem) && ft->elem->elem != nullptr ? ft->elem->elem : t_unit();
+        syn->ty = payload;
+        Node* params = nullptr;
+        Node* args = nullptr;
+        for (Node* p = fn->right; p != nullptr; p = p->next) {
+            if (p->flags & FlagVariadic) {
+                continue;
+            }
+            Node* np = arena->make<Node>();
+            np->kind = NodeKind::Param;
+            np->text = p->text;
+            np->ty = p->ty;
+            np->span = p->span;
+            append_node(&params, np);
+            Node* a = arena->make<Node>();
+            a->kind = NodeKind::Param;
+            Node* nm = arena->make<Node>();
+            nm->kind = NodeKind::Name;
+            nm->text = p->text;
+            nm->ty = p->ty;
+            nm->resolved = np;
+            a->left = nm;
+            append_node(&args, a);
+        }
+        syn->right = params;
+        Node* call = arena->make<Node>();
+        call->kind = NodeKind::Call;
+        Node* callee = arena->make<Node>();
+        callee->kind = NodeKind::Name;
+        callee->text = fn->text;
+        callee->resolved = fn;
+        callee->ty = func_type_of(fn, nullptr);
+        call->left = callee;
+        call->body = args;
+        call->resolved = fn;
+        call->ty = fn->ty;
+        Node* ret = arena->make<Node>();
+        ret->kind = NodeKind::Return;
+        ret->left = call;
+        Node* block = arena->make<Node>();
+        block->kind = NodeKind::Block;
+        block->body = ret;
+        syn->body = block;
+        if (!checking_generic_template) {
+            pending_clones.push_back(syn);
+        }
+        return syn;
+    }
+
+auto Checker::func_converts(Type* from, Type* to) -> bool {
+        if (!is_func(from) || !is_func(to)) {
+            return false;
+        }
+        if (from->is_nullable && !to->is_nullable) {
+            return false;
+        }
+        if (from->ntargs != to->ntargs) {
+            return false;
+        }
+        for (int i = 0; i < from->ntargs; i++) {
+            if (from->args[i] != to->args[i] && !type_eq(from->args[i], to->args[i])) {
+                return false;
+            }
+        }
+        Type* fr = from->elem != nullptr ? from->elem : t_unit();
+        Type* tr = to->elem != nullptr ? to->elem : t_unit();
+        if (type_eq(fr, tr)) {
+            return true;
+        }
+        if (is_fail(tr) && type_eq(fr, tr->elem != nullptr ? tr->elem : t_unit())) {
+            return true;
+        }
+        return false;
     }
 
 auto Checker::atomic_ok(Type* t) -> bool {
@@ -787,6 +930,16 @@ auto Checker::resolve_type(Node* n) -> Type* {
             n->ty = t_error();
             return n->ty;
         }
+        if (n->flags & FlagFuncType) {
+            vector<Type*> ps;
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                ps.push_back(resolve_type(a));
+            }
+            Type* result = n->left != nullptr ? resolve_type(n->left) : t_unit();
+            n->ty = intern_func(ps.empty() ? nullptr : ps.data(), static_cast<int>(ps.size()),
+                                result, false);
+            return n->ty;
+        }
         if (n->flags & FlagTupleType) {
             int nfields = 0;
             for (Node* a = n->body; a != nullptr; a = a->next) {
@@ -886,6 +1039,20 @@ auto Checker::resolve_type(Node* n) -> Type* {
         }
         Binding* b = lookup(n->text);
         if (b != nullptr && b->type != nullptr) {
+            if (b->decl != nullptr && b->decl->kind == NodeKind::TypeAlias) {
+                if (b->decl->ty == nullptr || b->decl->ty->kind == TypeKind::Error) {
+                    if (b->decl->flags & FlagUsed) {
+                        fail_n(n, "lucb.check.type", "this alias is recursive");
+                        n->ty = t_error();
+                        return n->ty;
+                    }
+                    b->decl->flags |= FlagUsed;
+                    Type* t = resolve_type(b->decl->type);
+                    b->decl->flags &= ~FlagUsed;
+                    b->decl->ty = t;
+                    b->type = t;
+                }
+            }
             bool type_bind = b->decl == nullptr || b->decl->kind == NodeKind::Struct ||
                              b->decl->kind == NodeKind::Enum || b->decl->kind == NodeKind::Union ||
                              b->decl->kind == NodeKind::GenericParam ||
@@ -893,6 +1060,7 @@ auto Checker::resolve_type(Node* n) -> Type* {
                              b->decl->kind == NodeKind::ExternType ||
                              b->decl->kind == NodeKind::ExternStruct ||
                              b->decl->kind == NodeKind::ExternUnion ||
+                             b->decl->kind == NodeKind::TypeAlias ||
                              b->type->kind == TypeKind::Allocator ||
                              b->type->kind == TypeKind::Param ||
                              b->type->kind == TypeKind::Interface;
@@ -987,7 +1155,7 @@ auto Checker::is_c_repr(Type* t) -> bool {
             return true;
         }
         if (is_ptr(t) || t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
-            is_int_enum(t)) {
+            is_int_enum(t) || is_func(t)) {
             return true;
         }
         return false;
@@ -1030,6 +1198,19 @@ auto Checker::check_params(Node* fn) -> void {
                        "do not write `self` as a parameter; methods take it implicitly");
             }
             p->ty = resolve_type(p->type);
+            if (p->left != nullptr) {
+                bool loc = p->left->kind == NodeKind::Call && p->left->left != nullptr &&
+                           p->left->left->kind == NodeKind::Name &&
+                           p->left->left->text == "location";
+                if (!loc) {
+                    Type* dt = check_expr(p->left, p->ty);
+                    if (!type_eq(dt, p->ty) && !can_widen(dt, p->ty)) {
+                        fail_n(p, "lucb.check.type",
+                               "default has type " + type_name(dt) + ", expected " +
+                                   type_name(p->ty));
+                    }
+                }
+            }
             bind(p->text, p->ty, false, p);
         }
     }
@@ -1265,6 +1446,15 @@ auto Checker::collect_module(Node* mod) -> void {
                 bind(d->text, t_error(), true, d);
             } else if (d->kind == NodeKind::Const) {
                 bind(d->text, t_error(), false, d);
+            } else if (d->kind == NodeKind::TypeAlias) {
+                if (is_core_name(d->text)) {
+                    fail_n(d, "lucb.check.shadow", "this name belongs to the language");
+                }
+                if (lookup(d->text) != nullptr) {
+                    fail_n(d, "lucb.check.shadow", "this name is already in scope");
+                    continue;
+                }
+                bind(d->text, t_error(), false, d);
             } else if (d->kind == NodeKind::Import || d->kind == NodeKind::FromImport ||
                        d->kind == NodeKind::Test || d->kind == NodeKind::Assert ||
                        d->kind == NodeKind::Asm) {
@@ -1337,6 +1527,22 @@ auto Checker::collect_module(Node* mod) -> void {
                 Binding* b = lookup(d->text);
                 if (b != nullptr && b->decl == d) {
                     b->type = t;
+                }
+            } else if (d->kind == NodeKind::TypeAlias) {
+                if (d->ty == nullptr || d->ty->kind == TypeKind::Error) {
+                    if (d->flags & FlagUsed) {
+                        fail_n(d, "lucb.check.type", "this alias is recursive");
+                        d->ty = t_error();
+                    } else {
+                        d->flags |= FlagUsed;
+                        Type* t = resolve_type(d->type);
+                        d->flags &= ~FlagUsed;
+                        d->ty = t;
+                    }
+                }
+                Binding* b = lookup(d->text);
+                if (b != nullptr && b->decl == d) {
+                    b->type = d->ty;
                 }
             }
         }

@@ -350,6 +350,21 @@ auto Checker::subst_type(Type* t, Node* generic, const vector<Type*>& args) -> T
         if (t->kind == TypeKind::Fallible) {
             return intern_fail(subst_type(t->elem, generic, args));
         }
+        if (t->kind == TypeKind::Tuple && t->args != nullptr) {
+            vector<Type*> na;
+            for (int i = 0; i < t->ntargs; i++) {
+                na.push_back(subst_type(t->args[i], generic, args));
+            }
+            return intern_tup(na.empty() ? nullptr : na.data(), t->ntargs);
+        }
+        if (t->kind == TypeKind::Func) {
+            vector<Type*> na;
+            for (int i = 0; i < t->ntargs; i++) {
+                na.push_back(subst_type(t->args[i], generic, args));
+            }
+            return intern_func(na.empty() ? nullptr : na.data(), t->ntargs,
+                               subst_type(t->elem, generic, args), t->is_nullable);
+        }
         if (t->kind == TypeKind::Struct && t->ntargs > 0 && t->args != nullptr &&
             t->decl != nullptr) {
             vector<Type*> na;

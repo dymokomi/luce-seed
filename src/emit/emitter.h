@@ -17,6 +17,7 @@ struct Emitter {
     vector<Type*> opts;
     vector<Type*> fails;
     vector<Type*> tups;
+    vector<Type*> fns;
     Node* current_fn = nullptr;
     int temps = 0;
     string catch_var;
@@ -224,10 +225,10 @@ struct Emitter {
 
     string wrap_ok(const string& e);
     string wrap_err(const string& code, const string& msg);
-    void run_defers(const vector<Node*>& d);
-    void unwind_scope(const Scope& sc);
-    void run_defers_from(int from);
-    string snapshot_defers();
+    void run_defers(const vector<Node*>& d, bool failing);
+    void unwind_scope(const Scope& sc, bool failing = false);
+    void run_defers_from(int from, bool failing = false);
+    string snapshot_defers(bool failing = false);
     bool is_error_call(Node* n);
     string emit_enum_value(Node* n);
     string emit_try(Node* n);
@@ -273,7 +274,8 @@ struct Emitter {
     void emit_jump(Node* n);
     void emit_while(Node* n);
     void emit_for_range(Node* n);
-    void emit_match(Node* n);
+    void emit_match(Node* n, const string& dest = {});
+    string emit_match_expr(Node* n);
     void emit_if(Node* n);
     void emit_sig(Node* fn, Node* owner, bool define);
     string type_attrs(Node* n);
@@ -284,11 +286,13 @@ struct Emitter {
     void note_opt(Type* t);
     void note_fail(Type* payload);
     void note_tup(Type* t);
+    void note_fn(Type* t);
     void note_type(Type* t);
     void walk_types(Node* n);
     void emit_type_forwards(Node* mod);
     void emit_array_typedefs();
     void emit_tup_typedefs();
+    void emit_fn_typedefs();
     void emit_opt_typedefs();
     void note_fail_fn(Node* fn);
     void collect_from(Node* mod);

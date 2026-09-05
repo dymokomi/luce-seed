@@ -306,6 +306,27 @@ auto Interp::eval(Node* n) -> Value {
             }
             return v_unit();
         case NodeKind::Name:
+            if (n->resolved != nullptr &&
+                (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
+                Value v;
+                v.kind = TypeKind::Func;
+                v.type = n->ty;
+                v.fn = n->resolved;
+                return v;
+            }
+            {
+                Value* p = lvalue(n);
+                if (p == nullptr) {
+                    return v_unit();
+                }
+                Value v = *p;
+                if (n->ty != nullptr && n->ty->kind == TypeKind::Interface &&
+                    v.kind == TypeKind::Pointer) {
+                    v.kind = TypeKind::Interface;
+                    v.type = n->ty;
+                }
+                return v;
+            }
         case NodeKind::Self: {
             Value* p = lvalue(n);
             if (p == nullptr) {
@@ -315,6 +336,22 @@ auto Interp::eval(Node* n) -> Value {
             if (n->ty != nullptr && n->ty->kind == TypeKind::Interface && v.kind == TypeKind::Pointer) {
                 v.kind = TypeKind::Interface;
                 v.type = n->ty;
+            }
+            return v;
+        }
+        case NodeKind::Lambda: {
+            Value v;
+            v.kind = TypeKind::Func;
+            v.type = n->ty;
+            v.fn = n->resolved;
+            return v;
+        }
+        case NodeKind::Tuple: {
+            Value v;
+            v.kind = TypeKind::Tuple;
+            v.type = n->ty;
+            for (Node* e = n->body; e != nullptr; e = e->next) {
+                v.fields.push_back(eval(e));
             }
             return v;
         }
@@ -381,6 +418,13 @@ auto Interp::eval_case_value(Node* n) -> Value {
 auto Interp::eval_member(Node* n) -> Value {
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
             return v_enum_case(n->resolved, n->ty);
+        }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
+            Value v;
+            v.kind = TypeKind::Func;
+            v.type = n->ty;
+            v.fn = n->resolved;
+            return v;
         }
         Type* lt = n->left != nullptr ? n->left->ty : nullptr;
         if (lt != nullptr && lt->kind == TypeKind::Module) {
@@ -1340,7 +1384,19 @@ auto Interp::match_pat(Node* pat, const Value& scrut, Type* st) -> bool {
             }
             return false;
         }
-        if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
+        if (pat->op == TokenKind::DotDotLt || pat->op == TokenKind::DotDotEq) {
+            Value lo = eval(pat->left);
+            Value hi = eval(pat->right);
+            uint64_t s = as_u(scrut, st != nullptr ? st : scrut.type);
+            uint64_t a = as_u(lo, lo.type);
+            uint64_t b = as_u(hi, hi.type);
+            if (pat->op == TokenKind::DotDotLt) {
+                return s >= a && s < b;
+            }
+            return s >= a && s <= b;
+        }
+        if (pat->left != nullptr &&
+            (pat->left->kind == NodeKind::Literal || pat->left->kind == NodeKind::Unary)) {
             Value lit = eval(pat->left);
             if (lit.kind == TypeKind::Bool) {
                 return lit.b == scrut.b;
@@ -1519,6 +1575,12 @@ auto Interp::eval_call(Node* n) -> Value {
         Node* callee = n->left;
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
             return heap_alloc_value();
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+            if (n->body != nullptr) {
+                eval(n->body->left);
+            }
+            return v_unit();
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Value c = eval(n->body != nullptr ? n->body->left : nullptr);
@@ -1947,6 +2009,33 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
             return call_func(n->resolved, nullptr, n->body);
+        }
+        if (callee != nullptr && is_func(callee->ty)) {
+            Value fv = eval(callee);
+            Node* fn = fv.fn;
+            if (fn == nullptr) {
+                fail("null function");
+                return v_unit();
+            }
+            int listed = 0;
+            for (Node* p = fn->right; p != nullptr; p = p->next) {
+                listed++;
+            }
+            int nargs = 0;
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                nargs++;
+            }
+            if (nargs == listed + 1 && (fn->flags & FlagStatic) == 0) {
+                Value selfv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                Value* self = nullptr;
+                if (selfv.kind == TypeKind::Pointer && selfv.ptr != nullptr) {
+                    self = selfv.ptr;
+                } else {
+                    self = &selfv;
+                }
+                return call_func(fn, self, n->body != nullptr ? n->body->next : nullptr);
+            }
+            return call_func(fn, nullptr, n->body);
         }
         fail("unknown call");
         return v_unit();

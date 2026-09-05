@@ -653,3 +653,96 @@ TEST(eval_null_foreign) {
     CHECK(r.trapped);
     CHECK(r.trap.find("null_foreign") != std::string::npos);
 }
+
+TEST(eval_type_alias) {
+    EvalResult r = run("type Pixel = i64\n"
+                       "pub func answer() -> i64:\n"
+                       "    let p: Pixel = 7\n"
+                       "    return p\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 7);
+}
+
+TEST(eval_func_value) {
+    EvalResult r = run("func add(a: i64, b: i64) -> i64:\n"
+                       "    return a + b\n"
+                       "pub func answer() -> i64:\n"
+                       "    let operation: func(i64, i64) -> i64 = add\n"
+                       "    return operation(2, 3)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 5);
+}
+
+TEST(eval_lambda) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let add: func(i64, i64) -> i64 = (x, y) => x + y\n"
+                       "    return add(2, 3)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 5);
+}
+
+TEST(eval_discard) {
+    EvalResult r = run("func bump(n: i64) -> i64:\n"
+                       "    print(n)\n"
+                       "    return n + 1\n"
+                       "pub func answer() -> i64:\n"
+                       "    discard(bump(3))\n"
+                       "    return 1\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+    CHECK_STREQ(r.output, "3\n");
+}
+
+TEST(eval_default_args) {
+    EvalResult r = run("func add(a: i64, b: i64 = 1) -> i64:\n"
+                       "    return a + b\n"
+                       "pub func answer() -> i64:\n"
+                       "    return add(3)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_named_default) {
+    EvalResult r = run("func f(a: i64, b: i64 = 1, c: i64 = 2) -> i64:\n"
+                       "    return a + b + c\n"
+                       "pub func answer() -> i64:\n"
+                       "    return f(10, c = 5)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 16);
+}
+
+TEST(eval_tuple) {
+    EvalResult r = run("func divide(value: i64, divisor: i64) -> (i64, i64):\n"
+                       "    return (value // divisor, value % divisor)\n"
+                       "pub func answer() -> i64:\n"
+                       "    let (q, r) = divide(17, 5)\n"
+                       "    return q * 10 + r\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 32);
+}
+
+TEST(eval_match_expr_int) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let n: i64 = 2\n"
+                       "    let k = match n:\n"
+                       "        1 => 10\n"
+                       "        2 => 20\n"
+                       "        _ => 0\n"
+                       "    return k\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 20);
+}
+
+TEST(eval_method_value) {
+    EvalResult r = run("struct Point:\n"
+                       "    pub let x: i64\n"
+                       "    pub let y: i64\n"
+                       "    func sum() -> i64:\n"
+                       "        return self.x + self.y\n"
+                       "pub func answer() -> i64:\n"
+                       "    let p = Point(x = 2, y = 3)\n"
+                       "    let f: func(const Point*) -> i64 = Point.sum\n"
+                       "    return f(&p)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 5);
+}
