@@ -109,6 +109,12 @@ not land in this tree).
 | 16.5 | `lucb test` calling module functions | done | `eval_tests_probe_t1`, `eval_tests_call_user_func` |
 | 24 | All fifteen example programs | done | `spec24_ex01`–`spec24_ex15` compile under `-Wall -Werror`; ex08 needs SDL3 to link |
 | seed | Three-module mini compiler | done | `examples`, `examples/calc/` |
+| seed | Lexer, symbol table, bytecode VM, JSON parser | done | `examples`, `examples/{lexer,symbols,vm,json}/` |
+| 8.2 | `while true:` terminates a function | done | `programs_control` (`examples/vm/code.lucb`) |
+| 12.4 | `Allocator` parameter from `FixedBuffer`, a struct, or a pointer | done | `programs_memory` (`alloc_in_pointer`), `examples/symbols/` |
+| 16.3 | `module.Type`, `module.Enum.case(...)`, `module.constant` | done | `programs_modules` (`new_qualified`, `constants`), `examples/vm/`, `examples/json/` |
+| 16.6 | One `Writer` type across modules | done | `examples/json/` |
+| 11.2 | `return try f()` | done | `programs_errors` (`return_try_*`) |
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
 | 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |
 | 11.3 | `ErrorCode.package` | done | `agree_program_errorcode`, `check_errorcode_package_ok`; integer codes still accepted by `error` |

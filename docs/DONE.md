@@ -3,6 +3,27 @@
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 This tree is **luce-seed-0.3**.
 
+## Fourth round: examples shaped like compiler work
+
+Five complete programs under `examples/` (a calculator compiler, a lexer, a
+symbol table, a bytecode VM, a JSON parser) are proved by both executions
+on every run, alongside every program under `testdata/`, by a directory walk
+in `tests/programs_test.cpp`. Writing them found and closed: `while true:`
+as a terminating loop; an `Allocator` parameter accepting a `FixedBuffer`,
+an implementing struct, or a pointer to either, in the checker, the emitter,
+and the oracle; `new module.Type(...)` and `module.Enum.case(...)` through
+a type path; `module.constant` emitted by its global name and found by the
+oracle; the standard modules' types synthesized once per program so a
+`Writer` is one type in every module; `return try f()` keeping its failure
+in the oracle; omitted array fields zeroed by the oracle; `T[self.count]`
+as an allocation count; and `if let x = try f()` on a `T?!` result.
+
+The sources were split along their seams (`check/resolve`, `builtins`,
+`memory`, `call`, `convert`, `intrinsics`; `interp/call`, `memory`, `ops`;
+`emit/types`, `call`, `memory`, `text`), every file opens with a banner
+saying what it owns, dead phase-ordered typedef emission is gone, and the
+tree is clang-formatted. The tree is dual-licensed MIT and Apache-2.0.
+
 ## Third audit: emitter ordering, oracle fidelity, spec §24 complete
 
 The C emitter writes typedefs in dependency order: a record, array,
