@@ -54,7 +54,7 @@ same-signedness widening. `T(x)` vs `(T)x`. `sizeof`. Host pointer width.
 
 `T*`, `const`/`volatile`, `void*`, null-niche `T*?`, `&`, auto-deref,
 pointer arithmetic, `T[N]`, `T[]`, checked index/slice, `str` as a view,
-`for` over spans. Escape rule §6.6.
+`for` over spans. Escape rule §6.6. **Landed.**
 
 ## M7 — Optionals, errors, defer, match, for-range, labels
 

@@ -50,6 +50,34 @@ string type_name(const Type* t) {
         return "<struct>";
     case TypeKind::UntypedInt:
         return "<integer>";
+    case TypeKind::Void:
+        return "void";
+    case TypeKind::Pointer: {
+        string s;
+        if (t->is_const) {
+            s += "const ";
+        }
+        if (t->is_volatile) {
+            s += "volatile ";
+        }
+        s += type_name(t->elem);
+        s += '*';
+        if (t->is_nullable) {
+            s += '?';
+        }
+        return s;
+    }
+    case TypeKind::Array:
+        return type_name(t->elem) + "[" + std::to_string(t->length) + "]";
+    case TypeKind::Span: {
+        string s;
+        if (t->is_const) {
+            s += "const ";
+        }
+        s += type_name(t->elem);
+        s += "[]";
+        return s;
+    }
     }
     return "<unknown>";
 }
@@ -117,6 +145,29 @@ bool is_float(const Type* t) {
 
 bool is_numeric(const Type* t) {
     return is_int(t) || is_float(t);
+}
+
+bool is_ptr(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Pointer;
+}
+
+bool is_array(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Array;
+}
+
+bool is_span(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Span;
+}
+
+bool is_void_ptr(const Type* t) {
+    return is_ptr(t) && t->elem != nullptr && t->elem->kind == TypeKind::Void;
+}
+
+Type* elem_of(const Type* t) {
+    if (t == nullptr) {
+        return nullptr;
+    }
+    return t->elem;
 }
 
 int int_bits(const Type* t) {
@@ -209,6 +260,12 @@ int type_align(const Type* t) {
     if (t == nullptr) {
         return 1;
     }
+    if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str) {
+        return static_cast<int>(sizeof(void*));
+    }
+    if (t->kind == TypeKind::Array) {
+        return type_align(t->elem);
+    }
     if (t->kind == TypeKind::Struct) {
         int align = 1;
         if (t->decl == nullptr) {
@@ -261,7 +318,15 @@ int type_size(const Type* t) {
     case TypeKind::Unit:
         return 0;
     case TypeKind::Str:
-        return static_cast<int>(sizeof(const char*));
+        return static_cast<int>(sizeof(void*) + sizeof(size_t));
+    case TypeKind::Pointer:
+        return static_cast<int>(sizeof(void*));
+    case TypeKind::Span:
+        return static_cast<int>(sizeof(void*) + sizeof(size_t));
+    case TypeKind::Array:
+        return type_size(t->elem) * static_cast<int>(t->length);
+    case TypeKind::Void:
+        return 0;
     case TypeKind::Struct: {
         if (t->decl == nullptr) {
             return 0;
@@ -326,7 +391,15 @@ const char* c_type_name(const Type* t) {
     case TypeKind::Char:
         return "uint32_t";
     case TypeKind::Str:
-        return "const char*";
+        return "lb_str";
+    case TypeKind::Pointer:
+        return "void*";
+    case TypeKind::Span:
+        return t->is_const ? "lb_cspan" : "lb_span";
+    case TypeKind::Array:
+        return "void";
+    case TypeKind::Void:
+        return "void";
     case TypeKind::Unit:
     case TypeKind::Never:
     case TypeKind::Error:
@@ -341,8 +414,14 @@ bool is_zeroable(const Type* t) {
         return false;
     }
     if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Unit ||
-        t->kind == TypeKind::Str || t->kind == TypeKind::Char) {
+        t->kind == TypeKind::Str || t->kind == TypeKind::Char || t->kind == TypeKind::Span) {
         return true;
+    }
+    if (is_ptr(t) && t->is_nullable) {
+        return true;
+    }
+    if (is_array(t)) {
+        return is_zeroable(t->elem);
     }
     if (t->kind != TypeKind::Struct || t->decl == nullptr) {
         return false;
@@ -395,6 +474,30 @@ TypeSet::TypeSet() {
     str.name = "str";
     untyped_int.kind = TypeKind::UntypedInt;
     untyped_int.name = "<integer>";
+}
+
+string c_type_spelling(const Type* t) {
+    if (t == nullptr) {
+        return "void";
+    }
+    if (t->kind == TypeKind::Pointer) {
+        string e = c_type_spelling(t->elem);
+        if (t->elem != nullptr && t->elem->kind == TypeKind::Void) {
+            e = "void";
+        }
+        string q;
+        if (t->is_const) {
+            q += "const ";
+        }
+        if (t->is_volatile) {
+            q += "volatile ";
+        }
+        return q + e + "*";
+    }
+    if (t->kind == TypeKind::Array) {
+        return "lb_a_" + type_name(t->elem) + "_" + std::to_string(t->length);
+    }
+    return c_type_name(t);
 }
 
 Type* TypeSet::intern_struct(string_view name, Node* decl, Arena& arena) {

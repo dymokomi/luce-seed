@@ -98,8 +98,17 @@ TEST(check_unknown_type) {
     CHECK(check_has("pub func answer() -> Widget:\n    return 1\n", "lucb.check.type"));
 }
 
-TEST(check_pointer_unsupported) {
-    CHECK(check_has("pub func answer(p: i64*) -> i64:\n    return 0\n", "lucb.check.unsupported"));
+TEST(check_pointer_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n    var n: i64 = 1\n    let p = &n\n    return *p\n"));
+}
+
+TEST(check_optional_non_pointer_unsupported) {
+    CHECK(check_has("pub func answer() -> i64?:\n    return 0\n", "lucb.check.unsupported"));
+}
+
+TEST(check_escape_local) {
+    CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
+                    "lucb.check.escape"));
 }
 
 TEST(check_no_shadow) {

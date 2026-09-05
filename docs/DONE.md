@@ -13,6 +13,14 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M6 — Pointers, arrays, spans, `str`
+
+`T*` never-null pointers, `&` / `*`, auto-deref, `T[N]` values, `T[]` spans
+with checked index/slice, `str.length` / `str.bytes`, `for` over arrays and
+spans, and the local-escape rule on return. `T*?` is a nullable pointer;
+other optionals wait for M7. Evidence: `tests/agree_test.cpp`,
+`tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M5 — Numbers, casts, `usize`
 
 Integer widths, `usize`/`isize` as pointer width, wrapping (`+%`) and

@@ -27,6 +27,23 @@ string func_ident(Node* fn, Node* owner) {
     return ident("lb_", fn->text);
 }
 
+string sanitize_type_name(const string& s) {
+    string o;
+    for (size_t i = 0; i < s.size(); i++) {
+        char c = s[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            o += c;
+        } else {
+            o += '_';
+        }
+    }
+    return o;
+}
+
+string array_c_name(Type* t) {
+    return "lb_a_" + sanitize_type_name(type_name(t));
+}
+
 string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
@@ -36,6 +53,12 @@ string c_type(Type* t) {
             return struct_ident(t->decl);
         }
         return ident("lb_", t->name);
+    }
+    if (t->kind == TypeKind::Array) {
+        return array_c_name(t);
+    }
+    if (t->kind == TypeKind::Pointer) {
+        return c_type_spelling(t);
     }
     return c_type_name(t);
 }
@@ -102,6 +125,7 @@ string decode_lit(string_view tok) {
 struct Emitter {
     string out;
     int indent = 0;
+    vector<Type*> arrays;
 
     void pad() {
         for (int i = 0; i < indent; i++) {
@@ -123,6 +147,13 @@ struct Emitter {
         case NodeKind::Literal:
             return emit_literal(n);
         case NodeKind::Name:
+            if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
+                string nm = ident("lb_", n->text);
+                char nbuf[32];
+                snprintf(nbuf, sizeof(nbuf), "%lluULL",
+                         static_cast<unsigned long long>(n->resolved->ty->length));
+                return "((lb_span){" + nm + ".d, " + nbuf + "})";
+            }
             return ident("lb_", n->text);
         case NodeKind::Self:
             return "(*self)";
@@ -143,6 +174,14 @@ struct Emitter {
                    emit_expr(n->right) + ")";
         case NodeKind::Cast:
             return emit_conv(n->left, n->ty, false);
+        case NodeKind::Index:
+            return emit_index(n);
+        case NodeKind::Slice:
+            return emit_slice(n);
+        case NodeKind::ArrayLit:
+            return emit_array_lit(n);
+        case NodeKind::SpanMake:
+            return emit_span_make(n);
         default:
             return "/* unsupported expr */ 0";
         }
@@ -156,7 +195,13 @@ struct Emitter {
             return "false";
         }
         if (n->op == TokenKind::StringLit) {
-            return c_escape(decode_lit(n->text));
+            string d = decode_lit(n->text);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%zu", d.size());
+            return "((lb_str){" + c_escape(d) + ", " + buf + "})";
+        }
+        if (n->op == TokenKind::KwNone) {
+            return "((void*)0)";
         }
         if (n->op == TokenKind::CharLit) {
             uint32_t cp = 0;
@@ -188,6 +233,12 @@ struct Emitter {
     string emit_unary(Node* n) {
         if (n->op == TokenKind::KwNot) {
             return "(!" + emit_expr(n->left) + ")";
+        }
+        if (n->op == TokenKind::Amp) {
+            return emit_addr(n->left);
+        }
+        if (n->op == TokenKind::Star) {
+            return "(*(" + emit_expr(n->left) + "))";
         }
         if (n->op == TokenKind::Plus) {
             return emit_expr(n->left);
@@ -247,6 +298,30 @@ struct Emitter {
             return "(" + L + " || " + R + ")";
         }
         Type* t = n->ty;
+        Type* lt = n->left != nullptr ? n->left->ty : nullptr;
+        Type* rt = n->right != nullptr ? n->right->ty : nullptr;
+        if (is_ptr(lt) || is_ptr(rt)) {
+            if (op == TokenKind::EqEq) {
+                return "(" + L + " == " + R + ")";
+            }
+            if (op == TokenKind::NotEq) {
+                return "(" + L + " != " + R + ")";
+            }
+            if (op == TokenKind::Plus) {
+                return "(" + L + " + (ptrdiff_t)(" + R + "))";
+            }
+            if (op == TokenKind::Minus && is_ptr(rt)) {
+                return "((intptr_t)(" + L + " - " + R + "))";
+            }
+            if (op == TokenKind::Minus) {
+                return "(" + L + " - (ptrdiff_t)(" + R + "))";
+            }
+            const char* cop = op == TokenKind::Lt    ? "<"
+                              : op == TokenKind::LtEq ? "<="
+                              : op == TokenKind::Gt   ? ">"
+                                                      : ">=";
+            return "(" + L + " " + cop + " " + R + ")";
+        }
         Type* ct = n->left != nullptr && n->left->ty != nullptr ? n->left->ty : t;
         if (op == TokenKind::EqEq) {
             return "(" + L + " == " + R + ")";
@@ -355,10 +430,108 @@ struct Emitter {
     }
 
     string emit_member(Node* n) {
+        Type* ot = n->left != nullptr ? n->left->ty : nullptr;
+        bool ptr = is_ptr(ot);
+        Type* raw = ptr && ot != nullptr ? ot->elem : ot;
+        string base = emit_expr(n->left);
+        string acc = ptr ? "->" : ".";
+        if (n->text == "length") {
+            if (raw != nullptr && (raw->kind == TypeKind::Str || is_span(raw))) {
+                return "(" + base + (ptr ? "->" : ".") + "length)";
+            }
+            if (is_array(raw) && raw != nullptr) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lluULL", static_cast<unsigned long long>(raw->length));
+                return buf;
+            }
+        }
+        if (n->text == "data") {
+            if (is_span(raw) || (raw != nullptr && raw->kind == TypeKind::Str)) {
+                string d = "(" + base + acc + "data)";
+                if (n->ty != nullptr) {
+                    return "((" + c_type(n->ty) + ")(" + d + "))";
+                }
+                return d;
+            }
+        }
+        if (n->text == "bytes") {
+            return "((lb_cspan){" + base + acc + "data, " + base + acc + "length})";
+        }
         if (n->left != nullptr && n->left->kind == NodeKind::Self) {
             return "self->" + string(n->text);
         }
-        return emit_expr(n->left) + "." + string(n->text);
+        if (ptr) {
+            return "(" + base + ")->" + string(n->text);
+        }
+        return base + "." + string(n->text);
+    }
+
+    string emit_index(Node* n) {
+        Type* bt = n->left != nullptr ? n->left->ty : nullptr;
+        string b = emit_expr(n->left);
+        string i = emit_expr(n->body);
+        if (is_array(bt)) {
+            char nbuf[32];
+            snprintf(nbuf, sizeof(nbuf), "%lluULL",
+                     static_cast<unsigned long long>(bt->length));
+            return "(lb_check_index((uint64_t)(" + i + "), " + nbuf + "), (" + b + ").d[" + i +
+                   "])";
+        }
+        if (is_span(bt) || (bt != nullptr && bt->kind == TypeKind::Str)) {
+            string elem = n->ty != nullptr ? c_type(n->ty) : "uint8_t";
+            return "(lb_check_index((uint64_t)(" + i + "), " + b + ".length), ((" + elem + "*)" +
+                   b + ".data)[" + i + "])";
+        }
+        if (is_ptr(bt)) {
+            return "((" + b + ")[" + i + "])";
+        }
+        return "0";
+    }
+
+    string emit_slice(Node* n) {
+        Type* bt = n->left != nullptr ? n->left->ty : nullptr;
+        string b = emit_expr(n->left);
+        string start = n->body != nullptr ? emit_expr(n->body) : "0";
+        string end;
+        string len;
+        string data;
+        if (is_array(bt)) {
+            char nbuf[32];
+            snprintf(nbuf, sizeof(nbuf), "%lluULL",
+                     static_cast<unsigned long long>(bt->length));
+            len = nbuf;
+            data = b + ".d";
+        } else {
+            len = b + ".length";
+            data = b + ".data";
+        }
+        end = n->right != nullptr ? emit_expr(n->right) : len;
+        string span_ty = n->ty != nullptr && n->ty->is_const ? "lb_cspan" : "lb_span";
+        return "((void)lb_check_index((uint64_t)(" + start + "), (uint64_t)(" + len +
+               ") + 1), (void)lb_check_index((uint64_t)(" + end + "), (uint64_t)(" + len +
+               ") + 1), (" + span_ty + "){(void*)((" + data + ") + (" + start + ")), (size_t)((" +
+               end + ") - (" + start + "))})";
+    }
+
+    string emit_array_lit(Node* n) {
+        string s = "(" + c_type(n->ty) + "){{";
+        bool first = true;
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            if (!first) {
+                s += ", ";
+            }
+            first = false;
+            s += emit_expr(e);
+        }
+        s += "}}";
+        return s;
+    }
+
+    string emit_span_make(Node* n) {
+        string p = n->body != nullptr ? emit_expr(n->body->left) : "0";
+        string len =
+            n->body != nullptr && n->body->next != nullptr ? emit_expr(n->body->next->left) : "0";
+        return "((lb_span){" + p + ", (size_t)(" + len + ")})";
     }
 
     string emit_addr(Node* n) {
@@ -369,10 +542,19 @@ struct Emitter {
             return "self";
         }
         if (n->kind == NodeKind::Name) {
+            if (n->ty != nullptr && is_array(n->ty)) {
+                return ident("lb_", n->text) + ".d";
+            }
             return "&" + ident("lb_", n->text);
         }
         if (n->kind == NodeKind::Member) {
             return "&(" + emit_member(n) + ")";
+        }
+        if (n->kind == NodeKind::Index) {
+            return "&(" + emit_index(n) + ")";
+        }
+        if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {
+            return emit_expr(n->left);
         }
         return "&(" + emit_expr(n) + ")";
     }
@@ -412,7 +594,7 @@ struct Emitter {
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             Node* arg = n->body != nullptr ? n->body->left : nullptr;
-            return "lb_trap(" + emit_expr(arg) + ")";
+            return "lb_trap((" + emit_expr(arg) + ").data)";
         }
         if (callee != nullptr && callee->kind == NodeKind::Name &&
             (callee->text == "sizeof" || callee->text == "alignof")) {
@@ -500,7 +682,16 @@ struct Emitter {
             string init = "0";
             if (n->left != nullptr) {
                 init = emit_expr(n->left);
-            } else if (n->ty != nullptr && n->ty->kind == TypeKind::Struct) {
+                Type* st = n->left->ty;
+                if (is_span(n->ty) && is_array(st)) {
+                    char nbuf[32];
+                    snprintf(nbuf, sizeof(nbuf), "%lluULL",
+                             static_cast<unsigned long long>(st->length));
+                    init = "((lb_span){" + init + ".d, " + nbuf + "})";
+                }
+            } else if (n->ty != nullptr &&
+                       (n->ty->kind == TypeKind::Struct || is_array(n->ty) || is_span(n->ty) ||
+                        n->ty->kind == TypeKind::Str)) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";
@@ -594,6 +785,44 @@ struct Emitter {
                 line("return " + emit_expr(n->left) + ";");
             }
             break;
+        case NodeKind::For: {
+            Type* it = n->right != nullptr ? n->right->ty : nullptr;
+            string seq = emit_expr(n->right);
+            string idx = ident("lb_i_", n->text);
+            string len;
+            string elem_e;
+            if (is_array(it)) {
+                char nbuf[32];
+                snprintf(nbuf, sizeof(nbuf), "%lluULL",
+                         static_cast<unsigned long long>(it->length));
+                len = nbuf;
+                elem_e = seq + ".d[" + idx + "]";
+            } else if (it != nullptr && it->kind == TypeKind::Str) {
+                len = seq + ".length";
+                elem_e = "((const unsigned char*)" + seq + ".data)[" + idx + "]";
+            } else {
+                len = seq + ".length";
+                string et = n->ty != nullptr
+                                ? c_type((n->flags & FlagByPtr) != 0 && is_ptr(n->ty) ? n->ty->elem
+                                                                                     : n->ty)
+                                : "uint8_t";
+                if (n->ty != nullptr && is_ptr(n->ty)) {
+                    et = c_type(n->ty->elem);
+                }
+                elem_e = "((" + et + "*)" + seq + ".data)[" + idx + "]";
+            }
+            line("for (size_t " + idx + " = 0; " + idx + " < " + len + "; " + idx + "++) {");
+            indent++;
+            if (n->flags & FlagByPtr) {
+                line(c_type(n->ty) + " " + ident("lb_", n->text) + " = &(" + elem_e + ");");
+            } else {
+                line(c_type(n->ty) + " " + ident("lb_", n->text) + " = " + elem_e + ";");
+            }
+            emit_stmt(n->body);
+            indent--;
+            line("}");
+            break;
+        }
         case NodeKind::ExprStmt:
             line(emit_expr(n->left) + ";");
             break;
@@ -708,9 +937,61 @@ struct Emitter {
         out += '\n';
     }
 
+    void note_type(Type* t) {
+        if (t == nullptr) {
+            return;
+        }
+        if (t->kind == TypeKind::Array) {
+            note_type(t->elem);
+            for (size_t i = 0; i < arrays.size(); i++) {
+                if (arrays[i] == t) {
+                    return;
+                }
+            }
+            arrays.push_back(t);
+            return;
+        }
+        if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span) {
+            note_type(t->elem);
+        }
+        if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::Field) {
+                    note_type(m->ty);
+                }
+            }
+        }
+    }
+
+    void walk_types(Node* n) {
+        if (n == nullptr) {
+            return;
+        }
+        note_type(n->ty);
+        walk_types(n->left);
+        walk_types(n->right);
+        walk_types(n->body);
+        walk_types(n->type);
+        walk_types(n->next);
+    }
+
+    void emit_array_typedefs() {
+        for (size_t i = 0; i < arrays.size(); i++) {
+            Type* t = arrays[i];
+            line("typedef struct " + array_c_name(t) + " { " + c_type(t->elem) + " d[" +
+                 std::to_string(t->length) + "]; } " + array_c_name(t) + ";");
+        }
+        if (!arrays.empty()) {
+            out += '\n';
+        }
+    }
+
     void emit_module(Node* mod) {
         out += "/* generated by lucb */\n";
         out += "#include \"lucb_rt.h\"\n\n";
+        arrays.clear();
+        walk_types(mod);
+        emit_array_typedefs();
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
                 emit_struct(d);

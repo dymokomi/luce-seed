@@ -222,3 +222,75 @@ TEST(eval_i64_min) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, static_cast<int64_t>(INT64_MIN));
 }
+
+TEST(eval_pointer_deref) {
+    EvalResult r = run("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 41);
+}
+
+TEST(eval_array_index) {
+    EvalResult r = run("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 20);
+}
+
+TEST(eval_span_from_array) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var xs: i64[3] = [1, 2, 3]\n"
+                       "    let s: i64[] = xs\n"
+                       "    return s[0] + s[2]\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_span_length) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var xs: i64[4]\n"
+                       "    let s: i64[] = xs\n"
+                       "    return i64(s.length)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_index_oob_traps) {
+    EvalResult r = run("pub func answer() -> i64:\n    var xs: i64[2] = [1, 2]\n    return xs[2]\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("index") != std::string::npos);
+}
+
+TEST(eval_slice) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var xs: i64[4] = [1, 2, 3, 4]\n"
+                       "    let s = xs[1..<3]\n"
+                       "    return s[0] + s[1]\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 5);
+}
+
+TEST(eval_for_span) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var xs: i64[3] = [10, 20, 30]\n"
+                       "    var n: i64 = 0\n"
+                       "    for x in xs:\n"
+                       "        n += x\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 60);
+}
+
+TEST(eval_str_length) {
+    EvalResult r = run("pub func answer() -> i64:\n    let t = \"hi\"\n    return i64(t.length)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}
+
+TEST(eval_assign_through_pointer) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = 1\n"
+                       "    let p = &n\n"
+                       "    *p = 9\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 9);
+}

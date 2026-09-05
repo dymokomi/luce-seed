@@ -27,12 +27,21 @@ enum class TypeKind : uint8_t {
     Str,
     Struct,
     UntypedInt,
+    Void,
+    Pointer,
+    Array,
+    Span,
 };
 
 struct Type {
     TypeKind kind = TypeKind::Error;
     string_view name;
     Node* decl = nullptr; // struct declaration
+    Type* elem = nullptr; // pointee / element
+    uint64_t length = 0;  // array N
+    bool is_const = false;
+    bool is_volatile = false;
+    bool is_nullable = false; // T*?
 };
 
 inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }
@@ -56,7 +65,14 @@ bool can_widen(const Type* from, const Type* to);
 int type_size(const Type* t);
 int type_align(const Type* t);
 
+bool is_ptr(const Type* t);
+bool is_array(const Type* t);
+bool is_span(const Type* t);
+bool is_void_ptr(const Type* t);
+Type* elem_of(const Type* t);
+
 const char* c_type_name(const Type* t);
+string c_type_spelling(const Type* t);
 
 struct TypeSet {
     Type error;

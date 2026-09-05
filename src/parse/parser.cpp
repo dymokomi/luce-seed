@@ -1752,6 +1752,16 @@ struct Parser {
             return s;
         }
         Node* first = parse_expression();
+        if (first != nullptr && first->kind == NodeKind::Binary &&
+            (first->op == TokenKind::DotDotLt || first->op == TokenKind::DotDot)) {
+            Node* s = make(NodeKind::Slice, start.span);
+            s->left = value;
+            s->body = first->left;
+            s->right = first->right;
+            expect(TokenKind::RBracket, "lucb.parse.expect", "expected `]`");
+            s->span = span_from(start);
+            return s;
+        }
         if (eat(TokenKind::DotDotLt)) {
             Node* s = make(NodeKind::Slice, start.span);
             s->left = value;

@@ -3,17 +3,19 @@
 #include "check/type.h"
 #include "support/literal.h"
 
+#include <cstring>
+
 namespace lucb {
 namespace {
 
 const uint32_t k_type_flags_unsupported =
-    FlagStar | FlagSpan | FlagArray | FlagOptional | FlagFallible | FlagAtomic | FlagFuncType |
-    FlagVoid | FlagTupleType | FlagConst | FlagVolatile;
+    FlagFallible | FlagAtomic | FlagFuncType | FlagTupleType;
 
 struct Binding {
     string_view name;
     Type* type = nullptr;
     bool mut = false;
+    bool from_local = false;
     Node* decl = nullptr;
     int depth = 0;
 };
@@ -41,6 +43,8 @@ struct Checker {
     Type* ty_char = nullptr;
     Type* ty_str = nullptr;
     Type* ty_untyped = nullptr;
+    Type* ty_void = nullptr;
+    vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
     Node* current_fn = nullptr;
@@ -118,6 +122,71 @@ struct Checker {
         return t;
     }
 
+    string_view keep(const string& s) {
+        char* p = static_cast<char*>(arena->alloc(s.size() + 1, 1));
+        memcpy(p, s.data(), s.size());
+        p[s.size()] = 0;
+        return {p, s.size()};
+    }
+
+    Type* intern_ptr(Type* elem, bool is_const, bool is_vol, bool nullable) {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Pointer && t->elem == elem && t->is_const == is_const &&
+                t->is_volatile == is_vol && t->is_nullable == nullable) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Pointer, {});
+        t->elem = elem;
+        t->is_const = is_const;
+        t->is_volatile = is_vol;
+        t->is_nullable = nullable;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+    Type* intern_arr(Type* elem, uint64_t n) {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Array && t->elem == elem && t->length == n) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Array, {});
+        t->elem = elem;
+        t->length = n;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+    Type* intern_sp(Type* elem, bool is_const) {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Span && t->elem == elem && t->is_const == is_const) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Span, {});
+        t->elem = elem;
+        t->is_const = is_const;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+    void mark_local(Node* n) {
+        if (n != nullptr) {
+            n->flags |= FlagLocal;
+        }
+    }
+
+    bool is_local(Node* n) {
+        return n != nullptr && (n->flags & FlagLocal) != 0;
+    }
+
     void fail(Span span, const char* code, const string& message) {
         diag->add(code, path, span, message);
     }
@@ -159,11 +228,45 @@ struct Checker {
         return true;
     }
 
+    void set_from_local(string_view name, bool from_local) {
+        Binding* b = lookup(name);
+        if (b != nullptr) {
+            b->from_local = from_local;
+        }
+    }
+
     bool is_core_name(string_view name) {
         return name == "print" || name == "assert" || name == "discard" || name == "error" ||
                name == "trap" || name == "hash" || name == "format" || name == "location" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
                named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt";
+    }
+
+    bool const_u64(Node* n, uint64_t* out) {
+        if (n == nullptr || out == nullptr) {
+            return false;
+        }
+        if (n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
+            ParsedInt p = parse_int_literal(n->text);
+            if (!p.ok) {
+                return false;
+            }
+            *out = p.value;
+            return true;
+        }
+        if (n->kind == NodeKind::Group) {
+            return const_u64(n->left, out);
+        }
+        if (n->kind == NodeKind::Call && n->left != nullptr && n->left->kind == NodeKind::Name &&
+            n->left->text == "sizeof") {
+            if (n->body == nullptr || n->body->left == nullptr) {
+                return false;
+            }
+            Type* t = type_from_expr_or_name(n->body->left);
+            *out = static_cast<uint64_t>(type_size(t));
+            return true;
+        }
+        return false;
     }
 
     Type* resolve_type(Node* n) {
@@ -174,8 +277,48 @@ struct Checker {
             return n->ty;
         }
         if ((n->flags & k_type_flags_unsupported) != 0) {
-            fail_n(n, "lucb.check.unsupported", "this type is not in the scalar core yet");
+            fail_n(n, "lucb.check.unsupported", "this type is not in this slice");
             n->ty = t_error();
+            return n->ty;
+        }
+        if (n->flags & FlagOptional) {
+            Type* inner = resolve_type(n->left);
+            if (is_ptr(inner) && !inner->is_nullable) {
+                n->ty = intern_ptr(inner->elem, inner->is_const, inner->is_volatile, true);
+                return n->ty;
+            }
+            fail_n(n, "lucb.check.unsupported", "optionals other than `T*?` are not in this slice");
+            n->ty = t_error();
+            return n->ty;
+        }
+        if (n->flags & FlagStar) {
+            Type* elem = resolve_type(n->left);
+            if (elem->kind == TypeKind::Void ||
+                (n->left != nullptr && (n->left->flags & FlagVoid))) {
+                elem = ty_void;
+            }
+            n->ty = intern_ptr(elem, (n->flags & FlagConst) != 0, (n->flags & FlagVolatile) != 0,
+                               false);
+            return n->ty;
+        }
+        if (n->flags & FlagSpan) {
+            Type* elem = resolve_type(n->left);
+            n->ty = intern_sp(elem, (n->flags & FlagConst) != 0);
+            return n->ty;
+        }
+        if (n->flags & FlagArray) {
+            Type* elem = resolve_type(n->left);
+            uint64_t len = 0;
+            if (!const_u64(n->right, &len) || len == 0) {
+                fail_n(n, "lucb.check.type", "array length must be a positive constant");
+                n->ty = t_error();
+                return n->ty;
+            }
+            n->ty = intern_arr(elem, len);
+            return n->ty;
+        }
+        if (n->flags & FlagVoid) {
+            n->ty = ty_void;
             return n->ty;
         }
         if (n->left != nullptr && n->text.empty() && n->flags == 0) {
@@ -251,6 +394,18 @@ struct Checker {
         case NodeKind::Cast:
             t = check_cast(n, false);
             break;
+        case NodeKind::Index:
+            t = check_index(n);
+            break;
+        case NodeKind::Slice:
+            t = check_slice(n);
+            break;
+        case NodeKind::ArrayLit:
+            t = check_array_lit(n, expected);
+            break;
+        case NodeKind::SpanMake:
+            t = check_span_make(n);
+            break;
         case NodeKind::Conditional: {
             Type* tc = check_expr(n->type, t_bool());
             Type* tv = check_expr(n->left, expected);
@@ -321,7 +476,10 @@ struct Checker {
         if (expected == nullptr) {
             return got;
         }
-        if (type_eq(got, expected) || can_widen(got, expected)) {
+        if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
+            if (is_array(got) && is_span(expected)) {
+                mark_local(n);
+            }
             return expected;
         }
         if (got->kind == TypeKind::Char && expected->kind == TypeKind::U8 &&
@@ -334,6 +492,50 @@ struct Checker {
         fail_n(n, "lucb.check.type",
                "expected `" + type_name(expected) + "`, got `" + type_name(got) + "`");
         return t_error();
+    }
+
+    bool same_pointee(const Type* a, const Type* b) {
+        return a != nullptr && b != nullptr && a->elem == b->elem;
+    }
+
+    bool can_ptr_convert(Type* from, Type* to, Node* n) {
+        if (from == nullptr || to == nullptr) {
+            return false;
+        }
+        if (is_array(from) && is_span(to) && from->elem == to->elem) {
+            if (!to->is_const && n != nullptr && !is_mut_place(n)) {
+                return false;
+            }
+            return true;
+        }
+        if (is_span(from) && is_span(to) && from->elem == to->elem) {
+            if (from->is_const && !to->is_const) {
+                return false;
+            }
+            return true;
+        }
+        if (from->kind == TypeKind::Str && is_span(to) && to->elem == ty_u8 && to->is_const) {
+            return true;
+        }
+        if (!is_ptr(from) || !is_ptr(to)) {
+            return false;
+        }
+        if (from->is_nullable && !to->is_nullable) {
+            return false;
+        }
+        if (from->is_const && !to->is_const) {
+            return false;
+        }
+        if (from->is_volatile && !to->is_volatile) {
+            return false;
+        }
+        if (from->elem == to->elem) {
+            return true;
+        }
+        if (to->elem != nullptr && to->elem->kind == TypeKind::Void) {
+            return true;
+        }
+        return false;
     }
 
     Type* unify_int(Type* a, Type* b) {
@@ -359,6 +561,13 @@ struct Checker {
     }
 
     Type* check_literal(Node* n, Type* expected) {
+        if (n->op == TokenKind::KwNone) {
+            if (expected != nullptr && is_ptr(expected) && expected->is_nullable) {
+                return expected;
+            }
+            fail_n(n, "lucb.check.type", "`none` needs a nullable pointer type");
+            return t_error();
+        }
         if (n->op == TokenKind::KwTrue || n->op == TokenKind::KwFalse) {
             return t_bool();
         }
@@ -433,6 +642,9 @@ struct Checker {
             return t_error();
         }
         n->resolved = b->decl;
+        if (b->from_local) {
+            mark_local(n);
+        }
         return b->type;
     }
 
@@ -506,12 +718,138 @@ struct Checker {
             }
             return inner;
         }
-        if (n->op == TokenKind::Star || n->op == TokenKind::Amp) {
-            fail_n(n, "lucb.check.unsupported", "pointers are not in this slice");
-            return t_error();
+        if (n->op == TokenKind::Star) {
+            Type* inner = check_expr(n->left, nullptr);
+            if (!is_ptr(inner) || inner->elem == nullptr || inner->elem->kind == TypeKind::Void) {
+                fail_n(n, "lucb.check.type", "cannot dereference this type");
+                return t_error();
+            }
+            if (is_local(n->left)) {
+                mark_local(n);
+            }
+            return inner->elem;
+        }
+        if (n->op == TokenKind::Amp) {
+            Type* inner = check_expr(n->left, nullptr);
+            bool mut = is_mut_place(n->left);
+            Type* p = intern_ptr(inner, !mut, false, false);
+            if (n->left != nullptr &&
+                (n->left->kind == NodeKind::Name || n->left->kind == NodeKind::Self ||
+                 n->left->kind == NodeKind::Index || n->left->kind == NodeKind::Member ||
+                 n->left->kind == NodeKind::Unary)) {
+                mark_local(n);
+            }
+            return p;
         }
         fail_n(n, "lucb.check.unsupported", "this operator is not in the scalar core yet");
         return t_error();
+    }
+
+    Type* as_index_type(Node* n) {
+        Type* t = check_expr(n, t_usize());
+        if (is_int(t) || t->kind == TypeKind::UntypedInt) {
+            if (t->kind == TypeKind::UntypedInt) {
+                n->ty = coerce(n, t, t_usize());
+                t = n->ty;
+            }
+            return t;
+        }
+        fail_n(n, "lucb.check.type", "an index must be an integer");
+        return t_error();
+    }
+
+    Type* check_index(Node* n) {
+        Type* base = check_expr(n->left, nullptr);
+        as_index_type(n->body);
+        if (is_ptr(base)) {
+            if (base->elem == nullptr || base->elem->kind == TypeKind::Void) {
+                fail_n(n, "lucb.check.type", "cannot index `void*`");
+                return t_error();
+            }
+            return base->elem;
+        }
+        if (is_array(base) || is_span(base)) {
+            if (is_local(n->left) || is_array(base)) {
+                mark_local(n);
+            }
+            return base->elem;
+        }
+        fail_n(n, "lucb.check.type", "cannot index this type");
+        return t_error();
+    }
+
+    Type* check_slice(Node* n) {
+        Type* base = check_expr(n->left, nullptr);
+        if (n->body != nullptr) {
+            as_index_type(n->body);
+        }
+        if (n->right != nullptr) {
+            as_index_type(n->right);
+        }
+        Type* elem = nullptr;
+        bool cnst = false;
+        if (is_array(base)) {
+            elem = base->elem;
+            cnst = !is_mut_place(n->left);
+            mark_local(n);
+        } else if (is_span(base)) {
+            elem = base->elem;
+            cnst = base->is_const;
+            if (is_local(n->left)) {
+                mark_local(n);
+            }
+        } else if (base != nullptr && base->kind == TypeKind::Str) {
+            elem = ty_u8;
+            cnst = true;
+            if (is_local(n->left)) {
+                mark_local(n);
+            }
+        } else {
+            fail_n(n, "lucb.check.type", "cannot slice this type");
+            return t_error();
+        }
+        return intern_sp(elem, cnst);
+    }
+
+    Type* check_array_lit(Node* n, Type* expected) {
+        Type* elem = nullptr;
+        uint64_t count = 0;
+        if (expected != nullptr && is_array(expected)) {
+            elem = expected->elem;
+        }
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            Type* et = check_expr(e, elem);
+            if (elem == nullptr) {
+                elem = et;
+            } else if (!type_eq(et, elem) && !can_widen(et, elem)) {
+                fail_n(e, "lucb.check.type", "array elements must have one type");
+            }
+            count++;
+        }
+        if (elem == nullptr) {
+            fail_n(n, "lucb.check.type", "cannot infer an empty array literal");
+            return t_error();
+        }
+        if (expected != nullptr && is_array(expected) && expected->length != count) {
+            fail_n(n, "lucb.check.type", "array literal has the wrong length");
+        }
+        return intern_arr(elem, count);
+    }
+
+    Type* check_span_make(Node* n) {
+        Type* elem = resolve_type(n->type);
+        if (count_args(n->body) != 2) {
+            fail_n(n, "lucb.check.call", "a span is made from a pointer and a length");
+            return intern_sp(elem, false);
+        }
+        Type* p = check_expr(n->body->left, intern_ptr(elem, false, false, false));
+        Type* len = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_usize());
+        (void)p;
+        (void)len;
+        if (is_local(n->body->left)) {
+            mark_local(n);
+        }
+        return intern_sp(elem, is_ptr(p) && p->is_const);
     }
 
     bool is_arith(TokenKind op) {
@@ -545,6 +883,32 @@ struct Checker {
         }
         Type* L = check_expr(n->left, nullptr);
         Type* R = check_expr(n->right, nullptr);
+        if (is_ptr(L) || is_ptr(R)) {
+            if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+                return t_bool();
+            }
+            if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
+                op == TokenKind::GtEq) {
+                if (is_ptr(L) && is_ptr(R)) {
+                    return t_bool();
+                }
+            }
+            if ((op == TokenKind::Plus || op == TokenKind::Minus) && is_ptr(L) &&
+                (is_int(R) || R->kind == TypeKind::UntypedInt)) {
+                if (R->kind == TypeKind::UntypedInt) {
+                    n->right->ty = coerce(n->right, R, t_usize());
+                }
+                if (is_local(n->left)) {
+                    mark_local(n);
+                }
+                return L;
+            }
+            if (op == TokenKind::Minus && is_ptr(L) && is_ptr(R) && same_pointee(L, R)) {
+                return ty_isize;
+            }
+            fail_n(n, "lucb.check.type", "invalid pointer arithmetic");
+            return t_error();
+        }
         if (L->kind == TypeKind::UntypedInt && R->kind == TypeKind::UntypedInt &&
             expected != nullptr && is_int(expected)) {
             L = coerce(n->left, L, expected);
@@ -762,6 +1126,9 @@ struct Checker {
         if (type_eq(src, dest) || can_widen(src, dest)) {
             return true;
         }
+        if (is_ptr(src) && is_ptr(dest)) {
+            return true;
+        }
         if (is_int(src) && is_int(dest)) {
             if (checked && n->kind == NodeKind::Call && n->body != nullptr &&
                 n->body->left != nullptr && n->body->left->kind == NodeKind::Literal) {
@@ -877,7 +1244,7 @@ struct Checker {
                                                  string(p->text) + "`");
             }
             Type* at = check_expr(a->left, p->ty);
-            if (!type_eq(at, p->ty) && !can_widen(at, p->ty)) {
+            if (!type_eq(at, p->ty) && !can_widen(at, p->ty) && !can_ptr_convert(at, p->ty, a->left)) {
                 fail_n(a, "lucb.check.type",
                        "parameter `" + string(p->text) + "` has type " + type_name(p->ty));
             }
@@ -913,11 +1280,15 @@ struct Checker {
             }
         }
         Type* ot = check_expr(obj);
-        if (ot == nullptr || ot->kind != TypeKind::Struct || ot->decl == nullptr) {
+        Type* recv = ot;
+        if (is_ptr(ot) && ot->elem != nullptr) {
+            recv = ot->elem;
+        }
+        if (recv == nullptr || recv->kind != TypeKind::Struct || recv->decl == nullptr) {
             fail_n(n, "lucb.check.type", "methods are called on structs");
             return t_error();
         }
-        Node* method = struct_member(ot->decl, mem->text, NodeKind::Func);
+        Node* method = struct_member(recv->decl, mem->text, NodeKind::Func);
         if (method == nullptr) {
             fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");
             return t_error();
@@ -925,7 +1296,8 @@ struct Checker {
         if ((method->flags & FlagStatic) != 0) {
             fail_n(n, "lucb.check.call", "a static method is called on the type");
         }
-        if ((method->flags & FlagMutating) != 0 && !is_mut_place(obj)) {
+        bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const);
+        if ((method->flags & FlagMutating) != 0 && !mut_ok) {
             fail_n(n, "lucb.check.mut", "a mutating method needs a `var` receiver");
         }
         mem->resolved = method;
@@ -935,6 +1307,47 @@ struct Checker {
     Type* check_member(Node* n, bool as_call) {
         (void)as_call;
         Type* ot = check_expr(n->left);
+        if (is_ptr(ot) && ot->elem != nullptr) {
+            ot = ot->elem;
+        }
+        if (n->text == "length") {
+            if (is_span(ot) || is_array(ot) || (ot != nullptr && ot->kind == TypeKind::Str) ||
+                is_span(n->left != nullptr ? n->left->ty : nullptr) ||
+                is_array(n->left != nullptr ? n->left->ty : nullptr) ||
+                (n->left != nullptr && n->left->ty != nullptr && n->left->ty->kind == TypeKind::Str)) {
+                Type* raw = n->left != nullptr ? n->left->ty : ot;
+                if (is_ptr(raw)) {
+                    raw = raw->elem;
+                }
+                if (is_span(raw) || is_array(raw) || (raw != nullptr && raw->kind == TypeKind::Str)) {
+                    return t_usize();
+                }
+            }
+        }
+        if (n->text == "data") {
+            Type* raw = n->left != nullptr ? n->left->ty : ot;
+            if (is_ptr(raw)) {
+                raw = raw->elem;
+            }
+            if (is_span(raw)) {
+                return intern_ptr(raw->elem, raw->is_const, false, false);
+            }
+            if (raw != nullptr && raw->kind == TypeKind::Str) {
+                return intern_ptr(ty_u8, true, false, false);
+            }
+        }
+        if (n->text == "bytes") {
+            Type* raw = n->left != nullptr ? n->left->ty : ot;
+            if (is_ptr(raw)) {
+                raw = raw->elem;
+            }
+            if (raw != nullptr && raw->kind == TypeKind::Str) {
+                if (is_local(n->left)) {
+                    mark_local(n);
+                }
+                return intern_sp(ty_u8, true);
+            }
+        }
         if (ot == nullptr || ot->kind != TypeKind::Struct || ot->decl == nullptr) {
             fail_n(n, "lucb.check.type", "field access needs a struct");
             return t_error();
@@ -945,6 +1358,9 @@ struct Checker {
             return t_error();
         }
         n->resolved = field;
+        if (is_local(n->left)) {
+            mark_local(n);
+        }
         return field->ty;
     }
 
@@ -961,7 +1377,27 @@ struct Checker {
             return b != nullptr && b->mut;
         }
         if (n->kind == NodeKind::Member) {
+            Type* ot = n->left != nullptr ? n->left->ty : nullptr;
+            if (is_ptr(ot)) {
+                return !ot->is_const;
+            }
             return is_mut_place(n->left);
+        }
+        if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {
+            Type* p = n->left != nullptr ? n->left->ty : nullptr;
+            return is_ptr(p) && !p->is_const;
+        }
+        if (n->kind == NodeKind::Index) {
+            Type* b = n->left != nullptr ? n->left->ty : nullptr;
+            if (is_ptr(b)) {
+                return !b->is_const;
+            }
+            if (is_span(b)) {
+                return !b->is_const;
+            }
+            if (is_array(b)) {
+                return is_mut_place(n->left);
+            }
         }
         return false;
     }
@@ -1004,6 +1440,9 @@ struct Checker {
             }
             n->ty = t;
             bind(n->text, t, n->kind == NodeKind::Var, n);
+            if (n->left != nullptr && is_local(n->left)) {
+                set_from_local(n->text, true);
+            }
             break;
         }
         case NodeKind::Assign: {
@@ -1013,7 +1452,7 @@ struct Checker {
             }
             if (n->op == TokenKind::Eq) {
                 Type* rt = check_expr(n->right, lt);
-                if (!type_eq(lt, rt) && !can_widen(rt, lt)) {
+                if (!type_eq(lt, rt) && !can_widen(rt, lt) && !can_ptr_convert(rt, lt, n->right)) {
                     fail_n(n, "lucb.check.type", "assignment type mismatch");
                 }
             } else {
@@ -1052,10 +1491,49 @@ struct Checker {
             if (n->left != nullptr) {
                 t = check_expr(n->left, return_type);
             }
-            if (return_type != nullptr && !type_eq(t, return_type) && !can_widen(t, return_type)) {
+            if (return_type != nullptr && !type_eq(t, return_type) && !can_widen(t, return_type) &&
+                !can_ptr_convert(t, return_type, n->left)) {
                 fail_n(n, "lucb.check.type", "return type is " + type_name(t) + ", expected " +
                                                  type_name(return_type));
             }
+            if (n->left != nullptr && is_local(n->left) &&
+                (is_ptr(return_type) || is_span(return_type) ||
+                 (return_type != nullptr && return_type->kind == TypeKind::Str))) {
+                fail_n(n, "lucb.check.escape", "this pointer or view must not escape the function");
+            }
+            break;
+        }
+        case NodeKind::For: {
+            Type* it = check_expr(n->right, nullptr);
+            Type* elem = nullptr;
+            if (n->flags & FlagByPtr) {
+                if (is_array(it)) {
+                    elem = intern_ptr(it->elem, !is_mut_place(n->right), false, false);
+                } else if (is_span(it)) {
+                    elem = intern_ptr(it->elem, it->is_const, false, false);
+                } else {
+                    fail_n(n, "lucb.check.type", "`for` over `&` needs an array or span");
+                }
+            } else if (is_array(it) || is_span(it)) {
+                elem = it->elem;
+            } else if (it != nullptr && it->kind == TypeKind::Str) {
+                elem = ty_char;
+            } else {
+                fail_n(n, "lucb.check.type", "`for` needs an array, span, or `str`");
+                elem = t_error();
+            }
+            if (n->type != nullptr) {
+                Type* want = resolve_type(n->type);
+                if (!type_eq(want, elem) && !can_widen(elem, want)) {
+                    fail_n(n, "lucb.check.type", "loop variable has the wrong type");
+                }
+                elem = want;
+            }
+            n->ty = elem;
+            push_scope();
+            bind(n->text, elem, false, n);
+            check_stmt(n->body);
+            pop_scope();
             break;
         }
         case NodeKind::ExprStmt:
@@ -1265,6 +1743,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_char = c.make_type(TypeKind::Char, "char");
     c.ty_str = c.make_type(TypeKind::Str, "str");
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
+    c.ty_void = c.make_type(TypeKind::Void, "void");
     c.check_module(module);
     return diagnostics.empty();
 }

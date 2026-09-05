@@ -408,8 +408,14 @@ void lb_print_bool(bool value) {
     puts(value ? "true" : "false");
 }
 
-void lb_print_str(const char* value) {
-    puts(value != NULL ? value : "");
+void lb_print_str(lb_str value) {
+    printf("%.*s\n", (int)value.length, value.data != NULL ? value.data : "");
+}
+
+void lb_check_index(uint64_t i, uint64_t n) {
+    if (i >= n) {
+        lb_trap("index out of bounds");
+    }
 }
 
 void lb_print_f64(double value) {

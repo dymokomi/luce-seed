@@ -239,3 +239,57 @@ TEST(agree_i64_min) {
 TEST(agree_f64_to_i64) {
     CHECK(agrees("pub func answer() -> i64:\n    let x: f64 = 40.9\n    return i64(x)\n"));
 }
+
+TEST(agree_pointer_deref) {
+    CHECK(agrees("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n"));
+}
+
+TEST(agree_array_index) {
+    CHECK(agrees("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n"));
+}
+
+TEST(agree_span_from_array) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var xs: i64[3] = [1, 2, 3]\n"
+                 "    let s: i64[] = xs\n"
+                 "    return s[0] + s[2]\n"));
+}
+
+TEST(agree_span_length) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var xs: i64[4]\n"
+                 "    let s: i64[] = xs\n"
+                 "    return i64(s.length)\n"));
+}
+
+TEST(agree_index_oob_traps) {
+    CHECK(agrees("pub func answer() -> i64:\n    var xs: i64[2] = [1, 2]\n    return xs[2]\n"));
+}
+
+TEST(agree_slice) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var xs: i64[4] = [1, 2, 3, 4]\n"
+                 "    let s = xs[1..<3]\n"
+                 "    return s[0] + s[1]\n"));
+}
+
+TEST(agree_for_span) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var xs: i64[3] = [10, 20, 30]\n"
+                 "    var n: i64 = 0\n"
+                 "    for x in xs:\n"
+                 "        n += x\n"
+                 "    return n\n"));
+}
+
+TEST(agree_str_length) {
+    CHECK(agrees("pub func answer() -> i64:\n    let t = \"hi\"\n    return i64(t.length)\n"));
+}
+
+TEST(agree_assign_through_pointer) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 1\n"
+                 "    let p = &n\n"
+                 "    *p = 9\n"
+                 "    return n\n"));
+}

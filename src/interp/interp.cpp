@@ -3,8 +3,10 @@
 #include "check/type.h"
 #include "support/literal.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 
 namespace lucb {
 namespace {
@@ -19,6 +21,8 @@ struct Value {
     double f = 0;
     string_view str;
     vector<Value> fields;
+    Value* ptr = nullptr;
+    size_t length = 0;
 };
 
 Value v_unit() {
@@ -77,9 +81,17 @@ Value v_zero(Type* t) {
     if (t->kind == TypeKind::Struct && t->decl != nullptr) {
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
-                v.fields.push_back(v_zero(m->ty));
+                v.fields.push_back(v_zero(t == nullptr ? nullptr : m->ty));
             }
         }
+    }
+    if (t->kind == TypeKind::Span) {
+        v.length = 0;
+        v.ptr = nullptr;
+    }
+    if (t->kind == TypeKind::Str) {
+        v.str = {};
+        v.length = 0;
     }
     return v;
 }
@@ -124,12 +136,13 @@ struct Slot {
 };
 
 struct Frame {
-    vector<Slot> slots;
+    std::deque<Slot> slots;
 };
 
 struct Interp {
     Node* module = nullptr;
     vector<Frame> frames;
+    std::deque<vector<Value>> storage;
     string output;
     bool trapped = false;
     string trap;
@@ -139,6 +152,37 @@ struct Interp {
     void fail(const string& message) {
         trapped = true;
         trap = message;
+    }
+
+    Value make_array(Type* t, vector<Value> elems) {
+        storage.push_back(std::move(elems));
+        Value v;
+        v.kind = TypeKind::Array;
+        v.type = t;
+        v.ptr = storage.back().data();
+        v.length = storage.back().size();
+        return v;
+    }
+
+    Value zero_of(Type* t) {
+        Value v = v_zero(t);
+        if (t != nullptr && t->kind == TypeKind::Array) {
+            vector<Value> elems;
+            elems.resize(static_cast<size_t>(t->length));
+            for (size_t i = 0; i < elems.size(); i++) {
+                elems[i] = zero_of(t->elem);
+            }
+            return make_array(t, std::move(elems));
+        }
+        if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr) {
+            v.fields.clear();
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::Field) {
+                    v.fields.push_back(zero_of(m->ty));
+                }
+            }
+        }
+        return v;
     }
 
     Slot* find_slot(string_view name) {
@@ -169,6 +213,9 @@ struct Interp {
         }
         if (n->kind == NodeKind::Member) {
             Value* obj = lvalue(n->left);
+            if (obj != nullptr && obj->kind == TypeKind::Pointer && obj->ptr != nullptr) {
+                obj = obj->ptr;
+            }
             if (obj == nullptr || obj->type == nullptr || obj->type->decl == nullptr) {
                 fail("invalid field access");
                 return nullptr;
@@ -179,6 +226,50 @@ struct Interp {
                 return nullptr;
             }
             return &obj->fields[static_cast<size_t>(i)];
+        }
+        if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {
+            Value p = eval(n->left);
+            if (trapped) {
+                return nullptr;
+            }
+            if (p.ptr == nullptr) {
+                fail("null pointer");
+                return nullptr;
+            }
+            return p.ptr;
+        }
+        if (n->kind == NodeKind::Index) {
+            Value* base = lvalue(n->left);
+            Value idxv = eval(n->body);
+            if (trapped || base == nullptr) {
+                return nullptr;
+            }
+            size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
+            Type* bt = n->left != nullptr ? n->left->ty : base->type;
+            if (is_ptr(bt) && base->kind == TypeKind::Pointer) {
+                if (base->ptr == nullptr) {
+                    fail("null pointer");
+                    return nullptr;
+                }
+                return base->ptr + static_cast<ptrdiff_t>(i);
+            }
+            if (base->kind == TypeKind::Pointer && base->ptr != nullptr) {
+                if (base->ptr->kind == TypeKind::Array || !base->ptr->fields.empty()) {
+                    base = base->ptr;
+                }
+            }
+            size_t nlen = base->length != 0 ? base->length : base->fields.size();
+            if (is_array(bt) || is_span(bt) || base->kind == TypeKind::Array ||
+                base->kind == TypeKind::Span) {
+                if (i >= nlen) {
+                    fail("index out of bounds");
+                    return nullptr;
+                }
+                if (base->ptr != nullptr) {
+                    return base->ptr + static_cast<ptrdiff_t>(i);
+                }
+                return &base->fields[i];
+            }
         }
         fail("not an lvalue");
         return nullptr;
@@ -246,8 +337,18 @@ struct Interp {
             if (n->op == TokenKind::KwFalse) {
                 return v_bool(false);
             }
+            if (n->op == TokenKind::KwNone) {
+                Value v;
+                v.kind = TypeKind::Pointer;
+                v.type = n->ty;
+                v.ptr = nullptr;
+                return v;
+            }
             if (n->op == TokenKind::StringLit) {
-                return v_str(n->text);
+                Value v = v_str(n->text);
+                v.length = decode_string(n->text).size();
+                v.type = n->ty;
+                return v;
             }
             if (n->op == TokenKind::IntLit) {
                 ParsedInt p = parse_int_literal(n->text);
@@ -292,13 +393,16 @@ struct Interp {
             return eval_binary(n);
         case NodeKind::Call:
             return eval_call(n);
-        case NodeKind::Member: {
-            Value* p = lvalue(n);
-            if (p == nullptr) {
-                return v_unit();
-            }
-            return *p;
-        }
+        case NodeKind::Member:
+            return eval_member(n);
+        case NodeKind::Index:
+            return eval_index(n);
+        case NodeKind::Slice:
+            return eval_slice(n);
+        case NodeKind::ArrayLit:
+            return eval_array_lit(n);
+        case NodeKind::SpanMake:
+            return eval_span_make(n);
         case NodeKind::Cast:
             return eval_conv(n->left, n->ty, false);
         case NodeKind::Conditional: {
@@ -314,6 +418,174 @@ struct Interp {
         }
     }
 
+    Value eval_member(Node* n) {
+        Value obj = eval(n->left);
+        if (trapped) {
+            return v_unit();
+        }
+        if (obj.kind == TypeKind::Pointer && obj.ptr != nullptr) {
+            obj = *obj.ptr;
+        }
+        if (n->text == "length") {
+            if (obj.kind == TypeKind::Str) {
+                return v_int(n->ty, decode_string(obj.str).size());
+            }
+            size_t len = obj.length != 0 ? obj.length : obj.fields.size();
+            if (obj.kind == TypeKind::Array && obj.type != nullptr) {
+                len = static_cast<size_t>(obj.type->length);
+            }
+            return v_int(n->ty != nullptr ? n->ty : nullptr, len);
+        }
+        if (n->text == "data") {
+            Value v;
+            v.kind = TypeKind::Pointer;
+            v.type = n->ty;
+            if (obj.kind == TypeKind::Span) {
+                v.ptr = obj.ptr;
+            } else if (obj.kind == TypeKind::Array && !obj.fields.empty()) {
+                v.ptr = &obj.fields[0];
+            }
+            return v;
+        }
+        if (n->text == "bytes") {
+            Value v;
+            v.kind = TypeKind::Span;
+            v.type = n->ty;
+            v.str = obj.str;
+            v.length = decode_string(obj.str).size();
+            return v;
+        }
+        Value* p = lvalue(n);
+        if (p == nullptr) {
+            return v_unit();
+        }
+        return *p;
+    }
+
+    Value eval_index(Node* n) {
+        Value* slot = nullptr;
+        if (n->left != nullptr &&
+            (n->left->kind == NodeKind::Name || n->left->kind == NodeKind::Self ||
+             n->left->kind == NodeKind::Member || n->left->kind == NodeKind::Index)) {
+            slot = lvalue(n);
+            if (slot != nullptr && !trapped) {
+                return *slot;
+            }
+            if (trapped) {
+                return v_unit();
+            }
+        }
+        Value base = eval(n->left);
+        Value idxv = eval(n->body);
+        if (trapped) {
+            return v_unit();
+        }
+        size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
+        if (base.kind == TypeKind::Str || !base.str.empty()) {
+            string d = decode_string(base.str);
+            if (i >= d.size()) {
+                fail("index out of bounds");
+                return v_unit();
+            }
+            return v_int(n->ty, static_cast<unsigned char>(d[i]));
+        }
+        if (base.kind == TypeKind::Span) {
+            if (i >= base.length) {
+                fail("index out of bounds");
+                return v_unit();
+            }
+            if (base.ptr != nullptr) {
+                return base.ptr[i];
+            }
+            if (!base.str.empty()) {
+                string d = decode_string(base.str);
+                if (i >= d.size()) {
+                    fail("index out of bounds");
+                    return v_unit();
+                }
+                return v_int(n->ty, static_cast<unsigned char>(d[i]));
+            }
+        }
+        if (base.kind == TypeKind::Array) {
+            if (i >= base.length) {
+                fail("index out of bounds");
+                return v_unit();
+            }
+            if (base.ptr != nullptr) {
+                return base.ptr[i];
+            }
+            return base.fields[i];
+        }
+        if (base.kind == TypeKind::Pointer && base.ptr != nullptr) {
+            return base.ptr[i];
+        }
+        fail("cannot index");
+        return v_unit();
+    }
+
+    Value eval_slice(Node* n) {
+        Value base = eval(n->left);
+        size_t len = base.length != 0 ? base.length : base.fields.size();
+        if (base.kind == TypeKind::Array && base.type != nullptr) {
+            len = static_cast<size_t>(base.type->length);
+        }
+        if (base.kind == TypeKind::Str) {
+            len = decode_string(base.str).size();
+        }
+        size_t start = 0;
+        size_t end = len;
+        if (n->body != nullptr) {
+            start = static_cast<size_t>(as_u(eval(n->body), n->body->ty));
+        }
+        if (n->right != nullptr) {
+            end = static_cast<size_t>(as_u(eval(n->right), n->right->ty));
+        }
+        if (trapped) {
+            return v_unit();
+        }
+        if (start > end || end > len) {
+            fail("index out of bounds");
+            return v_unit();
+        }
+        Value v;
+        v.kind = TypeKind::Span;
+        v.type = n->ty;
+        v.length = end - start;
+        if (base.ptr != nullptr) {
+            v.ptr = base.ptr + static_cast<ptrdiff_t>(start);
+        } else if (base.kind == TypeKind::Array && !base.fields.empty()) {
+            v.ptr = &base.fields[start];
+        } else {
+            v.str = base.str;
+        }
+        return v;
+    }
+
+    Value eval_array_lit(Node* n) {
+        vector<Value> elems;
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            elems.push_back(eval(e));
+            if (trapped) {
+                return v_unit();
+            }
+        }
+        return make_array(n->ty, std::move(elems));
+    }
+
+    Value eval_span_make(Node* n) {
+        Value p = eval(n->body != nullptr ? n->body->left : nullptr);
+        Value len = eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        Value v;
+        v.kind = TypeKind::Span;
+        v.type = n->ty;
+        v.ptr = p.ptr;
+        v.length = static_cast<size_t>(as_u(len, n->ty));
+        return v;
+    }
+
     Value eval_unary(Node* n) {
         Value x = eval(n->left);
         if (trapped) {
@@ -321,6 +593,21 @@ struct Interp {
         }
         if (n->op == TokenKind::KwNot) {
             return v_bool(!x.b);
+        }
+        if (n->op == TokenKind::Amp) {
+            Value* p = lvalue(n->left);
+            Value v;
+            v.kind = TypeKind::Pointer;
+            v.type = n->ty;
+            v.ptr = p;
+            return v;
+        }
+        if (n->op == TokenKind::Star) {
+            if (x.ptr == nullptr) {
+                fail("null pointer");
+                return v_unit();
+            }
+            return *x.ptr;
         }
         if (n->op == TokenKind::Plus) {
             return x;
@@ -589,6 +876,38 @@ struct Interp {
         }
         TokenKind op = n->op;
         Type* t = n->ty;
+        if (L.kind == TypeKind::Pointer || R.kind == TypeKind::Pointer) {
+            if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+                bool eq = L.ptr == R.ptr;
+                return v_bool(op == TokenKind::EqEq ? eq : !eq);
+            }
+            if (op == TokenKind::Plus && L.kind == TypeKind::Pointer && L.ptr != nullptr) {
+                L.ptr += static_cast<ptrdiff_t>(as_s(R, R.type));
+                L.type = n->ty;
+                return L;
+            }
+            if (op == TokenKind::Minus && L.kind == TypeKind::Pointer && R.kind == TypeKind::Pointer) {
+                return v_int(n->ty, static_cast<uint64_t>(L.ptr - R.ptr));
+            }
+            if (op == TokenKind::Minus && L.kind == TypeKind::Pointer && L.ptr != nullptr) {
+                L.ptr -= static_cast<ptrdiff_t>(as_s(R, R.type));
+                L.type = n->ty;
+                return L;
+            }
+            if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
+                op == TokenKind::GtEq) {
+                if (op == TokenKind::Lt) {
+                    return v_bool(L.ptr < R.ptr);
+                }
+                if (op == TokenKind::LtEq) {
+                    return v_bool(L.ptr <= R.ptr);
+                }
+                if (op == TokenKind::Gt) {
+                    return v_bool(L.ptr > R.ptr);
+                }
+                return v_bool(L.ptr >= R.ptr);
+            }
+        }
         if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
             bool eq = false;
             if (L.kind == TypeKind::Bool) {
@@ -690,6 +1009,11 @@ struct Interp {
                 return v_unit();
             }
             return v_int(dest, x.u);
+        }
+        if (is_ptr(dest)) {
+            x.type = dest;
+            x.kind = TypeKind::Pointer;
+            return x;
         }
         x.type = dest;
         x.kind = dest->kind;
@@ -848,13 +1172,31 @@ struct Interp {
             Slot s;
             s.name = n->text;
             if (n->left != nullptr) {
-                s.value = eval(n->left);
+                if (n->ty != nullptr && n->ty->kind == TypeKind::Span &&
+                    n->left->kind == NodeKind::Name) {
+                    Value* src = lvalue(n->left);
+                    s.value.kind = TypeKind::Span;
+                    s.value.type = n->ty;
+                    if (src != nullptr) {
+                        s.value.ptr = src->ptr != nullptr ? src->ptr : src->fields.data();
+                        s.value.length = src->length != 0 ? src->length : src->fields.size();
+                        s.value.str = src->str;
+                    }
+                } else {
+                    s.value = eval(n->left);
+                    if (n->ty != nullptr && n->ty->kind == TypeKind::Span &&
+                        s.value.kind == TypeKind::Array) {
+                        s.value.ptr = s.value.ptr;
+                        s.value.kind = TypeKind::Span;
+                        s.value.type = n->ty;
+                    }
+                    if (n->ty != nullptr) {
+                        s.value.type = n->ty;
+                        s.value.kind = n->ty->kind;
+                    }
+                }
             } else {
-                s.value = v_zero(n->ty);
-            }
-            if (n->ty != nullptr) {
-                s.value.type = n->ty;
-                s.value.kind = n->ty->kind;
+                s.value = zero_of(n->ty);
             }
             if (!frames.empty()) {
                 frames.back().slots.push_back(s);
@@ -945,6 +1287,61 @@ struct Interp {
             ret = n->left != nullptr ? eval(n->left) : v_unit();
             returning = true;
             break;
+        case NodeKind::For: {
+            Value it = eval(n->right);
+            if (trapped) {
+                return;
+            }
+            size_t len = it.length != 0 ? it.length : it.fields.size();
+            if (it.kind == TypeKind::Array && it.type != nullptr) {
+                len = static_cast<size_t>(it.type->length);
+            }
+            if (it.kind == TypeKind::Str) {
+                string d = decode_string(it.str);
+                len = d.size();
+                for (size_t i = 0; i < len && !trapped && !returning; i++) {
+                    Slot s;
+                    s.name = n->text;
+                    s.value = v_int(n->ty, static_cast<unsigned char>(d[static_cast<size_t>(i)]));
+                    if (n->ty != nullptr && n->ty->kind == TypeKind::Char) {
+                        s.value.kind = TypeKind::Char;
+                        s.value.u = static_cast<unsigned char>(d[i]);
+                    }
+                    frames.back().slots.push_back(s);
+                    exec(n->body);
+                    frames.back().slots.pop_back();
+                }
+                break;
+            }
+            for (size_t i = 0; i < len && !trapped && !returning; i++) {
+                Slot s;
+                s.name = n->text;
+                Value* elems = it.ptr;
+                Value elem;
+                if (elems != nullptr) {
+                    elem = elems[i];
+                } else if (i < it.fields.size()) {
+                    elem = it.fields[i];
+                }
+                if (n->flags & FlagByPtr) {
+                    Value p;
+                    p.kind = TypeKind::Pointer;
+                    p.type = n->ty;
+                    if (elems != nullptr) {
+                        p.ptr = elems + static_cast<ptrdiff_t>(i);
+                    } else if (i < it.fields.size()) {
+                        p.ptr = &it.fields[i];
+                    }
+                    s.value = p;
+                } else {
+                    s.value = elem;
+                }
+                frames.back().slots.push_back(s);
+                exec(n->body);
+                frames.back().slots.pop_back();
+            }
+            break;
+        }
         case NodeKind::ExprStmt:
             eval(n->left);
             break;

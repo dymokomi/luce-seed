@@ -57,11 +57,27 @@ uint64_t lb_f_to_u(double a, int bits, int mode);
 double lb_to_f(int64_t a, int from_signed);
 float lb_f64_to_f32(double a);
 
+typedef struct lb_str {
+    const char* data;
+    size_t length;
+} lb_str;
+
+typedef struct lb_span {
+    void* data;
+    size_t length;
+} lb_span;
+
+typedef struct lb_cspan {
+    const void* data;
+    size_t length;
+} lb_cspan;
+
 void lb_print_i64(int64_t value);
 void lb_print_u64(uint64_t value);
 void lb_print_bool(bool value);
-void lb_print_str(const char* value);
+void lb_print_str(lb_str value);
 void lb_print_f64(double value);
+void lb_check_index(uint64_t i, uint64_t n);
 
 /* Compatibility with the scalar-core helpers. */
 int64_t lb_add_i64(int64_t a, int64_t b);

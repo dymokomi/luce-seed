@@ -21,7 +21,10 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 4.5 | Array literals | done | `parse_array_literal` |
 | 5 | Types as syntax | partial | `parse_pointer_and_span_types`; scalars checked in M5 |
 | 7.3 | No chained comparisons; `not a == b` refused | done | `parse_chained_comparison`, `parse_not_before_comparison` |
+| 7.6 | Indexing and slicing | done | `agree_array_index`, `agree_slice`, `agree_index_oob_traps` |
+| 7.7 | Pointer `*`, `&`, `p+n` | done | `agree_pointer_deref`, `agree_assign_through_pointer` |
 | 8 | Control flow syntax | partial | if/while/for/match/defer/labels in `parse_test` |
+| 8.3 | `for` over arrays and spans | done | `agree_for_span`; ranges wait for M7 |
 | 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
 | 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
@@ -31,7 +34,11 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
 | 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` unsupported |
+| 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `check_escape_local`; `T*?` load traps, no `if let` |
+| 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
+| 5.5 | `str` as a view | partial | `agree_str_length`; `str(bytes)` as `str!` waits on errors |
 | 5.11 | `sizeof` | done | `agree_sizeof_i64`, `agree_sizeof_usize`; `offsetof` later |
+| 6.6 | Address-of and escape | partial | `check_escape_local`; stores into escaped params later |
 | 6.1 | `let`/`var`, zero values for i64/bool | partial | `eval_zero_var`; other types later |
 | 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
 | 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var` |
@@ -41,4 +48,4 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `check_explicit_self_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M6–M14 |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M7–M14 |
