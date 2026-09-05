@@ -14,6 +14,20 @@
 
 namespace lucb {
 
+// A temporary directory that is removed, with everything in it, when the
+// object goes out of scope. Every compile and run uses one, so nothing is
+// left behind under /tmp.
+struct ScratchDir {
+    string path;
+    ScratchDir();
+    ~ScratchDir();
+    ScratchDir(const ScratchDir&) = delete;
+    ScratchDir& operator=(const ScratchDir&) = delete;
+    bool ok() const {
+        return !path.empty();
+    }
+};
+
 struct RunResult {
     int exit_code = 1;
     string out;

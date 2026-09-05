@@ -136,10 +136,9 @@ TEST(agree_imported_add) {
     CHECK(check_program(mods_of(program), arena, diagnostics,
                         "testdata/programs/modules/imports/app.lucb"));
     std::string c = emit_program(mods_of(program), program.entry());
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    CHECK(dir != nullptr);
-    std::string exe = std::string(dir) + "/prog";
+    lucb::ScratchDir scratch;
+    CHECK(scratch.ok());
+    std::string exe = scratch.path + "/prog";
     std::string err;
     CHECK(compile_c(c, exe, &err, true));
     lucb::RunResult native = run_exe(exe);
@@ -158,10 +157,9 @@ TEST(agree_main_hello) {
     CHECK(check_program(mods_of(program), arena, diagnostics,
                         "testdata/programs/modules/imports/main.lucb"));
     std::string c = emit_c(program.entry());
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    CHECK(dir != nullptr);
-    std::string exe = std::string(dir) + "/prog";
+    lucb::ScratchDir scratch;
+    CHECK(scratch.ok());
+    std::string exe = scratch.path + "/prog";
     std::string err;
     CHECK(compile_c(c, exe, &err, false));
     lucb::RunResult native = run_exe(exe);

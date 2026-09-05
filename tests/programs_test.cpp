@@ -180,12 +180,11 @@ bool prove(const fs::path& entry) {
         return true;
     }
 
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    if (dir == nullptr) {
+    lucb::ScratchDir scratch;
+    if (!scratch.ok()) {
         return false;
     }
-    std::string exe = std::string(dir) + "/prog";
+    std::string exe = scratch.path + "/prog";
     if (!lucb::compile_c(c, exe, &err, has_answer)) {
         std::fprintf(stderr, "    link failed:\n%s\n", err.c_str());
         return false;

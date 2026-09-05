@@ -64,13 +64,12 @@ static bool compile_source(const char* text, Both* both) {
     }
     both->interp = eval_module(parsed.module);
     std::string c = emit_c(parsed.module);
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    if (dir == nullptr) {
+    lucb::ScratchDir scratch;
+    if (!scratch.ok()) {
         both->compile_error = "mkdtemp failed";
         return false;
     }
-    std::string exe = std::string(dir) + "/prog";
+    std::string exe = scratch.path + "/prog";
     if (!compile_c(c, exe, &both->compile_error)) {
         return false;
     }

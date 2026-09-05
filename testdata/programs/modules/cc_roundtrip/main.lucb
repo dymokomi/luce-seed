@@ -15,4 +15,6 @@ pub func answer() -> i64!:
     let (run_code, run_out, run_err) = try process.run("/tmp/lucb_seed_toy", empty[0..<0])
     discard(run_out)
     discard(run_err)
+    var cleanup: cstr[3] = ["-f", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
+    discard(try process.run("rm", cleanup))
     return i64(run_code)

@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.3**.
+This tree is **luce-seed-0.4**, the seed `luce-base` is written against.
+
+## 0.4: the seed for luce-base
+
+Every compile and run works in a scratch directory that is removed when it
+goes out of scope (`ScratchDir` in emit/host.h), in the compiler and in the
+tests; earlier builds left one directory under /tmp per invocation.
 
 ## Performance pass
 

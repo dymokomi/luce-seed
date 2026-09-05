@@ -14,6 +14,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <sys/wait.h>
@@ -67,17 +68,31 @@ bool write_text(const string& path, const char* text, string* error) {
 
 } // namespace
 
-bool compile_c(const string& c_source, const string& exe_path, string* error,
-               bool link_answer_start, bool release) {
+ScratchDir::ScratchDir() {
     char tmpl[] = "/tmp/lucbXXXXXX";
     char* dir = mkdtemp(tmpl);
-    if (dir == nullptr) {
+    if (dir != nullptr) {
+        path = dir;
+    }
+}
+
+ScratchDir::~ScratchDir() {
+    if (!path.empty()) {
+        std::error_code ignored;
+        std::filesystem::remove_all(path, ignored);
+    }
+}
+
+bool compile_c(const string& c_source, const string& exe_path, string* error,
+               bool link_answer_start, bool release) {
+    ScratchDir scratch;
+    if (!scratch.ok()) {
         if (error != nullptr) {
             *error = "could not create a temporary directory";
         }
         return false;
     }
-    string dir_path = dir;
+    const string& dir_path = scratch.path;
     string src_path = dir_path + "/gen.c";
     if (!write_text(src_path, c_source.c_str(), error)) {
         return false;
@@ -113,15 +128,14 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
 }
 
 bool compile_c_object(const string& c_source, string* error) {
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    if (dir == nullptr) {
+    ScratchDir scratch;
+    if (!scratch.ok()) {
         if (error != nullptr) {
             *error = "could not create a temporary directory";
         }
         return false;
     }
-    string dir_path = dir;
+    const string& dir_path = scratch.path;
     string src_path = dir_path + "/gen.c";
     if (!write_text(src_path, c_source.c_str(), error)) {
         return false;
@@ -147,13 +161,12 @@ bool compile_c_object(const string& c_source, string* error) {
 
 RunResult run_exe(const string& exe_path, const vector<string>& args) {
     RunResult result;
-    char tmpl[] = "/tmp/lucbXXXXXX";
-    char* dir = mkdtemp(tmpl);
-    if (dir == nullptr) {
+    ScratchDir scratch;
+    if (!scratch.ok()) {
         result.err = "could not create a temporary directory";
         return result;
     }
-    string dir_path = dir;
+    const string& dir_path = scratch.path;
     string out_path = dir_path + "/out";
     string err_path = dir_path + "/err";
     string cmd = shell_quote(exe_path);
