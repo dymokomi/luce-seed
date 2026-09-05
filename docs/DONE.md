@@ -13,6 +13,14 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M8 — Enums, unions, zeros, globals, layout
+
+Payload enums with exhaustive `match`, integer-backed `enum as u32` with
+`|` `&` `^` `~` and checked `T(n)`, C unions, zero values for structs and
+unions, `---` uninitialised locals, module `var` / `thread_local var`,
+`packed` / `align(N)`, `offsetof`. Interpreter and C backend agree.
+Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M7 — Optionals, errors, match, ranges, defer
 
 `T?` with `none` / `else` / `if let` / `while let`. `T!` with `try`,

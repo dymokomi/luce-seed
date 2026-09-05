@@ -82,12 +82,16 @@ Value v_zero(Type* t) {
     }
     v.type = t;
     v.kind = t->kind;
-    if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+    if ((t->kind == TypeKind::Struct || t->kind == TypeKind::Union) && t->decl != nullptr) {
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
-                v.fields.push_back(v_zero(t == nullptr ? nullptr : m->ty));
+                v.fields.push_back(v_zero(m->ty));
             }
         }
+    }
+    if (t->kind == TypeKind::Enum) {
+        v.u = 0;
+        v.present = true;
     }
     if (t->kind == TypeKind::Span) {
         v.length = 0;
@@ -160,6 +164,7 @@ struct Interp {
     Node* current_fn = nullptr;
     Value ret;
     string err_storage;
+    Frame globals;
     struct Deferred {
         Node* n = nullptr;
         bool err_only = false;
@@ -203,16 +208,74 @@ struct Interp {
     }
 
     Slot* find_slot(string_view name) {
-        if (frames.empty()) {
-            return nullptr;
+        if (!frames.empty()) {
+            Frame& f = frames.back();
+            for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
+                if (f.slots[static_cast<size_t>(i)].name == name) {
+                    return &f.slots[static_cast<size_t>(i)];
+                }
+            }
         }
-        Frame& f = frames.back();
-        for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
-            if (f.slots[static_cast<size_t>(i)].name == name) {
-                return &f.slots[static_cast<size_t>(i)];
+        for (int i = static_cast<int>(globals.slots.size()) - 1; i >= 0; i--) {
+            if (globals.slots[static_cast<size_t>(i)].name == name) {
+                return &globals.slots[static_cast<size_t>(i)];
             }
         }
         return nullptr;
+    }
+
+    uint64_t enum_case_int(Node* en, Node* cse) {
+        uint64_t next = 0;
+        if (en == nullptr) {
+            return 0;
+        }
+        for (Node* m = en->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            uint64_t v = next;
+            if (m->left != nullptr && m->left->kind == NodeKind::Literal &&
+                m->left->op == TokenKind::IntLit) {
+                ParsedInt p = parse_int_literal(m->left->text);
+                if (p.ok) {
+                    v = p.value;
+                }
+            }
+            if (m == cse) {
+                return v;
+            }
+            next = v + 1;
+        }
+        return 0;
+    }
+
+    int enum_tag_of(Node* en, Node* cse) {
+        int i = 0;
+        if (en == nullptr) {
+            return 0;
+        }
+        for (Node* m = en->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            if (m == cse) {
+                return i;
+            }
+            i++;
+        }
+        return 0;
+    }
+
+    Value v_enum_case(Node* cse, Type* t) {
+        Value v;
+        v.kind = TypeKind::Enum;
+        v.type = t;
+        if (is_int_enum(t)) {
+            v.u = enum_case_int(t != nullptr ? t->decl : nullptr, cse);
+        } else {
+            v.u = static_cast<uint64_t>(enum_tag_of(t != nullptr ? t->decl : nullptr, cse));
+        }
+        return v;
     }
 
     Value* lvalue(Node* n) {
@@ -438,6 +501,8 @@ struct Interp {
             return eval_else(n);
         case NodeKind::Catch:
             return eval_catch(n);
+        case NodeKind::CaseValue:
+            return eval_case_value(n);
         case NodeKind::Match:
         case NodeKind::MatchExpr:
             return eval_match(n);
@@ -454,7 +519,20 @@ struct Interp {
         }
     }
 
+    Value eval_case_value(Node* n) {
+        Value v = v_enum_case(n->resolved, n->ty);
+        if (n->body != nullptr && n->resolved != nullptr) {
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                v.fields.push_back(eval(a->left != nullptr ? a->left : a));
+            }
+        }
+        return v;
+    }
+
     Value eval_member(Node* n) {
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
+            return v_enum_case(n->resolved, n->ty);
+        }
         Value obj = eval(n->left);
         if (trapped) {
             return v_unit();
@@ -660,7 +738,16 @@ struct Interp {
         }
         Type* t = n->ty != nullptr ? n->ty : x.type;
         if (n->op == TokenKind::Tilde) {
-            return v_int(t, ~as_u(x, t));
+            Type* bits_t = is_int_enum(t) ? t->elem : t;
+            uint64_t u = ~as_u(x, bits_t);
+            if (is_int_enum(t)) {
+                Value v;
+                v.kind = TypeKind::Enum;
+                v.type = t;
+                v.u = u & int_mask(int_bits(bits_t));
+                return v;
+            }
+            return v_int(t, u);
         }
         if (is_float(t)) {
             if (n->op == TokenKind::Minus) {
@@ -954,6 +1041,27 @@ struct Interp {
                 return v_bool(L.ptr >= R.ptr);
             }
         }
+        if (L.kind == TypeKind::Enum || R.kind == TypeKind::Enum || is_int_enum(t)) {
+            Type* bits_t = is_int_enum(t) ? t->elem : t;
+            uint64_t a = as_u(L, bits_t != nullptr ? bits_t : L.type);
+            uint64_t b = as_u(R, bits_t != nullptr ? bits_t : R.type);
+            if (op == TokenKind::Amp || op == TokenKind::Pipe || op == TokenKind::Caret) {
+                Value v;
+                v.kind = TypeKind::Enum;
+                v.type = t;
+                if (op == TokenKind::Amp) {
+                    v.u = a & b;
+                } else if (op == TokenKind::Pipe) {
+                    v.u = a | b;
+                } else {
+                    v.u = a ^ b;
+                }
+                if (bits_t != nullptr) {
+                    v.u &= int_mask(int_bits(bits_t));
+                }
+                return v;
+            }
+        }
         if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
             bool eq = false;
             if (L.kind == TypeKind::Bool) {
@@ -962,6 +1070,8 @@ struct Interp {
                 eq = show(L) == show(R);
             } else if (is_float(L.type)) {
                 eq = L.f == R.f;
+            } else if (L.kind == TypeKind::Enum || R.kind == TypeKind::Enum) {
+                eq = L.u == R.u;
             } else {
                 eq = as_u(L, L.type) == as_u(R, R.type);
             }
@@ -1070,6 +1180,31 @@ struct Interp {
                 return !scrut.present;
             }
             return scrut.ptr == nullptr;
+        }
+        if (st != nullptr && st->kind == TypeKind::Enum && pat->resolved != nullptr &&
+            pat->resolved->kind == NodeKind::EnumCase) {
+            uint64_t want = is_int_enum(st) ? enum_case_int(st->decl, pat->resolved)
+                                            : static_cast<uint64_t>(enum_tag_of(st->decl, pat->resolved));
+            if (scrut.u != want) {
+                return false;
+            }
+            Node* p = pat->resolved->body;
+            Node* b = pat->body;
+            size_t i = 0;
+            while (p != nullptr && b != nullptr) {
+                if (b->text != "_") {
+                    Slot s;
+                    s.name = b->text;
+                    if (i < scrut.fields.size()) {
+                        s.value = scrut.fields[i];
+                    }
+                    frames.back().slots.push_back(s);
+                }
+                p = p->next;
+                b = b->next;
+                i++;
+            }
+            return true;
         }
         if (pat->text == "some") {
             if (scrut.kind == TypeKind::Optional && scrut.present) {
@@ -1182,6 +1317,42 @@ struct Interp {
         }
         if (is_float(src) && is_float(dest)) {
             return v_float(dest, x.f);
+        }
+        if (is_int_enum(src) && is_int(dest)) {
+            return v_int(dest, as_u(x, src->elem != nullptr ? src->elem : dest));
+        }
+        if (is_int(src) && is_int_enum(dest)) {
+            uint64_t u = as_u(x, src);
+            if (checked && dest->decl != nullptr) {
+                bool ok = false;
+                uint64_t next = 0;
+                for (Node* c = dest->decl->body; c != nullptr; c = c->next) {
+                    if (c->kind != NodeKind::EnumCase) {
+                        continue;
+                    }
+                    uint64_t v = next;
+                    if (c->left != nullptr && c->left->kind == NodeKind::Literal) {
+                        ParsedInt p = parse_int_literal(c->left->text);
+                        if (p.ok) {
+                            v = p.value;
+                        }
+                    }
+                    if (v == u) {
+                        ok = true;
+                        break;
+                    }
+                    next = v + 1;
+                }
+                if (!ok) {
+                    fail("invalid enum value");
+                    return v_unit();
+                }
+            }
+            Value v;
+            v.kind = TypeKind::Enum;
+            v.type = dest;
+            v.u = u;
+            return v;
         }
         if (is_int(src) && is_int(dest)) {
             int64_t s = is_signed_int(src) ? as_s(x, src) : static_cast<int64_t>(as_u(x, src));
@@ -1323,10 +1494,28 @@ struct Interp {
                                                   : static_cast<uint64_t>(type_align(t));
             return v_int(n->ty, v);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+            Node* tyarg = n->body != nullptr ? n->body->left : nullptr;
+            Node* field = n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                        : nullptr;
+            Type* t = tyarg != nullptr ? tyarg->ty : nullptr;
+            string_view fname = field != nullptr ? field->text : string_view{};
+            return v_int(n->ty, static_cast<uint64_t>(type_offset(t, fname)));
+        }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
+            Value v = v_enum_case(n->resolved, n->ty);
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                v.fields.push_back(eval(a->left));
+            }
+            return v;
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && n->ty != nullptr &&
-            n->resolved == nullptr && n->body != nullptr) {
+            n->body != nullptr &&
+            (n->resolved == nullptr ||
+             (n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty)))) {
             Type* dest = n->ty;
-            if (is_int(dest) || is_float(dest) || dest->kind == TypeKind::Char) {
+            if (is_int(dest) || is_float(dest) || dest->kind == TypeKind::Char ||
+                is_int_enum(dest)) {
                 return eval_conv(n->body->left, dest, true);
             }
         }
@@ -1722,6 +1911,23 @@ EvalResult eval_module(Node* module) {
     }
     Interp ip;
     ip.module = module;
+    for (Node* d = module->body; d != nullptr; d = d->next) {
+        if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
+            continue;
+        }
+        Slot s;
+        s.name = d->text;
+        if (d->left != nullptr) {
+            s.value = ip.eval(d->left);
+        } else {
+            s.value = ip.zero_of(d->ty);
+        }
+        if (d->ty != nullptr) {
+            s.value.type = d->ty;
+            s.value.kind = d->ty->kind;
+        }
+        ip.globals.slots.push_back(s);
+    }
     Node* answer = ip.find_func("answer");
     if (answer == nullptr) {
         ip.fail("no `answer` function");

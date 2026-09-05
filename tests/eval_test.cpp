@@ -410,3 +410,93 @@ TEST(eval_labeled_break) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 2);
 }
+
+TEST(eval_int_enum) {
+    EvalResult r = run("enum Access as u32:\n"
+                       "    empty = 0\n"
+                       "    read = 1\n"
+                       "    write = 2\n"
+                       "pub func answer() -> i64:\n"
+                       "    let mode = Access.read | Access.write\n"
+                       "    return i64((u32)mode)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 3);
+}
+
+TEST(eval_payload_enum) {
+    EvalResult r = run("enum Cmd:\n"
+                       "    quit\n"
+                       "    go(n: i64)\n"
+                       "pub func answer() -> i64:\n"
+                       "    let c = Cmd.go(7)\n"
+                       "    match c:\n"
+                       "        .quit:\n"
+                       "            return 0\n"
+                       "        .go(n):\n"
+                       "            return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 7);
+}
+
+TEST(eval_union) {
+    EvalResult r = run("union Value:\n"
+                       "    integer: i64\n"
+                       "    real: f64\n"
+                       "pub func answer() -> i64:\n"
+                       "    var v: Value\n"
+                       "    v.integer = 11\n"
+                       "    return v.integer\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 11);
+}
+
+TEST(eval_zero_struct) {
+    EvalResult r = run("struct Point:\n"
+                       "    var x: i64\n"
+                       "    var y: i64\n"
+                       "pub func answer() -> i64:\n"
+                       "    var p: Point\n"
+                       "    return p.x + p.y\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 0);
+}
+
+TEST(eval_uninit) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    var n: i64 = ---\n"
+                       "    n = 4\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 4);
+}
+
+TEST(eval_global) {
+    EvalResult r = run("var hits: i64\n"
+                       "func bump():\n"
+                       "    hits += 1\n"
+                       "pub func answer() -> i64:\n"
+                       "    bump()\n"
+                       "    bump()\n"
+                       "    return hits\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}
+
+TEST(eval_offsetof_packed) {
+    EvalResult r = run("packed struct H:\n"
+                       "    var a: u8\n"
+                       "    var b: u32\n"
+                       "pub func answer() -> i64:\n"
+                       "    return i64(offsetof(H, b))\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}
+
+TEST(eval_enum_checked_conv_traps) {
+    EvalResult r = run("enum Access as u32:\n"
+                       "    empty = 0\n"
+                       "    read = 1\n"
+                       "pub func answer() -> i64:\n"
+                       "    return i64((u32)Access(3))\n");
+    CHECK(r.trapped);
+}

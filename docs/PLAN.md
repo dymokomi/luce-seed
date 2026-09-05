@@ -66,6 +66,7 @@ Exhaustive `match`. Ranges. Labeled `break`/`continue`. `defer`.
 
 Payload enums, integer-backed `enum as u32`, unions, zero values, `---`,
 module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
+**Landed.**
 
 ## M9 — Modules, packages, `main`, `test`
 

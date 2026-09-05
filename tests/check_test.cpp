@@ -122,6 +122,46 @@ TEST(check_no_shadow) {
                     "lucb.check.shadow"));
 }
 
+TEST(check_enum_ok) {
+    CHECK(check_ok("enum Dir:\n    north\n    south\n"
+                   "pub func answer() -> i64:\n    let d = Dir.north\n    return 1\n"));
+}
+
+TEST(check_enum_match_missing) {
+    CHECK(check_has("enum Dir:\n    north\n    south\n"
+                    "pub func answer() -> i64:\n"
+                    "    match Dir.north:\n"
+                    "        .north:\n"
+                    "            return 1\n",
+                    "lucb.check.match"));
+}
+
+TEST(check_int_enum_needs_rest) {
+    CHECK(check_has("enum Access as u32:\n    empty = 0\n    read = 1\n"
+                    "pub func answer() -> i64:\n"
+                    "    match Access.read:\n"
+                    "        .empty:\n"
+                    "            return 0\n"
+                    "        .read:\n"
+                    "            return 1\n",
+                    "lucb.check.match"));
+}
+
+TEST(check_packed_addr_rejected) {
+    CHECK(check_has("packed struct H:\n    var a: u8\n    var b: i64\n"
+                    "pub func answer() -> i64:\n"
+                    "    var h: H\n"
+                    "    let p = &h.b\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_none_case_rejected) {
+    CHECK(check_has("enum E:\n    none\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.parse.expect"));
+}
+
 TEST(check_u8_literal_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n    let x: u8 = 200\n    return i64(x)\n"));
 }

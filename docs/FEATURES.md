@@ -38,9 +38,11 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `check_escape_local`; `T*?` is a nullable pointer |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
 | 5.5 | `str` as a view | partial | `agree_str_length`; `str(bytes)` as `str!` waits on errors |
-| 5.11 | `sizeof` | done | `agree_sizeof_i64`, `agree_sizeof_usize`; `offsetof` later |
+| 5.11 | `sizeof`, `offsetof`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_offsetof_packed`; `alignof` of types works |
 | 6.6 | Address-of and escape | partial | `check_escape_local`; stores into escaped params later |
-| 6.1 | `let`/`var`, zero values for i64/bool | partial | `eval_zero_var`; other types later |
+| 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`; never-null pointers still require an initialiser |
+| 6.2 | `---` uninitialised `var` | done | `agree_uninit` |
+| 6.3 | Module `var` / `thread_local var` | done | `agree_global`, `agree_thread_local` |
 | 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
 | 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var` |
 | 7.2 | Checked `+ - *`, wrapping `%`, saturating `|`, `+?` | done | `agree_u8_wrap`, `agree_u8_overflow_traps`, `agree_u8_saturating`, `agree_overflow_optional` |
@@ -50,10 +52,13 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
 | 5.8 | Optionals `T?`, `none`, `else`, `if let` | done | `agree_optional_else`, `agree_if_let`, `check_optional_ok` |
-| 8.4 | Exhaustive `match` | partial | `agree_match_int`; payload enums wait for M8 |
+| 8.4 | Exhaustive `match` | done | `agree_match_int`, `agree_payload_enum`, `check_enum_match_missing` |
+| 10.2 | Payload enums | done | `agree_payload_enum` |
+| 10.3 | Integer-backed `enum as u32` | done | `agree_int_enum`, `agree_enum_checked_conv_traps` |
+| 10.4 | Unions | done | `agree_union` |
 | 8.5 | Labeled `break`/`continue` | done | `agree_labeled_break`, `agree_break` |
 | 8.8 | `defer` | done | `agree_defer` |
 | 8.8 | `errdefer` | partial | `eval_errdefer`; C emit skips it |
 | 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let` |
 | 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `check_try_needs_fallible` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M8–M14 |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M9–M14 |

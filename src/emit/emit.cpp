@@ -63,11 +63,15 @@ string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
     }
-    if (t->kind == TypeKind::Struct) {
+    if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
+        (t->kind == TypeKind::Enum && !is_int_enum(t))) {
         if (t->decl != nullptr) {
             return struct_ident(t->decl);
         }
         return ident("lb_", t->name);
+    }
+    if (is_int_enum(t)) {
+        return c_type(t->elem);
     }
     if (t->kind == TypeKind::Array) {
         return array_c_name(t);
@@ -82,6 +86,48 @@ string c_type(Type* t) {
         return fail_c_name(t);
     }
     return c_type_name(t);
+}
+
+uint64_t emit_case_int(Node* en, Node* cse) {
+    uint64_t next = 0;
+    if (en == nullptr) {
+        return 0;
+    }
+    for (Node* m = en->body; m != nullptr; m = m->next) {
+        if (m->kind != NodeKind::EnumCase) {
+            continue;
+        }
+        uint64_t v = next;
+        if (m->left != nullptr && m->left->kind == NodeKind::Literal &&
+            m->left->op == TokenKind::IntLit) {
+            ParsedInt p = parse_int_literal(m->left->text);
+            if (p.ok) {
+                v = p.value;
+            }
+        }
+        if (m == cse) {
+            return v;
+        }
+        next = v + 1;
+    }
+    return 0;
+}
+
+int emit_case_tag(Node* en, Node* cse) {
+    int i = 0;
+    if (en == nullptr) {
+        return 0;
+    }
+    for (Node* m = en->body; m != nullptr; m = m->next) {
+        if (m->kind != NodeKind::EnumCase) {
+            continue;
+        }
+        if (m == cse) {
+            return i;
+        }
+        i++;
+    }
+    return 0;
 }
 
 string fn_c_ret(Node* fn) {
@@ -108,7 +154,7 @@ string bits_lit(Type* t) {
 }
 
 string down_cast(Type* t, const string& e) {
-    return "(" + string(c_type_name(t)) + ")(" + e + ")";
+    return "(" + c_type(t) + ")(" + e + ")";
 }
 
 string c_escape(string_view s) {
@@ -267,6 +313,38 @@ struct Emitter {
                n->left->kind == NodeKind::Name && n->left->text == "error";
     }
 
+    string emit_enum_value(Node* n) {
+        Node* cse = n->resolved;
+        Type* t = n->ty;
+        if (cse == nullptr) {
+            return "0";
+        }
+        if (is_int_enum(t)) {
+            uint64_t v = emit_case_int(t->decl, cse);
+            return "((" + c_type(t) + ")" + std::to_string(v) + "u)";
+        }
+        int tag = emit_case_tag(t != nullptr ? t->decl : nullptr, cse);
+        string s = "((" + c_type(t) + "){ .tag = " + std::to_string(tag);
+        if (n->body != nullptr && cse->body != nullptr) {
+            s += ", .u." + string(cse->text) + " = {";
+            bool first = true;
+            Node* p = cse->body;
+            Node* a = n->body;
+            while (p != nullptr && a != nullptr) {
+                if (!first) {
+                    s += ", ";
+                }
+                first = false;
+                s += "." + string(p->text) + " = " + emit_expr(a->left);
+                p = p->next;
+                a = a->next;
+            }
+            s += "}";
+        }
+        s += " })";
+        return s;
+    }
+
     string emit_try(Node* n) {
         int id = tmp();
         string rn = "_lb_r" + std::to_string(id);
@@ -353,6 +431,9 @@ struct Emitter {
         case NodeKind::Literal:
             return emit_literal(n);
         case NodeKind::Name:
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
+                return emit_enum_value(n);
+            }
             if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
                 string nm = ident("lb_", n->text);
                 char nbuf[32];
@@ -374,6 +455,9 @@ struct Emitter {
         case NodeKind::Call:
             return emit_call(n);
         case NodeKind::Member:
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
+                return emit_enum_value(n);
+            }
             return emit_member(n);
         case NodeKind::Conditional:
             return "(" + emit_expr(n->type) + " ? " + emit_expr(n->left) + " : " +
@@ -388,6 +472,8 @@ struct Emitter {
             return emit_array_lit(n);
         case NodeKind::SpanMake:
             return emit_span_make(n);
+        case NodeKind::CaseValue:
+            return emit_enum_value(n);
         case NodeKind::Else:
             return emit_else(n);
         case NodeKind::Catch:
@@ -630,11 +716,51 @@ struct Emitter {
         return "0";
     }
 
+    string emit_enum_check(Type* dest, const string& e) {
+        string s = "({ " + c_type(dest) + " _lb_e = (" + c_type(dest) + ")(" + e + "); ";
+        s += "if (!(";
+        bool first = true;
+        uint64_t next = 0;
+        Node* en = dest != nullptr ? dest->decl : nullptr;
+        for (Node* c = en != nullptr ? en->body : nullptr; c != nullptr; c = c->next) {
+            if (c->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            uint64_t v = next;
+            if (c->left != nullptr && c->left->kind == NodeKind::Literal) {
+                ParsedInt p = parse_int_literal(c->left->text);
+                if (p.ok) {
+                    v = p.value;
+                }
+            }
+            if (!first) {
+                s += " || ";
+            }
+            first = false;
+            s += "_lb_e == " + std::to_string(v) + "u";
+            next = v + 1;
+        }
+        if (first) {
+            s += "0";
+        }
+        s += ")) lb_trap(\"invalid enum value\"); _lb_e; })";
+        return s;
+    }
+
     string emit_conv(Node* src, Type* dest, bool checked) {
         string e = emit_expr(src);
         Type* st = src != nullptr ? src->ty : nullptr;
         if (dest == nullptr) {
             return e;
+        }
+        if (is_int_enum(dest)) {
+            if (checked) {
+                return emit_enum_check(dest, e);
+            }
+            return "(" + c_type(dest) + ")(" + e + ")";
+        }
+        if (is_int_enum(st) && is_int(dest)) {
+            return down_cast(dest, e);
         }
         int mode = checked ? 0 : 1;
         if (is_float(st) && is_int(dest)) {
@@ -856,15 +982,30 @@ struct Emitter {
             }
             return "((size_t)_Alignof(" + ty + "))";
         }
-        if (callee != nullptr && callee->kind == NodeKind::Name && n->resolved == nullptr &&
-            n->body != nullptr && n->ty != nullptr &&
-            (is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char)) {
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+            Node* tyarg = n->body != nullptr ? n->body->left : nullptr;
+            Node* field = n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                        : nullptr;
+            Type* t = tyarg != nullptr ? tyarg->ty : nullptr;
+            string ty = c_type(t);
+            string f = field != nullptr ? string(field->text) : "x";
+            return "((size_t)offsetof(" + ty + ", " + f + "))";
+        }
+        if (callee != nullptr && callee->kind == NodeKind::Name && n->body != nullptr &&
+            n->ty != nullptr &&
+            (n->resolved == nullptr ||
+             (n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty))) &&
+            (is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char ||
+             is_int_enum(n->ty))) {
             return emit_conv(n->body->left, n->ty, true);
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
             return emit_ctor(n, n->resolved);
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
+            if (callee->resolved != nullptr && callee->resolved->kind == NodeKind::EnumCase) {
+                return emit_enum_value(n);
+            }
             Node* method = callee->resolved;
             Node* obj = callee->left;
             Type* ot = obj != nullptr ? obj->ty : nullptr;
@@ -879,6 +1020,9 @@ struct Emitter {
                 return name + "(" + recv + ")";
             }
             return name + "(" + recv + ", " + args + ")";
+        }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
+            return emit_enum_value(n);
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func) {
             string name = func_ident(n->resolved, nullptr);
@@ -934,6 +1078,10 @@ struct Emitter {
         case NodeKind::Var: {
             string ty = c_type(n->ty);
             string name = ident("lb_", n->text);
+            if (n->flags & FlagUninit) {
+                line(ty + " " + name + ";");
+                break;
+            }
             string init = "0";
             if (n->left != nullptr) {
                 init = emit_expr(n->left);
@@ -945,7 +1093,8 @@ struct Emitter {
                     init = "((lb_span){" + init + ".d, " + nbuf + "})";
                 }
             } else if (n->ty != nullptr &&
-                       (n->ty->kind == TypeKind::Struct || is_array(n->ty) || is_span(n->ty) ||
+                       (n->ty->kind == TypeKind::Struct || n->ty->kind == TypeKind::Union ||
+                        n->ty->kind == TypeKind::Enum || is_array(n->ty) || is_span(n->ty) ||
                         n->ty->kind == TypeKind::Str || is_opt(n->ty))) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
@@ -1262,19 +1411,62 @@ struct Emitter {
         int id = tmp();
         string sv = "_lb_m" + std::to_string(id);
         line(c_type(st) + " " + sv + " = " + emit_expr(n->left) + ";");
-        if (is_int(st) || (st != nullptr && st->kind == TypeKind::Bool)) {
+        if (is_int(st) || is_int_enum(st) || (st != nullptr && st->kind == TypeKind::Bool)) {
             line("switch ((int64_t)(" + sv + ")) {");
             indent++;
             for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
                 for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
                     if (pat->text == "_") {
                         line("default:");
+                    } else if (pat->resolved != nullptr &&
+                               pat->resolved->kind == NodeKind::EnumCase) {
+                        line("case " + std::to_string(emit_case_int(st->decl, pat->resolved)) +
+                             "LL:");
                     } else if (pat->left != nullptr) {
                         line("case " + emit_expr(pat->left) + ":");
                     }
                 }
                 line("{");
                 indent++;
+                emit_stmt(arm->body);
+                line("break;");
+                indent--;
+                line("}");
+            }
+            indent--;
+            line("}");
+            return;
+        }
+        if (is_enum(st)) {
+            line("switch ((int)(" + sv + ".tag)) {");
+            indent++;
+            for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+                for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                    if (pat->text == "_") {
+                        line("default:");
+                    } else if (pat->resolved != nullptr) {
+                        int tag = emit_case_tag(st->decl, pat->resolved);
+                        line("case " + std::to_string(tag) + ":");
+                    }
+                }
+                line("{");
+                indent++;
+                for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                    Node* cse = pat->resolved;
+                    if (cse == nullptr || cse->body == nullptr) {
+                        continue;
+                    }
+                    Node* p = cse->body;
+                    Node* b = pat->body;
+                    while (p != nullptr && b != nullptr) {
+                        if (b->text != "_") {
+                            line(c_type(p->ty) + " " + ident("lb_", b->text) + " = " + sv + ".u." +
+                                 string(cse->text) + "." + string(p->text) + ";");
+                        }
+                        p = p->next;
+                        b = b->next;
+                    }
+                }
                 emit_stmt(arm->body);
                 line("break;");
                 indent--;
@@ -1449,13 +1641,44 @@ struct Emitter {
         out += '\n';
     }
 
+    string type_attrs(Node* n) {
+        string a;
+        if (n != nullptr && (n->flags & FlagPacked) != 0) {
+            a += " __attribute__((packed))";
+        }
+        uint64_t al = 0;
+        if (n != nullptr && n->type != nullptr && n->type->kind == NodeKind::Literal &&
+            n->type->op == TokenKind::IntLit) {
+            ParsedInt p = parse_int_literal(n->type->text);
+            if (p.ok) {
+                al = p.value;
+            }
+        }
+        if (al != 0) {
+            a += " __attribute__((aligned(" + std::to_string(al) + ")))";
+        }
+        return a;
+    }
+
     void emit_struct(Node* st) {
-        line("typedef struct " + struct_ident(st) + " {");
+        line("typedef struct" + type_attrs(st) + " " + struct_ident(st) + " {");
         indent++;
         bool any = false;
         for (Node* m = st->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
-                line(c_type(m->ty) + " " + string(m->text) + ";");
+                string fa;
+                uint64_t al = 0;
+                if (m->right != nullptr && m->right->kind == NodeKind::Literal &&
+                    m->right->op == TokenKind::IntLit) {
+                    ParsedInt p = parse_int_literal(m->right->text);
+                    if (p.ok) {
+                        al = p.value;
+                    }
+                }
+                if (al != 0) {
+                    fa = " __attribute__((aligned(" + std::to_string(al) + ")))";
+                }
+                line(c_type(m->ty) + " " + string(m->text) + fa + ";");
                 any = true;
             }
         }
@@ -1465,6 +1688,81 @@ struct Emitter {
         indent--;
         line("} " + struct_ident(st) + ";");
         out += '\n';
+    }
+
+    void emit_union(Node* un) {
+        line("typedef union " + struct_ident(un) + " {");
+        indent++;
+        bool any = false;
+        for (Node* m = un->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field) {
+                line(c_type(m->ty) + " " + string(m->text) + ";");
+                any = true;
+            }
+        }
+        if (!any) {
+            line("int unused;");
+        }
+        indent--;
+        line("} " + struct_ident(un) + ";");
+        out += '\n';
+    }
+
+    void emit_enum(Node* en) {
+        if (is_int_enum(en->ty)) {
+            return;
+        }
+        line("typedef struct " + struct_ident(en) + " {");
+        indent++;
+        line("int32_t tag;");
+        bool any_payload = false;
+        for (Node* c = en->body; c != nullptr; c = c->next) {
+            if (c->kind == NodeKind::EnumCase && c->body != nullptr) {
+                any_payload = true;
+                break;
+            }
+        }
+        if (any_payload) {
+            line("union {");
+            indent++;
+            for (Node* c = en->body; c != nullptr; c = c->next) {
+                if (c->kind != NodeKind::EnumCase || c->body == nullptr) {
+                    continue;
+                }
+                line("struct {");
+                indent++;
+                for (Node* p = c->body; p != nullptr; p = p->next) {
+                    line(c_type(p->ty) + " " + string(p->text) + ";");
+                }
+                indent--;
+                line("} " + string(c->text) + ";");
+            }
+            indent--;
+            line("} u;");
+        }
+        indent--;
+        line("} " + struct_ident(en) + ";");
+        out += '\n';
+    }
+
+    void emit_global(Node* g) {
+        string tl = (g->flags & FlagThreadLocal) != 0 ? "_Thread_local " : "";
+        string ty = c_type(g->ty);
+        string name = ident("lb_", g->text);
+        if (g->flags & FlagUninit) {
+            line(tl + ty + " " + name + ";");
+            return;
+        }
+        string init = "0";
+        if (g->left != nullptr) {
+            init = emit_expr(g->left);
+        } else if (g->ty != nullptr &&
+                   (g->ty->kind == TypeKind::Struct || g->ty->kind == TypeKind::Union ||
+                    g->ty->kind == TypeKind::Enum || is_array(g->ty) || is_opt(g->ty) ||
+                    is_span(g->ty) || (g->ty->kind == TypeKind::Str))) {
+            init = "{0}";
+        }
+        line(tl + ty + " " + name + " = " + init + ";");
     }
 
     void note_opt(Type* t) {
@@ -1594,6 +1892,15 @@ struct Emitter {
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
                 emit_struct(d);
+            } else if (d->kind == NodeKind::Union) {
+                emit_union(d);
+            } else if (d->kind == NodeKind::Enum) {
+                emit_enum(d);
+            }
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
+                emit_global(d);
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {

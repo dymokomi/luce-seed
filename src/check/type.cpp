@@ -1,6 +1,42 @@
 #include "check/type.h"
 
+#include "support/literal.h"
+
 namespace lucb {
+
+namespace {
+
+bool const_u64_lit(const Node* n, uint64_t* out) {
+    if (n == nullptr || out == nullptr) {
+        return false;
+    }
+    if (n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
+        ParsedInt p = parse_int_literal(n->text);
+        if (!p.ok) {
+            return false;
+        }
+        *out = p.value;
+        return true;
+    }
+    if (n->kind == NodeKind::Group) {
+        return const_u64_lit(n->left, out);
+    }
+    return false;
+}
+
+int pad_to(int off, int align) {
+    if (align <= 1) {
+        return off;
+    }
+    int rem = off % align;
+    if (rem == 0) {
+        return off;
+    }
+    return off + (align - rem);
+}
+
+} // namespace
+
 
 string type_name(const Type* t) {
     if (t == nullptr) {
@@ -84,6 +120,10 @@ string type_name(const Type* t) {
         return type_name(t->elem) + "!";
     case TypeKind::ErrorVal:
         return "Error";
+    case TypeKind::Enum:
+        return t->decl != nullptr ? string(t->decl->text) : "<enum>";
+    case TypeKind::Union:
+        return t->decl != nullptr ? string(t->decl->text) : "<union>";
     }
     return "<unknown>";
 }
@@ -184,6 +224,18 @@ bool is_fail(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Fallible;
 }
 
+bool is_enum(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Enum;
+}
+
+bool is_int_enum(const Type* t) {
+    return is_enum(t) && t->elem != nullptr && is_int(t->elem);
+}
+
+bool is_union(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Union;
+}
+
 int int_bits(const Type* t) {
     if (t == nullptr) {
         return 0;
@@ -270,6 +322,53 @@ bool can_widen(const Type* from, const Type* to) {
     return false;
 }
 
+int field_align(const Node* f) {
+    int a = type_align(f != nullptr ? f->ty : nullptr);
+    uint64_t n = 0;
+    if (f != nullptr && const_u64_lit(f->right, &n) && static_cast<int>(n) > a) {
+        a = static_cast<int>(n);
+    }
+    return a < 1 ? 1 : a;
+}
+
+int layout_struct(const Type* t, string_view want, int* out_off) {
+    if (t == nullptr || t->decl == nullptr) {
+        return 0;
+    }
+    bool packed = t->packed || (t->decl->flags & FlagPacked) != 0;
+    int size = 0;
+    int align = packed ? 1 : 1;
+    if (out_off != nullptr) {
+        *out_off = -1;
+    }
+    for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+        if (m->kind != NodeKind::Field) {
+            continue;
+        }
+        int fa = packed ? 1 : field_align(m);
+        int fs = type_size(m->ty);
+        if (!packed) {
+            size = pad_to(size, fa);
+        }
+        if (out_off != nullptr && m->text == want) {
+            *out_off = size;
+        }
+        size += fs;
+        if (fa > align) {
+            align = fa;
+        }
+    }
+    uint64_t raised = 0;
+    if (const_u64_lit(t->decl->type, &raised) && static_cast<int>(raised) > align) {
+        align = static_cast<int>(raised);
+    }
+    if (t->align_to > align) {
+        align = t->align_to;
+    }
+    size = pad_to(size, align);
+    return size;
+}
+
 int type_align(const Type* t) {
     if (t == nullptr) {
         return 1;
@@ -281,20 +380,62 @@ int type_align(const Type* t) {
         return type_align(t->elem);
     }
     if (t->kind == TypeKind::Struct) {
-        int align = 1;
-        if (t->decl == nullptr) {
-            return 1;
-        }
-        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
-            if (m->kind != NodeKind::Field) {
-                continue;
+        bool packed = t->packed || (t->decl != nullptr && (t->decl->flags & FlagPacked) != 0);
+        int align = packed ? 1 : 1;
+        if (t->decl != nullptr) {
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind != NodeKind::Field) {
+                    continue;
+                }
+                int a = packed ? 1 : field_align(m);
+                if (a > align) {
+                    align = a;
+                }
             }
-            int a = type_align(m->ty);
-            if (a > align) {
-                align = a;
+            uint64_t raised = 0;
+            if (const_u64_lit(t->decl->type, &raised) && static_cast<int>(raised) > align) {
+                align = static_cast<int>(raised);
+            }
+        }
+        if (t->align_to > align) {
+            align = t->align_to;
+        }
+        return align < 1 ? 1 : align;
+    }
+    if (t->kind == TypeKind::Union) {
+        int align = 1;
+        if (t->decl != nullptr) {
+            for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+                if (m->kind != NodeKind::Field) {
+                    continue;
+                }
+                int a = type_align(m->ty);
+                if (a > align) {
+                    align = a;
+                }
             }
         }
         return align < 1 ? 1 : align;
+    }
+    if (t->kind == TypeKind::Enum) {
+        if (is_int_enum(t)) {
+            return type_align(t->elem);
+        }
+        int align = 4;
+        if (t->decl != nullptr) {
+            for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+                if (c->kind != NodeKind::EnumCase) {
+                    continue;
+                }
+                for (Node* p = c->body; p != nullptr; p = p->next) {
+                    int a = type_align(p->ty);
+                    if (a > align) {
+                        align = a;
+                    }
+                }
+            }
+        }
+        return align;
     }
     int n = type_size(t);
     if (n <= 0) {
@@ -347,7 +488,9 @@ int type_size(const Type* t) {
         return type_size(t->elem) * static_cast<int>(t->length);
     case TypeKind::Void:
         return 0;
-    case TypeKind::Struct: {
+    case TypeKind::Struct:
+        return layout_struct(t, {}, nullptr);
+    case TypeKind::Union: {
         if (t->decl == nullptr) {
             return 0;
         }
@@ -357,24 +500,62 @@ int type_size(const Type* t) {
             if (m->kind != NodeKind::Field) {
                 continue;
             }
-            int falign = type_align(m->ty);
-            int fsize = type_size(m->ty);
-            if (falign > 1 && size % falign != 0) {
-                size += falign - (size % falign);
+            int fs = type_size(m->ty);
+            int fa = type_align(m->ty);
+            if (fs > size) {
+                size = fs;
             }
-            size += fsize;
-            if (falign > align) {
-                align = falign;
+            if (fa > align) {
+                align = fa;
             }
         }
-        if (align > 1 && size % align != 0) {
-            size += align - (size % align);
+        return pad_to(size, align);
+    }
+    case TypeKind::Enum: {
+        if (is_int_enum(t)) {
+            return type_size(t->elem);
         }
-        return size;
+        int psz = 0;
+        int palign = 4;
+        if (t->decl != nullptr) {
+            for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+                if (c->kind != NodeKind::EnumCase) {
+                    continue;
+                }
+                int s = 0;
+                int a = 1;
+                for (Node* p = c->body; p != nullptr; p = p->next) {
+                    int fa = type_align(p->ty);
+                    s = pad_to(s, fa);
+                    s += type_size(p->ty);
+                    if (fa > a) {
+                        a = fa;
+                    }
+                }
+                s = pad_to(s, a);
+                if (s > psz) {
+                    psz = s;
+                }
+                if (a > palign) {
+                    palign = a;
+                }
+            }
+        }
+        int size = pad_to(4, palign) + psz;
+        return pad_to(size, palign);
     }
     default:
         return 0;
     }
+}
+
+int type_offset(const Type* t, string_view field) {
+    if (is_union(t)) {
+        return 0;
+    }
+    int off = -1;
+    layout_struct(t, field, &off);
+    return off;
 }
 
 const char* c_type_name(const Type* t) {
@@ -452,12 +633,45 @@ bool is_zeroable(const Type* t) {
     if (is_opt(t) || t->kind == TypeKind::ErrorVal) {
         return true;
     }
+    if (is_int_enum(t) && t->decl != nullptr) {
+        uint64_t next = 0;
+        for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+            if (c->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            uint64_t v = next;
+            if (c->left != nullptr) {
+                const_u64_lit(c->left, &v);
+            }
+            if (v == 0) {
+                return true;
+            }
+            next = v + 1;
+        }
+        return false;
+    }
+    if (is_enum(t) && t->decl != nullptr) {
+        for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+            if (c->kind == NodeKind::EnumCase) {
+                return c->body == nullptr;
+            }
+        }
+        return false;
+    }
+    if (is_union(t) && t->decl != nullptr) {
+        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field && !is_zeroable(m->ty)) {
+                return false;
+            }
+        }
+        return true;
+    }
     if (t->kind != TypeKind::Struct || t->decl == nullptr) {
         return false;
     }
     for (Node* m = t->decl->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
-            if (!is_zeroable(m->ty)) {
+            if (m->left != nullptr || !is_zeroable(m->ty)) {
                 return false;
             }
         }

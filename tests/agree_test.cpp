@@ -378,3 +378,84 @@ TEST(agree_labeled_break) {
                  "            break outer\n"
                  "    return n\n"));
 }
+
+TEST(agree_int_enum) {
+    CHECK(agrees("enum Access as u32:\n"
+                 "    empty = 0\n"
+                 "    read = 1\n"
+                 "    write = 2\n"
+                 "pub func answer() -> i64:\n"
+                 "    let mode = Access.read | Access.write\n"
+                 "    return i64((u32)mode)\n"));
+}
+
+TEST(agree_payload_enum) {
+    CHECK(agrees("enum Cmd:\n"
+                 "    quit\n"
+                 "    go(n: i64)\n"
+                 "pub func answer() -> i64:\n"
+                 "    let c = Cmd.go(7)\n"
+                 "    match c:\n"
+                 "        .quit:\n"
+                 "            return 0\n"
+                 "        .go(n):\n"
+                 "            return n\n"));
+}
+
+TEST(agree_union) {
+    CHECK(agrees("union Value:\n"
+                 "    integer: i64\n"
+                 "    real: f64\n"
+                 "pub func answer() -> i64:\n"
+                 "    var v: Value\n"
+                 "    v.integer = 11\n"
+                 "    return v.integer\n"));
+}
+
+TEST(agree_zero_struct) {
+    CHECK(agrees("struct Point:\n"
+                 "    var x: i64\n"
+                 "    var y: i64\n"
+                 "pub func answer() -> i64:\n"
+                 "    var p: Point\n"
+                 "    return p.x + p.y\n"));
+}
+
+TEST(agree_uninit) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = ---\n"
+                 "    n = 4\n"
+                 "    return n\n"));
+}
+
+TEST(agree_global) {
+    CHECK(agrees("var hits: i64\n"
+                 "func bump():\n"
+                 "    hits += 1\n"
+                 "pub func answer() -> i64:\n"
+                 "    bump()\n"
+                 "    bump()\n"
+                 "    return hits\n"));
+}
+
+TEST(agree_offsetof_packed) {
+    CHECK(agrees("packed struct H:\n"
+                 "    var a: u8\n"
+                 "    var b: u32\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64(offsetof(H, b))\n"));
+}
+
+TEST(agree_enum_checked_conv_traps) {
+    CHECK(agrees("enum Access as u32:\n"
+                 "    empty = 0\n"
+                 "    read = 1\n"
+                 "pub func answer() -> i64:\n"
+                 "    return i64((u32)Access(3))\n"));
+}
+
+TEST(agree_thread_local) {
+    CHECK(agrees("thread_local var n: i64 = 5\n"
+                 "pub func answer() -> i64:\n"
+                 "    return n\n"));
+}

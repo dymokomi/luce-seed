@@ -381,7 +381,9 @@ struct Checker {
             return n->ty;
         }
         Binding* b = lookup(n->text);
-        if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Struct) {
+        if (b != nullptr && b->type != nullptr &&
+            (b->type->kind == TypeKind::Struct || b->type->kind == TypeKind::Enum ||
+             b->type->kind == TypeKind::Union)) {
             n->ty = b->type;
             n->resolved = b->decl;
             return n->ty;
@@ -401,6 +403,75 @@ struct Checker {
             }
         }
         return nullptr;
+    }
+
+    Node* enum_case(Node* en, string_view name) {
+        return struct_member(en, name, NodeKind::EnumCase);
+    }
+
+    int enum_tag(Node* en, Node* cse) {
+        int i = 0;
+        if (en == nullptr) {
+            return -1;
+        }
+        for (Node* m = en->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            if (m == cse) {
+                return i;
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    Type* check_case_payload(Node* n, Node* cse, Type* et) {
+        Node* p = cse != nullptr ? cse->body : nullptr;
+        Node* a = n->body;
+        while (p != nullptr && a != nullptr) {
+            Type* at = check_expr(a->left != nullptr ? a->left : a, p->ty);
+            if (!type_eq(at, p->ty) && !can_widen(at, p->ty)) {
+                fail_n(a, "lucb.check.type",
+                       "payload `" + string(p->text) + "` has type " + type_name(p->ty));
+            }
+            a->resolved = p;
+            p = p->next;
+            a = a->next;
+        }
+        if (p != nullptr || a != nullptr) {
+            fail_n(n, "lucb.check.call", "wrong number of payload fields");
+        }
+        return et;
+    }
+
+    Type* check_case_value(Node* n, Type* expected) {
+        Type* et = expected;
+        if (is_opt(et)) {
+            et = et->elem;
+        }
+        if (!is_enum(et) || et->decl == nullptr) {
+            fail_n(n, "lucb.check.type", "a case value needs an expected enum type");
+            return t_error();
+        }
+        Node* cse = enum_case(et->decl, n->text);
+        if (cse == nullptr) {
+            fail_n(n, "lucb.check.name", "no case `" + string(n->text) + "`");
+            return t_error();
+        }
+        n->resolved = cse;
+        if (n->body != nullptr) {
+            if (cse->body == nullptr) {
+                fail_n(n, "lucb.check.type", "this case has no payload");
+                return t_error();
+            }
+            return check_case_payload(n, cse, et);
+        }
+        if (cse->body != nullptr) {
+            fail_n(n, "lucb.check.type", "this case needs a payload");
+            return t_error();
+        }
+        return et;
     }
 
     Type* check_expr(Node* n, Type* expected = nullptr) {
@@ -429,6 +500,9 @@ struct Checker {
             break;
         case NodeKind::Member:
             t = check_member(n, false);
+            break;
+        case NodeKind::CaseValue:
+            t = check_case_value(n, expected);
             break;
         case NodeKind::Group:
             t = check_expr(n->left, expected);
@@ -745,7 +819,7 @@ struct Checker {
         }
         if (n->op == TokenKind::Tilde) {
             Type* inner = check_expr(n->left, expected);
-            if (!is_int(inner)) {
+            if (!is_int(inner) && !is_int_enum(inner)) {
                 fail_n(n, "lucb.check.type", "`~` requires an integer");
                 return t_error();
             }
@@ -810,6 +884,20 @@ struct Checker {
             Type* inner = check_expr(n->left, nullptr);
             bool mut = is_mut_place(n->left);
             Type* p = intern_ptr(inner, !mut, false, false);
+            if (n->left != nullptr && n->left->kind == NodeKind::Member) {
+                Type* ot = n->left->left != nullptr ? n->left->left->ty : nullptr;
+                if (is_ptr(ot)) {
+                    ot = ot->elem;
+                }
+                if (ot != nullptr && ot->kind == TypeKind::Struct && ot->decl != nullptr &&
+                    (ot->decl->flags & FlagPacked) != 0) {
+                    int a = type_align(inner);
+                    if (a > 1) {
+                        fail_n(n, "lucb.check.type",
+                               "cannot take the address of a packed field");
+                    }
+                }
+            }
             if (n->left != nullptr &&
                 (n->left->kind == NodeKind::Name || n->left->kind == NodeKind::Self ||
                  n->left->kind == NodeKind::Index || n->left->kind == NodeKind::Member ||
@@ -982,6 +1070,28 @@ struct Checker {
             fail_n(n, "lucb.check.type", "invalid pointer arithmetic");
             return t_error();
         }
+        if (is_int_enum(L) || is_int_enum(R)) {
+            if (R->kind == TypeKind::UntypedInt) {
+                R = coerce(n->right, R, is_int_enum(L) ? L->elem : t_i64());
+                n->right->ty = R;
+            }
+            if (L->kind == TypeKind::UntypedInt) {
+                L = coerce(n->left, L, is_int_enum(R) ? R->elem : t_i64());
+                n->left->ty = L;
+            }
+            if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+                if (!type_eq(L, R)) {
+                    fail_n(n, "lucb.check.type", "operands of `==` must have the same type");
+                }
+                return t_bool();
+            }
+            if ((op == TokenKind::Amp || op == TokenKind::Pipe || op == TokenKind::Caret) &&
+                type_eq(L, R) && is_int_enum(L)) {
+                return L;
+            }
+            fail_n(n, "lucb.check.type", "invalid enum operator");
+            return t_error();
+        }
         if (L->kind == TypeKind::UntypedInt && R->kind == TypeKind::UntypedInt &&
             expected != nullptr && is_int(expected)) {
             L = coerce(n->left, L, expected);
@@ -1089,8 +1199,7 @@ struct Checker {
             return check_alignof(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
-            fail_n(n, "lucb.check.unsupported", "`offsetof` is not in this slice");
-            return t_error();
+            return check_offsetof(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             return check_method_call(n);
@@ -1109,6 +1218,9 @@ struct Checker {
             n->resolved = b->decl;
             if (b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
                 return check_ctor(n, b->decl);
+            }
+            if (b->decl != nullptr && b->decl->kind == NodeKind::Enum && is_int_enum(b->type)) {
+                return check_checked_conv(n, b->type);
             }
             if (b->decl != nullptr && b->decl->kind == NodeKind::Func) {
                 return check_func_call(n, b->decl, nullptr);
@@ -1131,7 +1243,9 @@ struct Checker {
                 return named;
             }
             Binding* b = lookup(a->text);
-            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
+            if (b != nullptr && b->decl != nullptr &&
+                (b->decl->kind == NodeKind::Struct || b->decl->kind == NodeKind::Enum ||
+                 b->decl->kind == NodeKind::Union)) {
                 a->ty = b->type;
                 a->resolved = b->decl;
                 return b->type;
@@ -1150,6 +1264,31 @@ struct Checker {
             return t_usize();
         }
         n->body->left->ty = t;
+        return t_usize();
+    }
+
+    Type* check_offsetof(Node* n) {
+        int count = count_args(n->body);
+        if (count != 2) {
+            fail_n(n, "lucb.check.call", "`offsetof` takes a type and a field");
+            return t_usize();
+        }
+        Type* t = type_from_expr_or_name(n->body->left);
+        Node* field = n->body->next != nullptr ? n->body->next->left : nullptr;
+        if (t->kind != TypeKind::Struct && !is_union(t)) {
+            fail_n(n, "lucb.check.type", "`offsetof` needs a struct or union");
+            return t_usize();
+        }
+        if (field == nullptr || field->kind != NodeKind::Name) {
+            fail_n(n, "lucb.check.type", "`offsetof` needs a field name");
+            return t_usize();
+        }
+        Node* f = struct_member(t->decl, field->text, NodeKind::Field);
+        if (f == nullptr) {
+            fail_n(n, "lucb.check.name", "no field `" + string(field->text) + "`");
+        }
+        n->body->left->ty = t;
+        field->resolved = f;
         return t_usize();
     }
 
@@ -1234,6 +1373,12 @@ struct Checker {
             return true;
         }
         if (is_int(src) && dest->kind == TypeKind::Char) {
+            return true;
+        }
+        if (is_int_enum(src) && is_int(dest)) {
+            return true;
+        }
+        if (is_int(src) && is_int_enum(dest)) {
             return true;
         }
         fail_n(n, "lucb.check.type",
@@ -1332,6 +1477,7 @@ struct Checker {
         bool saw_false = false;
         bool saw_none = false;
         bool saw_some = false;
+        vector<string_view> saw_cases;
         for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
             push_scope();
             for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
@@ -1343,6 +1489,24 @@ struct Checker {
                     saw_some = true;
                     if (pat->body != nullptr && !pat->body->text.empty() && is_opt(scrut)) {
                         bind(pat->body->text, scrut->elem, false, pat);
+                    }
+                } else if (is_enum(scrut) && scrut->decl != nullptr && !pat->text.empty() &&
+                           pat->text != "_" && pat->left == nullptr) {
+                    Node* cse = enum_case(scrut->decl, pat->text);
+                    if (cse == nullptr) {
+                        fail_n(pat, "lucb.check.name", "no case `" + string(pat->text) + "`");
+                    } else {
+                        saw_cases.push_back(pat->text);
+                        pat->resolved = cse;
+                        Node* p = cse->body;
+                        Node* b = pat->body;
+                        while (p != nullptr && b != nullptr) {
+                            if (b->text != "_") {
+                                bind(b->text, p->ty, false, b);
+                            }
+                            p = p->next;
+                            b = b->next;
+                        }
                     }
                 } else if (pat->left != nullptr && pat->left->kind == NodeKind::Literal) {
                     if (pat->left->op == TokenKind::KwTrue) {
@@ -1379,6 +1543,27 @@ struct Checker {
         }
         if (is_int(scrut) && !saw_rest) {
             fail_n(n, "lucb.check.match", "`match` on an integer needs a `_` arm");
+        }
+        if (is_int_enum(scrut) && !saw_rest) {
+            fail_n(n, "lucb.check.match", "`match` on an integer-backed enum needs a `_` arm");
+        }
+        if (is_enum(scrut) && !is_int_enum(scrut) && !saw_rest && scrut->decl != nullptr) {
+            for (Node* c = scrut->decl->body; c != nullptr; c = c->next) {
+                if (c->kind != NodeKind::EnumCase) {
+                    continue;
+                }
+                bool hit = false;
+                for (size_t i = 0; i < saw_cases.size(); i++) {
+                    if (saw_cases[i] == c->text) {
+                        hit = true;
+                    }
+                }
+                if (!hit) {
+                    fail_n(n, "lucb.check.match",
+                           "`match` is missing case `" + string(c->text) + "`");
+                    break;
+                }
+            }
         }
         return result != nullptr ? result : t_unit();
     }
@@ -1471,6 +1656,22 @@ struct Checker {
         // Static: Point.origin() — obj is a type name.
         if (obj != nullptr && obj->kind == NodeKind::Name) {
             Binding* b = lookup(obj->text);
+            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Enum) {
+                Node* cse = enum_case(b->decl, mem->text);
+                if (cse == nullptr) {
+                    fail_n(n, "lucb.check.name", "no case `" + string(mem->text) + "`");
+                    return t_error();
+                }
+                mem->resolved = cse;
+                n->resolved = cse;
+                obj->resolved = b->decl;
+                obj->ty = b->type;
+                if (cse->body == nullptr) {
+                    fail_n(n, "lucb.check.type", "this case has no payload");
+                    return t_error();
+                }
+                return check_case_payload(n, cse, b->type);
+            }
             if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
                 Node* method = struct_member(b->decl, mem->text, NodeKind::Func);
                 if (method == nullptr) {
@@ -1490,7 +1691,9 @@ struct Checker {
         if (is_ptr(ot) && ot->elem != nullptr) {
             recv = ot->elem;
         }
-        if (recv == nullptr || recv->kind != TypeKind::Struct || recv->decl == nullptr) {
+        if (recv == nullptr ||
+            (recv->kind != TypeKind::Struct && recv->kind != TypeKind::Union) ||
+            recv->decl == nullptr) {
             fail_n(n, "lucb.check.type", "methods are called on structs");
             return t_error();
         }
@@ -1553,6 +1756,33 @@ struct Checker {
                 }
                 return intern_sp(ty_u8, true);
             }
+        }
+        if (n->left != nullptr && n->left->kind == NodeKind::Name) {
+            Binding* b = lookup(n->left->text);
+            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Enum) {
+                Node* cse = enum_case(b->decl, n->text);
+                if (cse == nullptr) {
+                    fail_n(n, "lucb.check.name", "no case `" + string(n->text) + "`");
+                    return t_error();
+                }
+                if (cse->body != nullptr) {
+                    fail_n(n, "lucb.check.type", "this case needs a payload");
+                    return t_error();
+                }
+                n->resolved = cse;
+                n->left->resolved = b->decl;
+                n->left->ty = b->type;
+                return b->type;
+            }
+        }
+        if (ot != nullptr && is_union(ot) && ot->decl != nullptr) {
+            Node* field = struct_member(ot->decl, n->text, NodeKind::Field);
+            if (field == nullptr) {
+                fail_n(n, "lucb.check.name", "no member `" + string(n->text) + "`");
+                return t_error();
+            }
+            n->resolved = field;
+            return field->ty;
         }
         if (ot == nullptr || ot->kind != TypeKind::Struct || ot->decl == nullptr) {
             fail_n(n, "lucb.check.type", "field access needs a struct");
@@ -1626,7 +1856,12 @@ struct Checker {
             if (n->type != nullptr) {
                 t = resolve_type(n->type);
             }
-            if (n->left != nullptr) {
+            if (n->flags & FlagUninit) {
+                if (t == nullptr) {
+                    fail_n(n, "lucb.check.type", "`---` needs a written type");
+                    t = t_error();
+                }
+            } else if (n->left != nullptr) {
                 Type* init = check_expr(n->left, t);
                 if (t == nullptr) {
                     if (init != nullptr && init->kind == TypeKind::UntypedInt) {
@@ -1969,17 +2204,30 @@ struct Checker {
         }
     }
 
+    void collect_type_decl(Node* d, TypeKind kind) {
+        if (lookup(d->text) != nullptr) {
+            fail_n(d, "lucb.check.shadow", "this name is already in scope");
+            return;
+        }
+        Type* t = make_type(kind, d->text);
+        t->decl = d;
+        t->packed = (d->flags & FlagPacked) != 0;
+        uint64_t al = 0;
+        if (const_u64(d->type, &al)) {
+            t->align_to = static_cast<int>(al);
+        }
+        d->ty = t;
+        bind(d->text, t, false, d);
+    }
+
     void collect_module(Node* mod) {
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
-                if (lookup(d->text) != nullptr) {
-                    fail_n(d, "lucb.check.shadow", "this name is already in scope");
-                    continue;
-                }
-                Type* t = make_type(TypeKind::Struct, d->text);
-                t->decl = d;
-                d->ty = t;
-                bind(d->text, t, false, d);
+                collect_type_decl(d, TypeKind::Struct);
+            } else if (d->kind == NodeKind::Enum) {
+                collect_type_decl(d, TypeKind::Enum);
+            } else if (d->kind == NodeKind::Union) {
+                collect_type_decl(d, TypeKind::Union);
             } else if (d->kind == NodeKind::Func) {
                 if (is_core_name(d->text)) {
                     fail_n(d, "lucb.check.shadow", "this name belongs to the language");
@@ -1988,23 +2236,67 @@ struct Checker {
                     fail_n(d, "lucb.check.shadow", "this name is already in scope");
                     continue;
                 }
-                Type* result = t_unit();
-                if (d->type != nullptr) {
-                    // result types that name structs need structs already bound;
-                    // resolve in a second pass. Bind as a func with placeholder.
-                }
-                bind(d->text, result, false, d);
+                bind(d->text, t_unit(), false, d);
+            } else if (d->kind == NodeKind::Global) {
+                bind(d->text, t_error(), true, d);
+            } else if (d->kind == NodeKind::Const) {
+                bind(d->text, t_error(), false, d);
             } else {
                 fail_n(d, "lucb.check.unsupported",
-                       "this declaration is not in the scalar core yet");
+                       "this declaration is not in this slice");
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Struct) {
+            if (d->kind == NodeKind::Struct || d->kind == NodeKind::Union) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Field) {
                         m->ty = resolve_type(m->type);
                     }
+                }
+            } else if (d->kind == NodeKind::Enum) {
+                if (d->right != nullptr && d->right->kind == NodeKind::Type) {
+                    Type* backing = resolve_type(d->right);
+                    if (!is_int(backing)) {
+                        fail_n(d, "lucb.check.type", "an integer-backed enum needs an integer type");
+                        backing = ty_u32;
+                    }
+                    if (d->ty != nullptr) {
+                        d->ty->elem = backing;
+                    }
+                }
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind == NodeKind::EnumCase) {
+                        if (m->text == "none") {
+                            fail_n(m, "lucb.check.type", "a case may not be named `none`");
+                        }
+                        m->ty = d->ty;
+                        for (Node* p = m->body; p != nullptr; p = p->next) {
+                            p->ty = resolve_type(p->type);
+                        }
+                    }
+                }
+            } else if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
+                Type* t = d->type != nullptr ? resolve_type(d->type) : nullptr;
+                if (d->left != nullptr) {
+                    Type* init = check_expr(d->left, t);
+                    if (t == nullptr) {
+                        if (init != nullptr && init->kind == TypeKind::UntypedInt) {
+                            init = coerce(d->left, init, t_i64());
+                            d->left->ty = init;
+                        }
+                        t = init;
+                    }
+                } else if (t == nullptr) {
+                    fail_n(d, "lucb.check.type", "this binding needs a type or an initialiser");
+                    t = t_error();
+                } else if (d->kind == NodeKind::Global && !is_zeroable(t) &&
+                           (d->flags & FlagUninit) == 0) {
+                    fail_n(d, "lucb.check.type", "this type has no zero value; write an initialiser");
+                }
+                d->ty = t;
+                Binding* b = lookup(d->text);
+                if (b != nullptr && b->decl == d) {
+                    b->type = t;
                 }
             }
         }
@@ -2015,12 +2307,56 @@ struct Checker {
                 if (b != nullptr && b->decl == d) {
                     b->type = d->ty;
                 }
-            } else if (d->kind == NodeKind::Struct) {
+            } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
+                       d->kind == NodeKind::Union) {
                 for (Node* m = d->body; m != nullptr; m = m->next) {
                     if (m->kind == NodeKind::Func) {
                         resolve_sig(m);
                     }
                 }
+            }
+        }
+    }
+
+    void check_enum(Node* en) {
+        bool saw_payload = false;
+        bool saw_value = false;
+        for (Node* m = en->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::EnumCase) {
+                if (m->body != nullptr) {
+                    saw_payload = true;
+                }
+                if (m->left != nullptr) {
+                    saw_value = true;
+                    uint64_t v = 0;
+                    if (!const_u64(m->left, &v)) {
+                        fail_n(m, "lucb.check.type", "enum case value must be a constant");
+                    }
+                }
+                for (Node* o = en->body; o != m; o = o->next) {
+                    if (o->kind == NodeKind::EnumCase && o->text == m->text) {
+                        fail_n(m, "lucb.check.shadow", "duplicate case");
+                    }
+                }
+            } else if (m->kind == NodeKind::Func) {
+                check_func(m, en);
+            }
+        }
+        if (saw_payload && (saw_value || is_int_enum(en->ty))) {
+            fail_n(en, "lucb.check.type", "payload cases cannot mix with integer-backed values");
+        }
+    }
+
+    void check_union(Node* un) {
+        for (Node* m = un->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field) {
+                for (Node* o = un->body; o != m; o = o->next) {
+                    if (o->kind == NodeKind::Field && o->text == m->text) {
+                        fail_n(m, "lucb.check.shadow", "duplicate member");
+                    }
+                }
+            } else if (m->kind == NodeKind::Func) {
+                check_func(m, un);
             }
         }
     }
@@ -2046,6 +2382,10 @@ struct Checker {
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
                 check_struct(d);
+            } else if (d->kind == NodeKind::Enum) {
+                check_enum(d);
+            } else if (d->kind == NodeKind::Union) {
+                check_union(d);
             }
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {

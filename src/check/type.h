@@ -34,6 +34,8 @@ enum class TypeKind : uint8_t {
     Optional,
     Fallible,
     ErrorVal,
+    Enum,
+    Union,
 };
 
 struct Type {
@@ -45,6 +47,8 @@ struct Type {
     bool is_const = false;
     bool is_volatile = false;
     bool is_nullable = false; // T*?
+    bool packed = false;
+    int align_to = 0; // 0 = natural
 };
 
 inline int pointer_bits() { return static_cast<int>(sizeof(void*) * 8); }
@@ -74,7 +78,11 @@ bool is_span(const Type* t);
 bool is_void_ptr(const Type* t);
 bool is_opt(const Type* t);
 bool is_fail(const Type* t);
+bool is_enum(const Type* t);
+bool is_int_enum(const Type* t);
+bool is_union(const Type* t);
 Type* elem_of(const Type* t);
+int type_offset(const Type* t, string_view field);
 
 const char* c_type_name(const Type* t);
 string c_type_spelling(const Type* t);

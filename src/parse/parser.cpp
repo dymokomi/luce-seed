@@ -758,18 +758,20 @@ struct Parser {
 
     Node* parse_struct(uint32_t flags, bool is_extern) {
         Token start = cur();
+        Node* align_e = nullptr;
         if (at_name("packed")) {
             take();
             flags |= FlagPacked;
         } else if (at_name("align")) {
             take();
             expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
-            parse_expression();
+            align_e = parse_expression();
             expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
         }
         expect(TokenKind::KwStruct, "lucb.parse.expect", "expected `struct`");
         Node* n = make(is_extern ? NodeKind::ExternStruct : NodeKind::Struct, start.span);
         n->flags = flags;
+        n->type = align_e;
         if (!at(TokenKind::Name)) {
             fail("lucb.parse.expect", "expected a type name");
         } else {
@@ -816,16 +818,18 @@ struct Parser {
         if (eat(TokenKind::KwExport)) {
             flags |= FlagExport;
         }
+        Node* align_e = nullptr;
         if (at_name("align")) {
             take();
             expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
-            parse_expression();
+            align_e = parse_expression();
             expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
         }
         if (at(TokenKind::KwLet) || at(TokenKind::KwVar) || (is_extern && at(TokenKind::Name))) {
             Token start = cur();
             Node* f = make(NodeKind::Field, start.span);
             f->flags = flags;
+            f->right = align_e;
             if (at(TokenKind::KwLet) || at(TokenKind::KwVar)) {
                 if (at(TokenKind::KwLet)) {
                     f->flags |= FlagConst;
@@ -1522,8 +1526,27 @@ struct Parser {
             } else {
                 fail("lucb.parse.expect", "expected a case name");
             }
-            if (at(TokenKind::LParen)) {
-                n->body = parse_params(false);
+            if (eat(TokenKind::LParen)) {
+                Node* binds = nullptr;
+                if (!at(TokenKind::RParen)) {
+                    while (true) {
+                        Node* b = make(NodeKind::Name, cur().span);
+                        if (eat(TokenKind::Underscore)) {
+                            b->text = "_";
+                        } else if (at(TokenKind::Name)) {
+                            b->text = take().text;
+                        } else {
+                            fail("lucb.parse.expect", "expected a payload name");
+                            break;
+                        }
+                        append_node(&binds, b);
+                        if (!eat(TokenKind::Comma)) {
+                            break;
+                        }
+                    }
+                }
+                expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
+                n->body = binds;
             }
             n->span = span_from(start);
             return n;
