@@ -19,8 +19,11 @@ namespace lucb {
 auto Interp::find_slot(string_view name, Node* decl) -> Slot* {
     if (!frames.empty()) {
         Frame& f = frames.back();
+        // The resolved declaration identifies a local exactly; compare the
+        // pointer before falling back to the name.
         for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
-            if (f.slots[static_cast<size_t>(i)].name == name) {
+            const Slot& s = f.slots[static_cast<size_t>(i)];
+            if ((decl != nullptr && s.decl == decl) || s.name == name) {
                 return &f.slots[static_cast<size_t>(i)];
             }
         }

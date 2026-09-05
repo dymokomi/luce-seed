@@ -3,6 +3,22 @@
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 This tree is **luce-seed-0.3**.
 
+## Performance pass
+
+The compiler is linear in program size. Before: a 76,000-line file took
+0.9 s to check and 4.9 s to emit, growing with the square of the input.
+The emitter copied its entire output buffer for every `catch`, `match`
+expression, and defer snapshot; it now swaps buffers. The checker scanned
+every binding of every enclosing scope on each lookup; it now keeps a hashed
+index of the newest binding per name that `pop_scope` unwinds. The parser
+walked to the end of a sibling list on every append; a small tail cache makes
+that O(1). After: 0.12 s to check and 0.18 s to emit the same file. The
+oracle resolves locals by declaration pointer before name and decodes each
+integer literal once. `./build.sh` builds the release compiler into `build/`,
+and `./test.sh` keeps the sanitized build in `build-test/`, so the binary
+`luce-base` develops against is the fast one. Host `cc` at `-O0` compiles the
+164,000 lines of C that file produces in 1.5 s; `--release` (`-O2`) takes 17 s.
+
 ## Fourth round: examples shaped like compiler work
 
 Five complete programs under `examples/` (a calculator compiler, a lexer, a

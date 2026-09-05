@@ -45,18 +45,23 @@ auto Checker::fail_n(Node* n, const char* code, const string& message) -> void {
 
 auto Checker::pop_scope() -> void {
     while (!scope.empty() && scope.back().depth == depth) {
+        const Binding& b = scope.back();
+        if (b.shadowed >= 0) {
+            scope_index[b.name] = b.shadowed;
+        } else {
+            scope_index.erase(b.name);
+        }
         scope.pop_back();
     }
     depth--;
 }
 
 auto Checker::lookup(string_view name) -> Binding* {
-    for (int i = static_cast<int>(scope.size()) - 1; i >= 0; i--) {
-        if (scope[static_cast<size_t>(i)].name == name) {
-            return &scope[static_cast<size_t>(i)];
-        }
+    auto it = scope_index.find(name);
+    if (it == scope_index.end()) {
+        return nullptr;
     }
-    return nullptr;
+    return &scope[static_cast<size_t>(it->second)];
 }
 
 auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src) -> bool {
@@ -71,7 +76,10 @@ auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* imp
     b.decl = decl;
     b.import_src = import_src;
     b.depth = depth;
+    auto it = scope_index.find(name);
+    b.shadowed = it == scope_index.end() ? -1 : it->second;
     scope.push_back(b);
+    scope_index[name] = static_cast<int>(scope.size()) - 1;
     return true;
 }
 

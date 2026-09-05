@@ -61,13 +61,15 @@ auto Emitter::run_defers_from(int from, bool failing) -> void {
 }
 
 auto Emitter::snapshot_defers(bool failing) -> string {
-    string saved = out;
+    // Emit into a fresh buffer; swapping keeps this O(1) in the output size.
+    string saved;
+    saved.swap(out);
     int saved_indent = indent;
-    out = {};
     indent = 0;
     run_defers_from(0, failing);
-    string s = out;
-    out = saved;
+    string s;
+    s.swap(out);
+    out.swap(saved);
     indent = saved_indent;
     return s;
 }
@@ -842,16 +844,17 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
 auto Emitter::emit_match_expr(Node* n) -> string {
     int id = tmp();
     string rv = "_lb_mr" + std::to_string(id);
-    string saved = out;
+    string saved;
+    saved.swap(out);
     int saved_indent = indent;
-    out = {};
     indent = 0;
     Type* rt = n->ty;
     line(c_type(rt) + " " + rv + ";");
     emit_match(n, rv);
     line(rv + ";");
-    string body = out;
-    out = saved;
+    string body;
+    body.swap(out);
+    out.swap(saved);
     indent = saved_indent;
     return "({\n" + body + "})";
 }

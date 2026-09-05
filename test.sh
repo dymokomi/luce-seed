@@ -1,9 +1,10 @@
 #!/bin/sh
-# The gate. Configure, build, run the unit tests. Fail on the first error.
+# The gate. Configure a sanitized debug build in build-test/, build it, run
+# the unit tests. Fail on the first error. ./build.sh makes the fast binary.
 set -eu
 cd "$(dirname "$0")"
 
-BUILD_DIR=${BUILD_DIR:-build}
+BUILD_DIR=${BUILD_DIR:-build-test}
 HERE=$(pwd)
 if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
     CACHED=$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$BUILD_DIR/CMakeCache.txt" | head -n 1)

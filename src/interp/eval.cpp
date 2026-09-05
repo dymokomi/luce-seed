@@ -337,7 +337,15 @@ auto Interp::eval_uncast(Node* n) -> Value {
             return v;
         }
         if (n->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(n->text);
+            ParsedInt p;
+            if ((n->flags & FlagLiteralCached) != 0) {
+                p.ok = true;
+                p.value = n->cached;
+            } else {
+                p = parse_int_literal(n->text);
+                n->cached = p.value;
+                n->flags |= FlagLiteralCached;
+            }
             Type* t = n->ty;
             if (t != nullptr && is_opt(t) && is_int(t->elem)) {
                 Value v = v_int(t->elem, p.value);

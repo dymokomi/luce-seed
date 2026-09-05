@@ -25,13 +25,15 @@ proved by both executions on every test run (see below).
 C++20, CMake 3.20, the host C/C++ compiler.
 
 ```text
-./test.sh
+./build.sh                     # the release compiler: build/lucb
 ./build/lucb --version
 ./build/lucb check path/to/file.lucb
+./test.sh                      # the gate: a sanitized build in build-test/, every test
 ```
 
-`./test.sh` is the gate: it configures with sanitizers, builds, and runs
-every test.
+`./build.sh` makes the binary to use for real work; it is about thirty times
+faster than the sanitized test build, which `./test.sh` keeps in its own
+directory. A 76,000-line Base file checks and emits in under half a second.
 
 ## Commands
 

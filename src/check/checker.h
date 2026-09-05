@@ -17,6 +17,8 @@
 #include "support/diagnostics.h"
 #include "support/literal.h"
 
+#include <unordered_map>
+
 namespace lucb {
 
 const uint32_t k_type_flags_unsupported = 0;
@@ -29,6 +31,7 @@ struct Binding {
     Node* decl = nullptr;
     Node* import_src = nullptr;
     int depth = 0;
+    int shadowed = -1; // index of the same name's outer binding, or -1
 };
 
 struct Checker {
@@ -87,6 +90,10 @@ struct Checker {
     vector<Node*> pending_clones;
     vector<Type*> interned;
     vector<Binding> scope;
+    // Newest binding of each name, so lookup is O(1) instead of a scan of
+    // every binding in every enclosing scope. Base forbids shadowing, so one
+    // index per name is enough; pop_scope restores the outer binding.
+    std::unordered_map<string_view, int> scope_index;
     int depth = 0;
     int lambda_depth = 0;
     int nlambda = 0;

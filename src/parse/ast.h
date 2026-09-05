@@ -123,8 +123,9 @@ enum {
     FlagNaked = 1u << 27,
     FlagUsed = 1u << 28,
     FlagWeakAttr = 1u << 29,
-    FlagBuiltin = 1u << 30, // synthesized by the checker for a standard module
-    FlagLocal = 1u << 30,   // pointer/span/str derived from a local
+    FlagBuiltin = 1u << 30,       // synthesized by the checker for a standard module
+    FlagLiteralCached = 1u << 31, // `cached` holds the decoded integer literal
+    FlagLocal = 1u << 30,         // pointer/span/str derived from a local
     FlagImportUsed = 1u << 31,
 };
 
@@ -142,6 +143,8 @@ struct Node {
     // Filled by check:
     struct Type* ty = nullptr; // resolved type of this node
     Node* resolved = nullptr;  // declaration a name/call refers to
+    // Filled by the oracle the first time a literal is evaluated:
+    uint64_t cached = 0;
 };
 
 // Field map, by kind:

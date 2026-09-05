@@ -209,15 +209,16 @@ auto Emitter::emit_catch(Node* n) -> string {
     }
     string saved_catch = catch_var;
     string saved_done = catch_done;
-    string saved_out = out;
+    string saved_out;
+    saved_out.swap(out);
     int saved_indent = indent;
     catch_var = vn;
     catch_done = "_lb_cd" + std::to_string(id);
-    out = {};
     indent = 0;
     emit_stmt(n->body);
-    string body = out;
-    out = saved_out;
+    string body;
+    body.swap(out);
+    out.swap(saved_out);
     indent = saved_indent;
     catch_var = saved_catch;
     catch_done = saved_done;
