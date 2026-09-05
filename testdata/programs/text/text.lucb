@@ -1,0 +1,6 @@
+# answer: 7
+pub func answer() -> i64!:
+    let ok = try str("hi".bytes)
+    let from_c = try str((cstr)"ok")
+    let raw = (str)"raw".bytes
+    return i64(ok.length) + i64(from_c.length) + i64(raw.length)

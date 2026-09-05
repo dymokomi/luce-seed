@@ -1,0 +1,9 @@
+# args: a b
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    for a in arguments[1..]:
+        try out.write(f"arg {a}\n")
+    let text = try files.read("/etc/hosts")
+    defer free(text)
+    try out.write(f"{text.length} bytes\n")
+    return 0

@@ -1,0 +1,6 @@
+pub func answer() -> i64!:
+    var backing: u8[256]
+    var arena = FixedBuffer.over(backing)
+    let xs = try alloc u32[4] in &arena
+    xs[0] = 40
+    return i64(xs[0])

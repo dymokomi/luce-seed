@@ -1,0 +1,19 @@
+# answer: 42
+func sum(xs: const i64[]) -> i64:
+    var t: i64 = 0
+    for x in xs:
+        t += x
+    return t
+pub func answer() -> i64!:
+    var arr: i64[6] = [1, 2, 3, 4, 5, 6]
+    let all: i64[] = arr
+    let mid = all[2..<4]
+    let p = try alloc i64[3]
+    defer free(p)
+    p[0] = 10
+    p[1] = 20
+    p[2] = 30
+    let fromptr = i64[](p.data, 2)
+    for x in &arr:
+        *x += 1
+    return sum(mid) + sum(fromptr) + sum(all[..<1]) + sum(arr[5..]) - 9 + i64(p.length)

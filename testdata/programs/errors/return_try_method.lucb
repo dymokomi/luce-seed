@@ -1,0 +1,11 @@
+struct P:
+    var offset: usize
+    func fail(what: str) -> i64!:
+        error(1, what)
+    func parse() -> i64!:
+        return try self.fail("unexpected")
+pub func answer() -> i64:
+    var p = P(offset = 0)
+    let r = p.parse() catch failure:
+        return 40
+    return 3

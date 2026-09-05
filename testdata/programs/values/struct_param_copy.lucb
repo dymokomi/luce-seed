@@ -1,0 +1,11 @@
+# answer: 12
+struct P:
+    var x: i64
+func take(p: P) -> i64:
+    var q = p
+    q.x += 1
+    return q.x
+pub func answer() -> i64:
+    var a = P(x = 1)
+    let r = take(a)
+    return a.x * 10 + r

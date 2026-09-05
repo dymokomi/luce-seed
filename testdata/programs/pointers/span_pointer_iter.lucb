@@ -1,0 +1,9 @@
+# answer: 24
+pub func answer() -> i64!:
+    let p = try alloc i64[3]
+    defer free(p)
+    p[0] = 10
+    let v = i64[](p.data, 2)
+    for x in &p:
+        *x += 1
+    return v[0] + i64(v.length) + p[0]

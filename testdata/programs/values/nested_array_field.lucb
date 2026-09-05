@@ -1,0 +1,11 @@
+# answer: 57
+struct P:
+    var x: i64
+    var tags: i64[3]
+struct Q:
+    var ps: P[2]
+pub func answer() -> i64:
+    var q: Q
+    q.ps[1].tags[2] = 5
+    q.ps[1].x = 7
+    return q.ps[1].tags[2] * 10 + q.ps[1].x + q.ps[0].x

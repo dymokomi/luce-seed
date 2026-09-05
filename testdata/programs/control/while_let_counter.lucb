@@ -1,0 +1,11 @@
+func next(i: usize*) -> i64?:
+    if *i >= 4:
+        return none
+    *i += 1
+    return i64(*i) * 10
+pub func answer() -> i64:
+    var i: usize = 0
+    var total: i64 = 0
+    while let v = next(&i):
+        total += v
+    return total - 60

@@ -1,0 +1,8 @@
+func next(k: i64) -> i64?:
+    if k >= 4:
+        return none
+    return k * 10
+pub func answer() -> i64:
+    if let v = next(1):
+        return v + 30
+    return 1

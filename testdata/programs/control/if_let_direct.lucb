@@ -1,0 +1,6 @@
+func maybe() -> i64?:
+    return 40
+pub func answer() -> i64:
+    if let v = maybe():
+        return v
+    return 1

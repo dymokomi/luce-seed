@@ -1,0 +1,9 @@
+# answer: 31810
+export func checksum(data: const u8[]) -> u32:
+    var sum: u32 = 0
+    for byte in data:
+        sum = sum *% 31 +% byte
+    return sum
+pub func answer() -> i64:
+    let bytes: u8[4] = [1, 2, 3, 4]
+    return i64(checksum(bytes))

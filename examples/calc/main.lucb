@@ -1,0 +1,31 @@
+# args: "a * b + 12"
+import ast
+import lexer
+
+func emit(node: ast.Node*, out: Writer) -> !:
+    match *node:
+        .number(value):
+            try out.write(f"{value}")
+        .variable(name):
+            try out.write(name)
+        .binary(op, left, right):
+            try out.write("(")
+            try emit(left, out)
+            if op == lexer.Kind.plus:
+                try out.write(" + ")
+            else:
+                try out.write(" * ")
+            try emit(right, out)
+            try out.write(")")
+
+pub func main(arguments: str[]) -> i32!:
+    var source = "2 * (x + 3) + 4"
+    if arguments.length > 1:
+        source = arguments[1]
+    var parser = try ast.Parser.over(source)
+    let tree = try parser.sum()
+    let out = io.stdout()
+    try out.write("int main(void) { int x = 5; return ")
+    try emit(tree, out)
+    try out.write(f"; }} /* = {ast.evaluate(tree, 5)} */\n")
+    return 0

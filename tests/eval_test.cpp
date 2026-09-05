@@ -1,3 +1,12 @@
+//==============================================================================================
+//
+//   tests/eval_test - The oracle computes the right values
+//
+//   DESCRIPTION:
+//       Direct tests of the interpreter: values, traps, output, and the standard modules.
+//
+//==============================================================================================
+
 #include "check/check.h"
 #include "interp/interp.h"
 #include "lex/lexer.h"
@@ -10,13 +19,13 @@
 #include <string>
 
 using lucb::Arena;
+using lucb::check_module;
 using lucb::DiagnosticBag;
+using lucb::eval_module;
 using lucb::EvalResult;
+using lucb::parse;
 using lucb::Source;
 using lucb::Token;
-using lucb::check_module;
-using lucb::eval_module;
-using lucb::parse;
 using lucb::tokenize;
 
 static EvalResult run(const char* text) {
@@ -177,14 +186,14 @@ TEST(eval_c_cast_truncates) {
 }
 
 TEST(eval_checked_conv_traps) {
-    EvalResult r =
-        run("pub func answer() -> i64:\n    let n: i64 = 300\n    return i64(u8(n))\n");
+    EvalResult r = run("pub func answer() -> i64:\n    let n: i64 = 300\n    return i64(u8(n))\n");
     CHECK(r.trapped);
     CHECK(r.trap.find("conversion") != std::string::npos);
 }
 
 TEST(eval_widen) {
-    EvalResult r = run("pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n");
+    EvalResult r =
+        run("pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 40);
 }
@@ -226,13 +235,15 @@ TEST(eval_i64_min) {
 }
 
 TEST(eval_pointer_deref) {
-    EvalResult r = run("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n");
+    EvalResult r =
+        run("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 41);
 }
 
 TEST(eval_array_index) {
-    EvalResult r = run("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n");
+    EvalResult r =
+        run("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 20);
 }
@@ -256,7 +267,8 @@ TEST(eval_span_length) {
 }
 
 TEST(eval_index_oob_traps) {
-    EvalResult r = run("pub func answer() -> i64:\n    var xs: i64[2] = [1, 2]\n    return xs[2]\n");
+    EvalResult r =
+        run("pub func answer() -> i64:\n    var xs: i64[2] = [1, 2]\n    return xs[2]\n");
     CHECK(r.trapped);
     CHECK(r.trap.find("index") != std::string::npos);
 }
@@ -804,7 +816,7 @@ TEST(eval_str_invalid_utf8) {
 
 TEST(eval_files_list) {
     EvalResult r = run("pub func answer() -> i64!:\n"
-                       "    let names = try files.list(\"testdata/programs\")\n"
+                       "    let names = try files.list(\"testdata/programs/values\")\n"
                        "    var found = 0\n"
                        "    for name in names:\n"
                        "        if name == \"hello.lucb\":\n"

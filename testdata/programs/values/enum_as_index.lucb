@@ -1,0 +1,9 @@
+enum Kind as u8:
+    name = 1
+    eof = 9
+pub func answer() -> i64:
+    var counts: u32[10]
+    let k = Kind.name
+    counts[(usize)k] += 1
+    counts[(usize)Kind.eof] += 39
+    return i64(counts[1] + counts[9])

@@ -1,0 +1,5 @@
+pub func answer() -> i64:
+    var arr: i64[3] = [1, 2, 3]
+    for x in &arr:
+        *x += 10
+    return arr[0] + arr[1] + arr[2] + 4

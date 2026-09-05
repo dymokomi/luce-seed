@@ -1,0 +1,5 @@
+# args: a b
+pub func main(arguments: str[]) -> i32:
+    if arguments.length > 1:
+        return 1
+    return 0

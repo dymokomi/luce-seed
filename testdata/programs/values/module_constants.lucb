@@ -1,0 +1,9 @@
+let keywords: str[3] = ["func", "let", "var"]
+let limit: usize = 3
+var counter: i64 = 0
+func bump():
+    counter += 1
+pub func answer() -> i64:
+    for k in keywords:
+        bump()
+    return counter + i64(limit) + i64(keywords[1].length) + 31

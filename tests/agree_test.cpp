@@ -1,3 +1,14 @@
+//==============================================================================================
+//
+//   tests/agree_test - Two executions must agree
+//
+//   DESCRIPTION:
+//       Every language feature written as a small program, run through the oracle and through
+//       cc, with stdout, stderr, traps, and exit status compared. The program directories
+//       under testdata/ are proved the same way by programs_test.cpp.
+//
+//==============================================================================================
+
 #include "check/check.h"
 #include "emit/emit.h"
 #include "emit/host.h"
@@ -9,23 +20,21 @@
 #include "support/diagnostics.h"
 #include "support/test.h"
 
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <unistd.h>
 
 using lucb::Arena;
+using lucb::check_module;
+using lucb::compile_c;
 using lucb::DiagnosticBag;
+using lucb::emit_c;
+using lucb::eval_module;
 using lucb::EvalResult;
+using lucb::parse;
+using lucb::run_exe;
 using lucb::RunResult;
 using lucb::Source;
 using lucb::Token;
-using lucb::check_module;
-using lucb::compile_c;
-using lucb::emit_c;
-using lucb::eval_module;
-using lucb::parse;
-using lucb::run_exe;
 using lucb::tokenize;
 
 struct Both {
@@ -79,16 +88,6 @@ static std::string interp_stdout(const EvalResult& r) {
     return s;
 }
 
-static std::string slurp(const char* path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
-        return {};
-    }
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-}
-
 static bool agrees(const char* text) {
     Both both;
     if (!compile_source(text, &both)) {
@@ -124,15 +123,6 @@ static bool agrees(const char* text) {
         return false;
     }
     return true;
-}
-
-static bool agrees_file(const char* path) {
-    std::string src = slurp(path);
-    if (src.empty()) {
-        std::fprintf(stderr, "    missing %s\n", path);
-        return false;
-    }
-    return agrees(src.c_str());
 }
 
 TEST(agree_hello) {
@@ -231,7 +221,8 @@ TEST(agree_checked_conv_traps) {
 }
 
 TEST(agree_widen) {
-    CHECK(agrees("pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n"));
+    CHECK(agrees(
+        "pub func answer() -> i64:\n    let x: i32 = 40\n    let y: i64 = x\n    return y\n"));
 }
 
 TEST(agree_sizeof_i64) {
@@ -255,7 +246,8 @@ TEST(agree_wrapping_neg) {
 }
 
 TEST(agree_bits) {
-    CHECK(agrees("pub func answer() -> i64:\n    let x: u8 = 0b1100\n    return i64(x & 0b1010)\n"));
+    CHECK(
+        agrees("pub func answer() -> i64:\n    let x: u8 = 0b1100\n    return i64(x & 0b1010)\n"));
 }
 
 TEST(agree_i64_min) {
@@ -267,11 +259,13 @@ TEST(agree_f64_to_i64) {
 }
 
 TEST(agree_pointer_deref) {
-    CHECK(agrees("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n"));
+    CHECK(
+        agrees("pub func answer() -> i64:\n    var n: i64 = 41\n    let p = &n\n    return *p\n"));
 }
 
 TEST(agree_array_index) {
-    CHECK(agrees("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n"));
+    CHECK(
+        agrees("pub func answer() -> i64:\n    var xs: i64[3] = [10, 20, 30]\n    return xs[1]\n"));
 }
 
 TEST(agree_span_from_array) {
@@ -917,84 +911,6 @@ TEST(agree_generic_span) {
                  "    let top = largest(numbers) else 0\n"
                  "    return top\n"));
 }
-
-TEST(agree_program_ast) { CHECK(agrees_file("testdata/programs/ast.lucb")); }
-
-TEST(agree_program_ring) { CHECK(agrees_file("testdata/programs/ring.lucb")); }
-
-TEST(agree_program_scan) { CHECK(agrees_file("testdata/programs/scan.lucb")); }
-
-TEST(agree_program_table) { CHECK(agrees_file("testdata/programs/table.lucb")); }
-
-TEST(agree_program_memory) { CHECK(agrees_file("testdata/programs/memory.lucb")); }
-
-TEST(agree_program_text) { CHECK(agrees_file("testdata/programs/text.lucb")); }
-
-TEST(agree_program_list) { CHECK(agrees_file("testdata/programs/list.lucb")); }
-
-TEST(agree_program_spawn) { CHECK(agrees_file("testdata/programs/spawn.lucb")); }
-
-TEST(agree_program_hash) { CHECK(agrees_file("testdata/programs/hash.lucb")); }
-
-TEST(agree_program_arena) { CHECK(agrees_file("testdata/programs/arena.lucb")); }
-
-TEST(agree_program_map) { CHECK(agrees_file("testdata/programs/map.lucb")); }
-
-TEST(agree_program_while_let) { CHECK(agrees_file("testdata/programs/while_let.lucb")); }
-
-TEST(agree_program_if_let_call) { CHECK(agrees_file("testdata/programs/if_let_call.lucb")); }
-
-TEST(agree_program_ptr_fields) { CHECK(agrees_file("testdata/programs/ptr_fields.lucb")); }
-
-TEST(agree_program_defer_free) { CHECK(agrees_file("testdata/programs/defer_free.lucb")); }
-
-TEST(agree_program_char_u8) { CHECK(agrees_file("testdata/programs/char_u8.lucb")); }
-
-TEST(agree_program_generic_list) { CHECK(agrees_file("testdata/programs/generic_list.lucb")); }
-
-TEST(agree_program_builder) { CHECK(agrees_file("testdata/programs/builder.lucb")); }
-
-TEST(agree_program_enum_methods) { CHECK(agrees_file("testdata/programs/enum_methods.lucb")); }
-
-TEST(agree_program_fnptr_table) { CHECK(agrees_file("testdata/programs/fnptr_table.lucb")); }
-
-TEST(agree_program_checked_else) { CHECK(agrees_file("testdata/programs/checked_else.lucb")); }
-
-TEST(agree_program_inline_catch) { CHECK(agrees_file("testdata/programs/inline_catch.lucb")); }
-
-TEST(agree_program_errorcode) { CHECK(agrees_file("testdata/programs/errorcode.lucb")); }
-
-TEST(agree_program_thread_mod) { CHECK(agrees_file("testdata/programs/thread_mod.lucb")); }
-
-TEST(agree_program_export_span) { CHECK(agrees_file("testdata/programs/export_span.lucb")); }
-
-TEST(agree_program_array_field) { CHECK(agrees_file("testdata/programs/array_field.lucb")); }
-
-TEST(agree_program_nested_array_field) {
-    CHECK(agrees_file("testdata/programs/nested_array_field.lucb"));
-}
-
-TEST(agree_program_defer_discard_catch) {
-    CHECK(agrees_file("testdata/programs/defer_discard_catch.lucb"));
-}
-
-TEST(agree_program_else_error) { CHECK(agrees_file("testdata/programs/else_error.lucb")); }
-
-TEST(agree_program_fwd_struct) { CHECK(agrees_file("testdata/programs/fwd_struct.lucb")); }
-
-TEST(agree_program_match_default) { CHECK(agrees_file("testdata/programs/match_default.lucb")); }
-
-TEST(agree_program_typed_for) { CHECK(agrees_file("testdata/programs/typed_for.lucb")); }
-
-TEST(agree_program_init_assign) { CHECK(agrees_file("testdata/programs/init_assign.lucb")); }
-
-TEST(agree_program_shared_arm) { CHECK(agrees_file("testdata/programs/shared_arm.lucb")); }
-
-TEST(agree_program_shift_usize) { CHECK(agrees_file("testdata/programs/shift_usize.lucb")); }
-
-TEST(agree_program_braces) { CHECK(agrees_file("testdata/programs/braces.lucb")); }
-
-TEST(agree_program_generic_map) { CHECK(agrees_file("testdata/programs/generic_map.lucb")); }
 
 TEST(agree_user_arena) {
     CHECK(agrees("pub struct Arena implements Allocator:\n"

@@ -1,0 +1,61 @@
+pub enum Kind as u8:
+    number = 1
+    name = 2
+    plus = 3
+    star = 4
+    lparen = 5
+    rparen = 6
+    eof = 7
+
+pub struct Token:
+    var kind: Kind
+    var start: usize
+    var end: usize
+
+pub struct Lexer:
+    var source: const u8[]
+    var offset: usize
+
+    pub static func over(text: str) -> Lexer:
+        return Lexer(source = text.bytes, offset = 0)
+
+    func is_digit(c: u8) -> bool:
+        return c >= 48 and c <= 57
+
+    func is_letter(c: u8) -> bool:
+        return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95
+
+    pub mutating func next() -> Token!:
+        while self.offset < self.source.length and self.source[self.offset] == 32:
+            self.offset += 1
+        let start = self.offset
+        if start >= self.source.length:
+            return Token(kind = Kind.eof, start = start, end = start)
+        let c = self.source[start]
+        if self.is_digit(c):
+            while self.offset < self.source.length and self.is_digit(self.source[self.offset]):
+                self.offset += 1
+            return Token(kind = Kind.number, start = start, end = self.offset)
+        if self.is_letter(c):
+            while self.offset < self.source.length and self.is_letter(self.source[self.offset]):
+                self.offset += 1
+            return Token(kind = Kind.name, start = start, end = self.offset)
+        self.offset += 1
+        if c == 43:
+            return Token(kind = Kind.plus, start = start, end = self.offset)
+        if c == 42:
+            return Token(kind = Kind.star, start = start, end = self.offset)
+        if c == 40:
+            return Token(kind = Kind.lparen, start = start, end = self.offset)
+        if c == 41:
+            return Token(kind = Kind.rparen, start = start, end = self.offset)
+        error(1, "unexpected character")
+
+    pub func text(token: Token) -> str:
+        return (str)self.source[token.start..<token.end]
+
+test "lexes a number":
+    var lx = Lexer.over("42 + x")
+    let t = lx.next() catch failure: recover Token(kind = Kind.eof, start = 0, end = 0)
+    assert(t.kind == Kind.number)
+    assert(lx.text(t) == "42")

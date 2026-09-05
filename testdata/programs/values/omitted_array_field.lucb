@@ -1,0 +1,15 @@
+struct Lexer:
+    var levels: u32[32]
+    var depth: usize
+    static func over() -> Lexer:
+        var lexer = Lexer(depth = 0)
+        lexer.levels[0] = 0
+        return lexer
+    mutating func push(column: u32):
+        self.depth += 1
+        self.levels[self.depth] = column
+pub func answer() -> i64:
+    var lx = Lexer.over()
+    lx.push(4)
+    lx.push(8)
+    return i64(lx.levels[lx.depth]) + i64(lx.levels[1]) + 28

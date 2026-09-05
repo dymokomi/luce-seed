@@ -1,0 +1,10 @@
+# answer: 1
+pub func answer() -> i64!:
+    let names = try files.list("testdata/programs")
+    var found = 0
+    for name in names:
+        if name == "hello.lucb":
+            found = 1
+    if names.length > 0:
+        found += 1
+    return i64(found)

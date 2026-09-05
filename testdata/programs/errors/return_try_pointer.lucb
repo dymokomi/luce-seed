@@ -1,0 +1,18 @@
+pub let syntax: ErrorCode = ErrorCode.package(1)
+struct P:
+    var offset: usize
+    func fail(what: str) -> i64*!:
+        error(syntax, what)
+    func word(text: str) -> bool:
+        return false
+    mutating func parse() -> i64*!:
+        if self.word("true"):
+            return try new i64
+        return try self.fail("unexpected input")
+pub func answer() -> i64:
+    var p = P(offset = 0)
+    let r = p.parse() catch failure:
+        if failure.message == "unexpected input":
+            return 40
+        return 2
+    return 3

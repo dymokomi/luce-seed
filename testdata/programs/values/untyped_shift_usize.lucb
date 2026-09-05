@@ -1,0 +1,9 @@
+# answer: 12
+func describe(bytes: usize) -> i64:
+    if bytes >= 1 << 20:
+        return 1
+    if bytes >= 1 << 10:
+        return 2
+    return 3
+pub func answer() -> i64:
+    return describe(3_145_728) * 10 + describe(2048)

@@ -1,0 +1,23 @@
+interface Shape:
+    func area() -> i64
+struct Sq implements Shape:
+    var s: i64
+    func area() -> i64: return self.s * self.s
+struct Rect implements Shape:
+    var w: i64
+    var h: i64
+    func area() -> i64: return self.w * self.h
+func total(shapes: const Shape[]) -> i64:
+    var t: i64 = 0
+    for sh in shapes:
+        t += sh.area()
+    return t
+func largest[T: Shape](a: T, b: T) -> i64:
+    if a.area() > b.area():
+        return a.area()
+    return b.area()
+pub func answer() -> i64:
+    var sq = Sq(s = 3)
+    var r = Rect(w = 2, h = 5)
+    let views: Shape[2] = [&sq, &r]
+    return total(views) + largest(Sq(s = 2), Sq(s = 4)) + 5

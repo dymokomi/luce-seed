@@ -1,0 +1,9 @@
+func boom() -> i64!:
+    error(3, "boom")
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    let v = boom() catch failure:
+        try out.write(f"caught {failure.message}\n")
+        return 0
+    try out.write(f"v={v}\n")
+    return 0

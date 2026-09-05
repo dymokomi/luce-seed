@@ -1,0 +1,6 @@
+# answer: 5
+pub func answer() -> i64:
+    var arr: i64[3] = [1, 2, 3]
+    let all: i64[] = arr
+    var s: const i64[] = arr[1..]
+    return all[0] + s[0] + i64(s.length)

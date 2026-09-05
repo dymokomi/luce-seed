@@ -1,0 +1,13 @@
+# answer: 57
+pub func answer() -> i64!:
+    var dst: u8[4] = [0, 0, 0, 0]
+    var src: u8[4] = [1, 2, 3, 4]
+    memory.copy(dst, src, 4)
+    memory.set(dst[0..<1], 9)
+    var n: i64 = 0
+    memory.write[i64]((void*)(&n), 40)
+    let m = memory.read[i64]((void*)(&n))
+    let grown = try memory.grow(try alloc u8[2], 4)
+    grown[0] = 1
+    grown[1] = 2
+    return i64(dst[0]) + i64(dst[3]) + m + i64(grown.length)

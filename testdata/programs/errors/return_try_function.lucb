@@ -1,0 +1,8 @@
+func fail(what: str) -> i64*!:
+    error(1, what)
+func parse() -> i64*!:
+    return try fail("unexpected")
+pub func answer() -> i64:
+    let r = parse() catch failure:
+        return 40
+    return 3

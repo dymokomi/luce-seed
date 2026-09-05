@@ -1,0 +1,4 @@
+pub let dup: ErrorCode = ErrorCode.package(1)
+pub let limit: i64 = 30
+pub func fail_dup() -> !:
+    error(dup, "dup")

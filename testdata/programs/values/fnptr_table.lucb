@@ -1,0 +1,13 @@
+type Op = func(i64) -> i64
+func one(x: i64) -> i64: return x + 1
+func two(x: i64) -> i64: return x + 2
+let table: Op[2] = [one, two]
+struct Dispatch:
+    var ops: Op[2]
+pub func answer() -> i64:
+    var acc: i64 = 0
+    for f in table:
+        acc = f(acc)
+    let d = Dispatch(ops = [two, one])
+    acc = d.ops[0](acc)
+    return acc + 35

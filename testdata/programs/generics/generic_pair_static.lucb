@@ -1,0 +1,14 @@
+pub struct Pair[K, V]:
+    var key: K
+    var value: V
+
+    pub static func create(key: K, value: V) -> Pair[K, V]:
+        return Pair(key = key, value = value)
+
+    pub func sum() -> V:
+        return self.value
+
+pub func answer() -> i64:
+    let p = Pair[str, i64].create("x", 40)
+    let q = Pair(key = 1, value = 2)
+    return p.sum() + q.key - q.key

@@ -1,0 +1,10 @@
+struct S:
+    var n: usize
+    mutating func grow() -> u32[]!:
+        let fresh = try alloc u32[self.n * 2]
+        return fresh
+pub func answer() -> i64!:
+    var s = S(n = 20)
+    let xs = try s.grow()
+    defer free(xs)
+    return i64(xs.length)

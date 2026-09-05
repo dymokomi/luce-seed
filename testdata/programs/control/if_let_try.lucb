@@ -1,0 +1,13 @@
+func layout(n: i64) -> i64?!:
+    if n < 0:
+        error(1, "neg")
+    if n == 0:
+        return none
+    return n * 10
+pub func answer() -> i64!:
+    var total: i64 = 0
+    if let v = try layout(4):
+        total += v
+    if let v = try layout(0):
+        total += 100
+    return total

@@ -1,0 +1,16 @@
+struct Emitter:
+    var out: Writer
+    var depth: i64
+    mutating func line(text: str) -> !:
+        var i: i64 = 0
+        while i < self.depth:
+            try self.out.write("  ")
+            i += 1
+        try self.out.write(text)
+        try self.out.write("\n")
+pub func main(arguments: str[]) -> i32!:
+    var e = Emitter(out = io.stdout(), depth = 1)
+    try e.line("a")
+    e.depth = 2
+    try e.line("b")
+    return 0

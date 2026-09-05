@@ -1,0 +1,3 @@
+pub struct Node:
+    var value: i64
+    var next: Node*?

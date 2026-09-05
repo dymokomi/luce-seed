@@ -1,0 +1,8 @@
+pub enum Kind as u8:
+    plus = 1
+    star = 2
+pub func answer() -> i64:
+    let k = Kind.plus
+    if k == Kind.plus:
+        return 40
+    return 1

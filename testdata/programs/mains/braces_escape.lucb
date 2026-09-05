@@ -1,0 +1,4 @@
+pub func main(arguments: str[]) -> i32!:
+    let x = 5
+    try io.stdout().write(f"{{x}} = {x}\n")
+    return 0

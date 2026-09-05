@@ -1,0 +1,10 @@
+func sum(xs: const i64[]) -> i64:
+    var t: i64 = 0
+    for x in xs:
+        t += x
+    return t
+pub func answer() -> i64:
+    var arr: i64[6] = [1, 2, 3, 4, 5, 6]
+    let all: i64[] = arr
+    let mid = all[2..<4]
+    return sum(mid) + sum(all[..<1]) + sum(arr[5..]) + 26

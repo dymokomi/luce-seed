@@ -1,0 +1,8 @@
+func boom() -> i64!:
+    error(3, "boom")
+func step() -> !:
+    discard(try boom())
+pub func answer() -> i64:
+    step() catch failure:
+        return 40
+    return 1

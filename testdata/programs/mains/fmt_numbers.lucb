@@ -1,0 +1,11 @@
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    let a: i64 = -42
+    let b: u64 = 18446744073709551615
+    let c: u8 = 255
+    let d: f64 = 1.5
+    let e: bool = true
+    var buf: u8[64]
+    let s = try format(buf, f"{a},{b},{c},{d},{e},{hex(c)}")
+    try out.write(f"{s}|{s.length}\n")
+    return 0

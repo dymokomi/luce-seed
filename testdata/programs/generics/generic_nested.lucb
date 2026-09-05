@@ -1,0 +1,36 @@
+pub struct Vec[T]:
+    var items: T[]
+    var length: usize
+    pub static func create(capacity: usize) -> Vec[T]!:
+        return Vec(items = try alloc T[capacity], length = 0)
+    pub mutating func push(item: T) -> !:
+        if self.length == self.items.length:
+            error(1, "full")
+        self.items[self.length] = item
+        self.length += 1
+    pub func at(i: usize) -> T?:
+        if i >= self.length:
+            return none
+        return self.items[i]
+    pub func count() -> usize:
+        return self.length
+struct Node:
+    var value: i64
+    var next: Node*?
+func pair[T](a: T, b: T) -> (T, T):
+    return (b, a)
+pub func answer() -> i64!:
+    var rows = try Vec[Vec[i64]].create(2)
+    var r0 = try Vec[i64].create(2)
+    try r0.push(5)
+    try rows.push(r0)
+    var nodes = try Vec[Node*].create(2)
+    var n1 = Node(value = 30, next = none)
+    var n0 = Node(value = 2, next = &n1)
+    try nodes.push(&n0)
+    let (x, y) = pair[i64](1, 2)
+    let first = rows.at(0) else return 0
+    let v = first.at(0) else 0
+    let head = nodes.at(0) else return 0
+    let tail = head.next else return 0
+    return v + tail.value + head.value + x + y * 0 + i64(rows.count()) + i64(sizeof(Node)) - 16

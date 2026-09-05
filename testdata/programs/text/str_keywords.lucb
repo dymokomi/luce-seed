@@ -1,0 +1,19 @@
+# answer: 30
+func kind(word: str) -> i64:
+    if word == "func":
+        return 1
+    if word == "let":
+        return 2
+    return 0
+pub func answer() -> i64:
+    let src = "let x = 1"
+    let b = src.bytes
+    var i: usize = 0
+    while i < b.length and b[i] != ' ':
+        i += 1
+    let w = (str)b[..<i]
+    var c: u8 = b[0]
+    if c == 'l':
+        c = 'x'
+    let (a, z) = (kind(w), kind("func"))
+    return a * 10 + z + i64(c) - 120 + 9

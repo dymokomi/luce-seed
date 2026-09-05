@@ -1,0 +1,16 @@
+struct P:
+    var x: i64
+    var tags: i64[3]
+struct Q:
+    var p: P
+    var ps: P[2]
+pub func answer() -> i64:
+    var a = P(x = 1, tags = [1, 2, 3])
+    var b = a
+    b.x = 10
+    b.tags[0] = 100
+    var q: Q
+    q.ps[1].tags[2] = 5
+    q.p = a
+    a.x = 7
+    return a.x + b.x + a.tags[0] + b.tags[0] + q.p.x + q.ps[1].tags[2] + q.ps[0].x - 84

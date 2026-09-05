@@ -1,0 +1,10 @@
+func make() -> u8[]!:
+    let sum = try alloc u8[8]
+    errdefer free(sum)
+    if sum.length > 100:
+        error(1, "bad")
+    return sum
+pub func answer() -> i64!:
+    let s = try make()
+    defer free(s)
+    return i64(s.length) + 32

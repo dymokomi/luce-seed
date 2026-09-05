@@ -1,0 +1,16 @@
+pub func main(arguments: str[]) -> i32!:
+    let bytes = try files.read("/etc/hosts")
+    defer free(bytes)
+    var lines: usize = 0
+    var start: usize = 0
+    var i: usize = 0
+    while i < bytes.length:
+        if bytes[i] == '\n':
+            let line = (str)bytes[start..<i]
+            if line.length > 0 and line.bytes[0] != '#':
+                lines += 1
+            start = i + 1
+        i += 1
+    let out = io.stdout()
+    try out.write(f"non-comment lines: {lines > 0}\n")
+    return 0

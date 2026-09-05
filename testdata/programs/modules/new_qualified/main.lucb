@@ -1,0 +1,8 @@
+# answer: 40
+import tree
+pub func answer() -> i64!:
+    let n = try new tree.Node(value = 40, next = none)
+    defer free(n)
+    let m = try new tree.Node(value = 2, next = n)
+    defer free(m)
+    return n.value

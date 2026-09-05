@@ -1,0 +1,16 @@
+enum Flags as u32:
+    read = 1
+    write = 2
+    exec = 4
+func describe(f: Flags) -> i64:
+    match f:
+        .read: return 1
+        .write: return 2
+        _: return 3
+pub func answer() -> i64:
+    let rw = Flags.read | Flags.write
+    let n = (u32)rw
+    var acc = describe(Flags.read) + describe(Flags.exec) + i64(n)
+    if (rw & Flags.write) == Flags.write:
+        acc += 33
+    return acc

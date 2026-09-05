@@ -1,0 +1,13 @@
+func step(n: i64) -> !:
+    if n < 0:
+        error(1, "neg")
+func work() -> !:
+    defer step(1) catch f:
+        recover ()
+    errdefer step(2) catch f:
+        recover ()
+    try step(-1)
+pub func answer() -> i64:
+    work() catch failure:
+        return 40
+    return 1

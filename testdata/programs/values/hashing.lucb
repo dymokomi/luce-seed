@@ -1,0 +1,14 @@
+# answer: 1
+struct Point:
+    var x: i64
+    var y: i64
+
+pub func answer() -> i64:
+    let p = Point(x = 1, y = 2)
+    let q = Point(x = 1, y = 2)
+    print(hex(255))
+    print(bin(5))
+    print(pad(7, 3))
+    if hash(7) == hash(7) and hash(7) != hash(8) and hash(p) == hash(q):
+        return 1
+    return 0

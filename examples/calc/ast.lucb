@@ -1,0 +1,69 @@
+import lexer
+
+pub enum Node:
+    number(value: i64)
+    variable(name: str)
+    binary(op: lexer.Kind, left: Node*, right: Node*)
+
+pub struct Parser:
+    var lexer: lexer.Lexer
+    var current: lexer.Token
+    var allocator: Allocator
+
+    pub static func over(text: str) -> Parser!:
+        var lx = lexer.Lexer.over(text)
+        let first = try lx.next()
+        return Parser(lexer = lx, current = first, allocator = memory.allocator)
+
+    mutating func advance() -> !:
+        self.current = try self.lexer.next()
+
+    mutating func primary() -> Node*!:
+        let tok = self.current
+        if tok.kind == lexer.Kind.number:
+            try self.advance()
+            let text = self.lexer.text(tok)
+            var value: i64 = 0
+            for b in text.bytes:
+                value = value * 10 + i64(b) - 48
+            return try new Node.number(value = value) in self.allocator
+        if tok.kind == lexer.Kind.name:
+            try self.advance()
+            return try new Node.variable(name = self.lexer.text(tok)) in self.allocator
+        if tok.kind == lexer.Kind.lparen:
+            try self.advance()
+            let inner = try self.sum()
+            if self.current.kind != lexer.Kind.rparen:
+                error(2, "expected )")
+            try self.advance()
+            return inner
+        error(3, "unexpected token")
+
+    mutating func product() -> Node*!:
+        var left = try self.primary()
+        while self.current.kind == lexer.Kind.star:
+            try self.advance()
+            let right = try self.primary()
+            left = try new Node.binary(op = lexer.Kind.star, left = left, right = right) in self.allocator
+        return left
+
+    pub mutating func sum() -> Node*!:
+        var left = try self.product()
+        while self.current.kind == lexer.Kind.plus:
+            try self.advance()
+            let right = try self.product()
+            left = try new Node.binary(op = lexer.Kind.plus, left = left, right = right) in self.allocator
+        return left
+
+pub func evaluate(node: Node*, x: i64) -> i64:
+    match *node:
+        .number(value):
+            return value
+        .variable(name):
+            return x
+        .binary(op, left, right):
+            let l = evaluate(left, x)
+            let r = evaluate(right, x)
+            if op == lexer.Kind.plus:
+                return l + r
+            return l * r

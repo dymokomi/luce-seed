@@ -1,0 +1,6 @@
+func find(slots: const u32[]) -> usize:
+    var index = (usize)(u64(3) % u64(slots.length))
+    return index
+pub func answer() -> i64:
+    var s: u32[7]
+    return i64(find(s)) * 0 + 40

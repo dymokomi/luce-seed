@@ -1,0 +1,8 @@
+# answer: 40
+import errs
+pub func answer() -> i64:
+    errs.fail_dup() catch failure:
+        if failure.code != errs.dup:
+            return 1
+        recover ()
+    return errs.limit + 10

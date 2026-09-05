@@ -1,0 +1,18 @@
+func word(input: const u8[], offset: usize, text: str) -> bool:
+    if offset + text.length > input.length:
+        return false
+    if (str)input[offset..<offset + text.length] != text:
+        return false
+    return true
+pub func answer() -> i64:
+    let src = "[1, 2,, 3]"
+    var score: i64 = 0
+    if word(src.bytes, 6, "true"):
+        score += 1
+    if not word(src.bytes, 0, "[1"):
+        score += 10
+    if word(src.bytes, 8, "3]"):
+        score += 40
+    if word(src.bytes, 9, "3]"):
+        score += 100
+    return score

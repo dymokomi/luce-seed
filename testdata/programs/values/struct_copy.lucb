@@ -1,0 +1,8 @@
+# answer: 110
+struct P:
+    var x: i64
+pub func answer() -> i64:
+    var a = P(x = 1)
+    var b = a
+    b.x = 10
+    return a.x * 100 + b.x

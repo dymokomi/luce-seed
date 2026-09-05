@@ -1,0 +1,6 @@
+# answer: 10
+pub func answer() -> i64:
+    var sum: u32 = 0
+    for value: u32 in 1..=4:
+        sum = sum + value
+    return i64(sum)
