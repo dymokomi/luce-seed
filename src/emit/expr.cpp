@@ -6,6 +6,27 @@
 
 namespace lucb {
 
+string memorder_of(Node* n) {
+    if (n != nullptr && (n->kind == NodeKind::CaseValue || n->kind == NodeKind::Member)) {
+        if (n->text == "relaxed") {
+            return "memory_order_relaxed";
+        }
+        if (n->text == "acquire") {
+            return "memory_order_acquire";
+        }
+        if (n->text == "release") {
+            return "memory_order_release";
+        }
+        if (n->text == "acq_rel") {
+            return "memory_order_acq_rel";
+        }
+        if (n->text == "signal") {
+            return "signal";
+        }
+    }
+    return "memory_order_seq_cst";
+}
+
 auto Emitter::produces_opt(Node* n) -> bool {
         if (n == nullptr || !is_opt(n->ty)) {
             return false;
@@ -875,20 +896,28 @@ auto Emitter::emit_call(Node* n) -> string {
                 recv = ot->elem;
             }
             if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "fence") {
-                string ord = "memory_order_seq_cst";
-                Node* a = n->body != nullptr ? n->body->left : nullptr;
-                if (a != nullptr && (a->kind == NodeKind::CaseValue || a->kind == NodeKind::Member)) {
-                    if (a->text == "relaxed") {
-                        ord = "memory_order_relaxed";
-                    } else if (a->text == "acquire") {
-                        ord = "memory_order_acquire";
-                    } else if (a->text == "release") {
-                        ord = "memory_order_release";
-                    } else if (a->text == "acq_rel") {
-                        ord = "memory_order_acq_rel";
-                    }
+                string ord = memorder_of(n->body != nullptr ? n->body->left : nullptr);
+                if (ord == "signal") {
+                    return "({ __asm__ volatile(\"\" ::: \"memory\"); (void)0; })";
                 }
                 return "(atomic_thread_fence(" + ord + "))";
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "current") {
+                return "((lb_Handle){ (size_t)pthread_self() })";
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "pause") {
+                return "(lb_pause())";
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "yield") {
+                return "(sched_yield())";
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "sleep") {
+                string ms = n->body != nullptr ? emit_expr(n->body->left) : "0";
+                int id = tmp();
+                string tn = "_lb_ts" + std::to_string(id);
+                return "({ struct timespec " + tn + "; " + tn + ".tv_sec = (time_t)((" + ms +
+                       ") / 1000); " + tn + ".tv_nsec = (long)(((" + ms +
+                       ") % 1000) * 1000000L); nanosleep(&" + tn + ", NULL); (void)0; })";
             }
             if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "spawn") {
                 Node* entry = n->body != nullptr ? n->body->left : nullptr;
@@ -911,27 +940,57 @@ auto Emitter::emit_call(Node* n) -> string {
             }
             if (is_atomic(ot) || is_atomic(recv)) {
                 string loc = is_ptr(ot) ? emit_expr(callee->left) : ("&(" + emit_expr(callee->left) + ")");
-                string ord = "memory_order_seq_cst";
+                Type* elem = is_atomic(ot) ? ot->elem : recv->elem;
+                string et = c_type(elem);
+                if (callee->text == "wait") {
+                    string exp = n->body != nullptr ? emit_expr(n->body->left) : "0";
+                    return "({ while (atomic_load_explicit(" + loc +
+                           ", memory_order_seq_cst) == (" + et + ")(" + exp +
+                           ")) { lb_pause(); } (void)0; })";
+                }
+                if (callee->text == "wake") {
+                    return "((void)(" +
+                           (n->body != nullptr ? emit_expr(n->body->left) : string("0")) + "))";
+                }
+                if (callee->text == "cas") {
+                    Node* a = n->body;
+                    string exp = a != nullptr ? emit_expr(a->left) : "0";
+                    a = a != nullptr ? a->next : nullptr;
+                    string des = a != nullptr ? emit_expr(a->left) : "0";
+                    a = a != nullptr ? a->next : nullptr;
+                    string succ = "memory_order_seq_cst";
+                    string failo = "memory_order_seq_cst";
+                    string weak = "0";
+                    if (a != nullptr && a->text != "weak") {
+                        succ = memorder_of(a->left);
+                        a = a->next;
+                        if (a != nullptr && a->text != "weak") {
+                            failo = memorder_of(a->left);
+                            a = a->next;
+                        }
+                    }
+                    if (a != nullptr) {
+                        weak = emit_expr(a->left);
+                    }
+                    int id = tmp();
+                    string en = "_lb_ce" + std::to_string(id);
+                    string on = "_lb_co" + std::to_string(id);
+                    string tn = tup_c_name(n->ty);
+                    return "({ " + et + " " + en + " = (" + et + ")(" + exp + "); bool " + on +
+                           "; if (" + weak + ") { " + on +
+                           " = atomic_compare_exchange_weak_explicit(" + loc + ", &" + en + ", (" +
+                           et + ")(" + des + "), " + succ + ", " + failo + "); } else { " + on +
+                           " = atomic_compare_exchange_strong_explicit(" + loc + ", &" + en + ", (" +
+                           et + ")(" + des + "), " + succ + ", " + failo + "); } (" + tn + "){ " +
+                           on + ", " + en + " }; })";
+                }
                 Node* extra = nullptr;
                 if (n->body != nullptr && n->body->next != nullptr) {
                     extra = n->body->next->left;
                 } else if (n->body != nullptr && callee->text == "load") {
                     extra = n->body->left;
                 }
-                if (extra != nullptr &&
-                    (extra->kind == NodeKind::CaseValue || extra->kind == NodeKind::Member)) {
-                    if (extra->text == "relaxed") {
-                        ord = "memory_order_relaxed";
-                    } else if (extra->text == "acquire") {
-                        ord = "memory_order_acquire";
-                    } else if (extra->text == "release") {
-                        ord = "memory_order_release";
-                    } else if (extra->text == "acq_rel") {
-                        ord = "memory_order_acq_rel";
-                    }
-                }
-                Type* elem = is_atomic(ot) ? ot->elem : recv->elem;
-                string et = c_type(elem);
+                string ord = memorder_of(extra);
                 if (callee->text == "load") {
                     return "(" + et + ")atomic_load_explicit(" + loc + ", " + ord + ")";
                 }
@@ -939,6 +998,17 @@ auto Emitter::emit_call(Node* n) -> string {
                 if (callee->text == "store") {
                     return "(atomic_store_explicit(" + loc + ", (" + et + ")(" + val + "), " + ord +
                            "), (void)0)";
+                }
+                if (callee->text == "max" || callee->text == "min") {
+                    string cmp = callee->text == "max" ? ">=" : "<=";
+                    int id = tmp();
+                    string on = "_lb_mo" + std::to_string(id);
+                    string nn = "_lb_mn" + std::to_string(id);
+                    return "({ " + et + " " + on + " = atomic_load_explicit(" + loc + ", " + ord +
+                           "); " + et + " " + nn + " = (" + et + ")(" + val + "); for (;;) { " + et +
+                           " _w = (" + on + " " + cmp + " " + nn + ") ? " + on + " : " + nn +
+                           "; if (atomic_compare_exchange_weak_explicit(" + loc + ", &" + on +
+                           ", _w, " + ord + ", " + ord + ")) break; } " + on + "; })";
                 }
                 const char* op = "atomic_fetch_add_explicit";
                 if (callee->text == "sub") {
@@ -964,6 +1034,11 @@ auto Emitter::emit_call(Node* n) -> string {
                 string h = emit_expr(callee->left);
                 return "({ pthread_join((pthread_t)(" + h + ".id), NULL); (" + fail_c_name(n->ty) +
                        "){ .failed = false }; })";
+            }
+            if (recv != nullptr && recv->kind == TypeKind::Struct && recv->name == "Handle" &&
+                callee->text == "detach") {
+                string h = emit_expr(callee->left);
+                return "(pthread_detach((pthread_t)(" + h + ".id)))";
             }
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {

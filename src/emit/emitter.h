@@ -16,6 +16,7 @@ struct Emitter {
     vector<Type*> arrays;
     vector<Type*> opts;
     vector<Type*> fails;
+    vector<Type*> tups;
     Node* current_fn = nullptr;
     int temps = 0;
     string catch_var;
@@ -282,9 +283,11 @@ struct Emitter {
     void emit_global(Node* g);
     void note_opt(Type* t);
     void note_fail(Type* payload);
+    void note_tup(Type* t);
     void note_type(Type* t);
     void walk_types(Node* n);
     void emit_array_typedefs();
+    void emit_tup_typedefs();
     void emit_opt_typedefs();
     void note_fail_fn(Node* fn);
     void collect_from(Node* mod);

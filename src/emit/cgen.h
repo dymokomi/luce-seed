@@ -15,6 +15,7 @@ string sanitize_type_name(const string& s);
 string array_c_name(Type* t);
 string opt_c_name(Type* t);
 string fail_c_name(Type* t);
+string tup_c_name(Type* t);
 string c_type(Type* t);
 uint64_t emit_case_int(Node* en, Node* cse);
 int emit_case_tag(Node* en, Node* cse);

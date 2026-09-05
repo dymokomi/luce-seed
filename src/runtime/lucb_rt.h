@@ -13,6 +13,7 @@
 #endif
 
 LB_NORETURN void lb_trap(const char* message);
+void lb_pause(void);
 
 int64_t lb_add_s(int64_t a, int64_t b, int bits);
 uint64_t lb_add_u(uint64_t a, uint64_t b, int bits);

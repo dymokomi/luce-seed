@@ -1605,7 +1605,8 @@ auto Checker::check_method_call(Node* n) -> Type* {
                 return t_unit();
             }
             if (mem->text == "add" || mem->text == "sub" || mem->text == "swap" ||
-                mem->text == "set" || mem->text == "clear" || mem->text == "flip") {
+                mem->text == "set" || mem->text == "clear" || mem->text == "flip" ||
+                mem->text == "max" || mem->text == "min") {
                 if (nargs < 1 || nargs > 2) {
                     fail_n(n, "lucb.check.call", "this atomic method takes a value");
                 }
@@ -1616,6 +1617,66 @@ auto Checker::check_method_call(Node* n) -> Type* {
                     }
                 }
                 return elem;
+            }
+            if (mem->text == "wait") {
+                if (nargs != 1) {
+                    fail_n(n, "lucb.check.call", "`wait` takes the expected value");
+                }
+                if (n->body != nullptr) {
+                    check_expr(n->body->left, elem);
+                }
+                return t_unit();
+            }
+            if (mem->text == "wake") {
+                if (nargs != 1) {
+                    fail_n(n, "lucb.check.call", "`wake` takes a count");
+                }
+                if (n->body != nullptr) {
+                    check_expr(n->body->left, t_usize());
+                }
+                return t_unit();
+            }
+            if (mem->text == "cas") {
+                if (nargs < 2) {
+                    fail_n(n, "lucb.check.call", "`cas` needs expected and desired values");
+                    Type* pair[2] = {ty_bool, elem};
+                    return intern_tup(pair, 2);
+                }
+                Node* a = n->body;
+                check_expr(a->left, elem);
+                a = a->next;
+                check_expr(a->left, elem);
+                a = a->next;
+                if (a != nullptr && a->text != "weak") {
+                    check_expr(a->left, ord);
+                    if (a->left != nullptr &&
+                        (a->left->kind == NodeKind::CaseValue ||
+                         a->left->kind == NodeKind::Member) &&
+                        (a->left->text == "release" || a->left->text == "acq_rel")) {
+                        // success may be those; check failure next
+                    }
+                    a = a->next;
+                    if (a != nullptr && a->text != "weak") {
+                        Type* ft = check_expr(a->left, ord);
+                        (void)ft;
+                        if (a->left != nullptr &&
+                            (a->left->kind == NodeKind::CaseValue ||
+                             a->left->kind == NodeKind::Member) &&
+                            (a->left->text == "release" || a->left->text == "acq_rel")) {
+                            fail_n(a, "lucb.check.type",
+                                   "`cas` failure ordering cannot be `release` or `acq_rel`");
+                        }
+                        a = a->next;
+                    }
+                }
+                if (a != nullptr) {
+                    if (a->text != "weak" && a->text != "") {
+                        fail_n(a, "lucb.check.call", "unexpected `cas` argument");
+                    }
+                    check_expr(a->left, ty_bool);
+                }
+                Type* pair[2] = {ty_bool, elem};
+                return intern_tup(pair, 2);
             }
             fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "` on an atomic");
             return t_error();

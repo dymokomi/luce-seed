@@ -79,8 +79,8 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` unsupported |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
 | 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export later |
-| 5.9 / 15.1 | `@T` atomics, `atomic.fence`, `Ordering` | partial | `agree_atomic_add`, `agree_atomic_method`; `cas`/`wait`/`wake` later |
+| 5.9 / 15.1 | `@T` atomics, `atomic.fence`, `Ordering` | done | `agree_atomic_add`, `agree_atomic_method`, `agree_atomic_cas`, `agree_atomic_wait` |
 | 15.2 | `volatile T*` | done | `agree_volatile_store` |
-| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`; `detach`/`sleep`/`sync` later |
-| 8.9 | `asm` semantics | partial | `eval_asm_rejected`; C backend emits GNU asm; no operand lowering yet |
+| 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`; `sync` later |
+| 8.9 | `asm` semantics | partial | `eval_asm_rejected`, `native_asm_add`; interpreter rejects, C backend emits operands |
 | 6, 11–12, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | later |

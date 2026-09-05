@@ -16,6 +16,15 @@ auto Interp::make_array(Type* t, vector<Value> elems) -> Value {
     }
 
 auto Interp::zero_of(Type* t) -> Value {
+        if (t != nullptr && t->kind == TypeKind::Tuple) {
+            Value v;
+            v.kind = TypeKind::Tuple;
+            v.type = t;
+            for (int i = 0; i < t->ntargs; i++) {
+                v.fields.push_back(zero_of(t->args[i]));
+            }
+            return v;
+        }
         Value v = v_zero(t);
         if (t != nullptr && t->kind == TypeKind::Array) {
             vector<Value> elems;
@@ -1605,8 +1614,19 @@ auto Interp::eval_call(Node* n) -> Value {
             Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
             if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
                 n->resolved->kind == NodeKind::Func) {
-                if (callee->text == "fence") {
+                if (callee->text == "fence" || callee->text == "pause" ||
+                    callee->text == "yield" || callee->text == "sleep") {
                     return v_unit();
+                }
+                if (callee->text == "current") {
+                    Value h;
+                    h.kind = TypeKind::Struct;
+                    h.type = n->ty;
+                    Value id;
+                    id.kind = TypeKind::Usize;
+                    id.u = 1;
+                    h.fields.push_back(id);
+                    return h;
                 }
                 if (callee->text == "spawn") {
                     Node* entry = n->body != nullptr ? n->body->left : nullptr;
@@ -1657,6 +1677,40 @@ auto Interp::eval_call(Node* n) -> Value {
                     *slot = arg;
                     return v_unit();
                 }
+                if (callee->text == "wait") {
+                    return v_unit();
+                }
+                if (callee->text == "wake") {
+                    return v_unit();
+                }
+                if (callee->text == "cas") {
+                    Value exp = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    Value des = n->body != nullptr && n->body->next != nullptr
+                                    ? eval(n->body->next->left)
+                                    : v_unit();
+                    bool ok = as_u(*slot, elem) == as_u(exp, elem);
+                    Value obs = *slot;
+                    if (ok) {
+                        des.type = elem;
+                        if (elem != nullptr) {
+                            des.kind = elem->kind;
+                        }
+                        *slot = des;
+                    }
+                    Value tup;
+                    tup.kind = TypeKind::Tuple;
+                    tup.type = n->ty;
+                    Value b;
+                    b.kind = TypeKind::Bool;
+                    b.b = ok;
+                    tup.fields.push_back(b);
+                    obs.type = elem;
+                    if (elem != nullptr) {
+                        obs.kind = elem->kind;
+                    }
+                    tup.fields.push_back(obs);
+                    return tup;
+                }
                 Value prev = *slot;
                 prev.type = elem;
                 if (elem != nullptr) {
@@ -1675,6 +1729,18 @@ auto Interp::eval_call(Node* n) -> Value {
                 } else if (callee->text == "swap") {
                     *slot = arg;
                     return prev;
+                } else if (callee->text == "max" || callee->text == "min") {
+                    uint64_t a = as_u(*slot, elem);
+                    uint64_t b = as_u(arg, elem);
+                    bool take = callee->text == "max" ? a >= b : a <= b;
+                    if (!take) {
+                        arg.type = elem;
+                        if (elem != nullptr) {
+                            arg.kind = elem->kind;
+                        }
+                        *slot = arg;
+                    }
+                    return prev;
                 }
                 Value r = arith(elem, *slot, arg, op);
                 if (!trapped) {
@@ -1689,6 +1755,10 @@ auto Interp::eval_call(Node* n) -> Value {
                 ok.failed = false;
                 ok.type = n->ty;
                 return ok;
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Struct && ot->name == "Handle" &&
+                callee->text == "detach") {
+                return v_unit();
             }
             if (ot != nullptr && ot->kind == TypeKind::Interface) {
                 Value view = eval(callee->left);

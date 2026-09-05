@@ -163,6 +163,16 @@ void lb_trap(const char* message) {
     exit(1);
 }
 
+void lb_pause(void) {
+#if defined(__aarch64__)
+    __asm__ volatile("yield");
+#elif defined(__x86_64__)
+    __builtin_ia32_pause();
+#else
+    (void)0;
+#endif
+}
+
 int64_t* lb_null_probe(void) { return NULL; }
 
 void lb_check_utf8(const char* s, size_t n) {

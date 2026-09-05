@@ -727,6 +727,50 @@ TEST(agree_thread_spawn) {
                  "    return n\n"));
 }
 
+TEST(agree_atomic_cas) {
+    CHECK(agrees("var hits: @u64\n"
+                 "pub func answer() -> i64:\n"
+                 "    let (ok, old) = hits.cas(0, 7)\n"
+                 "    if ok:\n"
+                 "        return i64(old) + i64(hits)\n"
+                 "    return 0\n"));
+}
+
+TEST(agree_atomic_wait) {
+    CHECK(agrees("var hits: @u64\n"
+                 "pub func answer() -> i64:\n"
+                 "    hits = 1\n"
+                 "    hits.wait(0)\n"
+                 "    hits.wake(0)\n"
+                 "    return i64(hits)\n"));
+}
+
+TEST(agree_thread_current) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    thread.pause()\n"
+                 "    thread.yield()\n"
+                 "    thread.sleep(0)\n"
+                 "    let h = thread.current()\n"
+                 "    if h.id == 0:\n"
+                 "        return 0\n"
+                 "    return 1\n"));
+}
+
+TEST(native_asm_add) {
+    Both both;
+    const char* src = "pub func answer() -> i64:\n"
+                      "    var result: i64 = 0\n"
+                      "    asm arm64 (in(\"x0\") 7, out(\"x0\") result):\n"
+                      "        add x0, x0, #1\n"
+                      "    asm x86_64 (in(\"rax\") 7, out(\"rax\") result):\n"
+                      "        addq $1, %rax\n"
+                      "    return result\n";
+    CHECK(compile_source(src, &both));
+    CHECK(both.compiled);
+    CHECK_EQ(both.native.exit_code, 0);
+    CHECK(both.native.out.find("8") != std::string::npos);
+}
+
 TEST(header_export_func) {
     DiagnosticBag diagnostics;
     Source source = Source::from_bytes("t.lucb",

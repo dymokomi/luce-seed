@@ -108,6 +108,18 @@ auto Emitter::emit_stmt(Node* n) -> void {
             break;
         case NodeKind::Let:
         case NodeKind::Var: {
+            if (n->body != nullptr && n->text.empty() && is_tup(n->ty)) {
+                int id = tmp();
+                string tn = "_lb_tu" + std::to_string(id);
+                line(c_type(n->ty) + " " + tn + " = " + emit_expr(n->left) + ";");
+                int i = 0;
+                for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
+                    line(c_type(nm->ty) + " " + ident("lb_", nm->text) + " = " + tn + ".a" +
+                         std::to_string(i) + ";");
+                    i++;
+                }
+                break;
+            }
             string ty = c_type(n->ty);
             string name = ident("lb_", n->text);
             if (n->flags & FlagUninit) {
@@ -339,7 +351,88 @@ auto Emitter::emit_stmt(Node* n) -> void {
             } else {
                 line("#if 0");
             }
-            line("asm volatile(" + c_escape(body) + ":::\"memory\");");
+            line("{");
+            indent++;
+            string outs;
+            string ins;
+            string clobs = "\"memory\"";
+            bool first_out = true;
+            bool first_in = true;
+            vector<string> out_lhs;
+            vector<string> out_rhs;
+            for (Node* op = n->left; op != nullptr; op = op->next) {
+                if (op->text == "options") {
+                    continue;
+                }
+                string place;
+                if (op->type != nullptr) {
+                    place = string(op->type->text);
+                    if (place.size() >= 2 && place.front() == '"' && place.back() == '"') {
+                        place = place.substr(1, place.size() - 2);
+                    }
+                }
+                bool is_out = op->text == "out" || op->text == "inout";
+                bool is_in = op->text == "in" || op->text == "inout";
+                bool clobber_only = is_out && op->left != nullptr &&
+                                    op->left->kind == NodeKind::Name && op->left->text == "_";
+                if (clobber_only) {
+                    if (!place.empty()) {
+                        clobs += ", \"" + place + "\"";
+                    }
+                    continue;
+                }
+                string rn = "_lb_as" + std::to_string(tmp());
+                Type* ot = op->left != nullptr ? op->left->ty : nullptr;
+                string ty = c_type(ot);
+                if (ty == "void" || ty.empty()) {
+                    ty = "int64_t";
+                }
+                if (place == "reg" || place.empty()) {
+                    if (is_in) {
+                        line(ty + " " + rn + " = " + emit_expr(op->left) + ";");
+                    } else {
+                        line(ty + " " + rn + ";");
+                    }
+                } else if (is_in) {
+                    line("register " + ty + " " + rn + " asm(\"" + place + "\") = " +
+                         emit_expr(op->left) + ";");
+                } else {
+                    line("register " + ty + " " + rn + " asm(\"" + place + "\");");
+                }
+                if (is_out) {
+                    if (!first_out) {
+                        outs += ", ";
+                    }
+                    first_out = false;
+                    outs += string(is_in ? "\"+r\"(" : "\"=r\"(") + rn + ")";
+                    if (op->left != nullptr) {
+                        out_lhs.push_back(emit_expr(op->left));
+                        out_rhs.push_back(rn);
+                    }
+                } else if (is_in) {
+                    if (!first_in) {
+                        ins += ", ";
+                    }
+                    first_in = false;
+                    ins += "\"r\"(" + rn + ")";
+                }
+            }
+            string tmpl = body;
+            string escaped;
+            for (size_t i = 0; i < tmpl.size(); i++) {
+                if (tmpl[i] == '%') {
+                    escaped += "%%";
+                } else {
+                    escaped += tmpl[i];
+                }
+            }
+            line("asm volatile(" + c_escape(escaped) + " : " + outs + " : " + ins + " : " + clobs +
+                 ");");
+            for (size_t i = 0; i < out_lhs.size(); i++) {
+                line(out_lhs[i] + " = " + out_rhs[i] + ";");
+            }
+            indent--;
+            line("}");
             line("#endif");
             break;
         }

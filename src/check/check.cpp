@@ -250,6 +250,35 @@ auto Checker::intern_atomic(Type* elem) -> Type* {
         return t;
     }
 
+auto Checker::intern_tup(Type** elems, int n) -> Type* {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind != TypeKind::Tuple || t->ntargs != n) {
+                continue;
+            }
+            bool same = true;
+            for (int j = 0; j < n; j++) {
+                if (t->args[j] != elems[j]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Tuple, {});
+        t->ntargs = n;
+        t->args = static_cast<Type**>(arena->alloc(sizeof(Type*) * static_cast<size_t>(n),
+                                                   alignof(Type*)));
+        for (int j = 0; j < n; j++) {
+            t->args[j] = elems[j];
+        }
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
 auto Checker::atomic_ok(Type* t) -> bool {
         if (t == nullptr) {
             return false;
@@ -458,10 +487,10 @@ auto Checker::bind_memory() -> void {
         ot->decl = ord;
         ot->elem = ty_i32;
         ord->ty = ot;
-        const char* onames[] = {"relaxed", "acquire", "release", "acq_rel", "seq_cst"};
-        const int ovals[] = {0, 2, 3, 4, 5};
+        const char* onames[] = {"relaxed", "acquire", "release", "acq_rel", "seq_cst", "signal"};
+        const int ovals[] = {0, 2, 3, 4, 5, 6};
         Node* oprev = nullptr;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             Node* cse = syn_node(NodeKind::EnumCase, onames[i]);
             cse->ty = ot;
             Node* lit = arena->make<Node>();
@@ -494,18 +523,21 @@ auto Checker::bind_memory() -> void {
         Node* hid = syn_node(NodeKind::Field, "id");
         hid->ty = ty_usize;
         Node* join = syn_node(NodeKind::Func, "join");
-        join->flags |= FlagFallible;
+        join->flags |= FlagFallible | FlagPub;
         join->ty = t_unit();
+        Node* det = syn_node(NodeKind::Func, "detach");
+        det->flags |= FlagPub;
+        det->ty = t_unit();
         hid->next = join;
+        join->next = det;
         Node* hs = syn_node(NodeKind::Struct, "Handle");
         hs->body = hid;
         Type* ht = make_type(TypeKind::Struct, "Handle");
         ht->decl = hs;
         hs->ty = ht;
-        join->ty = t_unit();
 
         Node* spawn = syn_node(NodeKind::Func, "spawn");
-        spawn->flags |= FlagFallible;
+        spawn->flags |= FlagFallible | FlagPub;
         Node* sp_entry = syn_node(NodeKind::Param, "entry");
         sp_entry->ty = intern_ptr(ty_void, false, false, false);
         Node* sp_ctx = syn_node(NodeKind::Param, "context");
@@ -513,15 +545,33 @@ auto Checker::bind_memory() -> void {
         sp_entry->next = sp_ctx;
         spawn->right = sp_entry;
         spawn->ty = ht;
-        spawn->next = nullptr;
-        Node* tmod = syn_node(NodeKind::Module, "thread");
+
+        Node* cur = syn_node(NodeKind::Func, "current");
+        cur->flags |= FlagPub;
+        cur->ty = ht;
+        Node* pause = syn_node(NodeKind::Func, "pause");
+        pause->flags |= FlagPub;
+        pause->ty = t_unit();
+        Node* yield = syn_node(NodeKind::Func, "yield");
+        yield->flags |= FlagPub;
+        yield->ty = t_unit();
+        Node* slp = syn_node(NodeKind::Func, "sleep");
+        slp->flags |= FlagPub;
+        Node* ms = syn_node(NodeKind::Param, "milliseconds");
+        ms->ty = ty_usize;
+        slp->right = ms;
+        slp->ty = t_unit();
+        spawn->next = cur;
+        cur->next = pause;
+        pause->next = yield;
+        yield->next = slp;
         Node* hpub = syn_node(NodeKind::Struct, "Handle");
         hpub->ty = ht;
         hpub->body = hs->body;
         hpub->flags |= FlagPub;
-        spawn->flags |= FlagPub;
+        slp->next = hpub;
+        Node* tmod = syn_node(NodeKind::Module, "thread");
         tmod->body = spawn;
-        spawn->next = hpub;
         Type* tt = make_type(TypeKind::Module, "thread");
         tt->decl = tmod;
         bind("thread", tt, false, tmod);
@@ -673,6 +723,24 @@ auto Checker::resolve_type(Node* n) -> Type* {
         if ((n->flags & k_type_flags_unsupported) != 0) {
             fail_n(n, "lucb.check.unsupported", "this type is not in this slice");
             n->ty = t_error();
+            return n->ty;
+        }
+        if (n->flags & FlagTupleType) {
+            int nfields = 0;
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                nfields++;
+            }
+            Type* elems[8];
+            if (nfields < 2 || nfields > 8) {
+                fail_n(n, "lucb.check.type", "a tuple needs between 2 and 8 elements");
+                n->ty = t_error();
+                return n->ty;
+            }
+            int i = 0;
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                elems[i++] = resolve_type(a);
+            }
+            n->ty = intern_tup(elems, nfields);
             return n->ty;
         }
         if (n->flags & FlagAtomic) {

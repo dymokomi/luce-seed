@@ -37,6 +37,23 @@ auto Interp::exec(Node* n) -> void {
             break;
         case NodeKind::Let:
         case NodeKind::Var: {
+            if (n->body != nullptr && n->text.empty()) {
+                Value v = n->left != nullptr ? eval(n->left) : v_unit();
+                int i = 0;
+                for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
+                    Slot s;
+                    s.name = nm->text;
+                    s.decl = nm;
+                    if (i < static_cast<int>(v.fields.size())) {
+                        s.value = v.fields[static_cast<size_t>(i)];
+                    }
+                    if (!frames.empty()) {
+                        frames.back().slots.push_back(s);
+                    }
+                    i++;
+                }
+                break;
+            }
             Slot s;
             s.name = n->text;
             if (n->left != nullptr) {

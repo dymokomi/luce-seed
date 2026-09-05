@@ -16,6 +16,29 @@ auto Checker::check_stmt(Node* n) -> void {
             break;
         case NodeKind::Let:
         case NodeKind::Var: {
+            if (n->body != nullptr && n->text.empty()) {
+                Type* init = n->left != nullptr ? check_expr(n->left, nullptr) : t_error();
+                if (!is_tup(init)) {
+                    fail_n(n, "lucb.check.type", "tuple binding needs a tuple");
+                    break;
+                }
+                int nnames = 0;
+                for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
+                    nnames++;
+                }
+                if (nnames != init->ntargs) {
+                    fail_n(n, "lucb.check.type", "wrong number of tuple names");
+                }
+                int i = 0;
+                for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
+                    Type* et = i < init->ntargs ? init->args[i] : t_error();
+                    nm->ty = et;
+                    bind(nm->text, et, n->kind == NodeKind::Var, nm);
+                    i++;
+                }
+                n->ty = init;
+                break;
+            }
             Type* t = nullptr;
             if (n->type != nullptr) {
                 t = resolve_type(n->type);
@@ -291,7 +314,11 @@ auto Checker::check_asm(Node* n) -> void {
                 continue;
             }
             if (op->left != nullptr) {
-                check_expr(op->left, nullptr);
+                Type* t = check_expr(op->left, nullptr);
+                if (t != nullptr && t->kind == TypeKind::UntypedInt) {
+                    t = coerce(op->left, t, t_i64());
+                    op->left->ty = t;
+                }
             }
         }
     }

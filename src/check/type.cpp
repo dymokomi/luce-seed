@@ -138,6 +138,17 @@ string type_name(const Type* t) {
         return "fmt";
     case TypeKind::Atomic:
         return "@" + type_name(t->elem);
+    case TypeKind::Tuple: {
+        string s = "(";
+        for (int i = 0; i < t->ntargs; i++) {
+            if (i != 0) {
+                s += ", ";
+            }
+            s += type_name(t->args[i]);
+        }
+        s += ")";
+        return s;
+    }
     }
     return "<unknown>";
 }
@@ -433,6 +444,16 @@ int type_align(const Type* t) {
         }
         return align < 1 ? 1 : align;
     }
+    if (t->kind == TypeKind::Tuple) {
+        int align = 1;
+        for (int i = 0; i < t->ntargs; i++) {
+            int a = type_align(t->args[i]);
+            if (a > align) {
+                align = a;
+            }
+        }
+        return align < 1 ? 1 : align;
+    }
     if (t->kind == TypeKind::Enum) {
         if (is_int_enum(t)) {
             return type_align(t->elem);
@@ -509,6 +530,20 @@ int type_size(const Type* t) {
         return static_cast<int>(sizeof(int32_t) + sizeof(void*) + sizeof(size_t));
     case TypeKind::Atomic:
         return type_size(t->elem);
+    case TypeKind::Tuple: {
+        int size = 0;
+        for (int i = 0; i < t->ntargs; i++) {
+            int a = type_align(t->args[i]);
+            if (a > 1) {
+                int rem = size % a;
+                if (rem != 0) {
+                    size += a - rem;
+                }
+            }
+            size += type_size(t->args[i]);
+        }
+        return size;
+    }
     case TypeKind::Array:
         return type_size(t->elem) * static_cast<int>(t->length);
     case TypeKind::Void:

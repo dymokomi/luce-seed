@@ -779,8 +779,8 @@ auto Parser::parse_asm() -> Node* {
             if (!at(TokenKind::RParen)) {
                 while (true) {
                     Node* op = make(NodeKind::Param, cur().span);
-                    if (at_name("in") || at_name("out") || at_name("inout") ||
-                        at_name("options")) {
+                    if (at(TokenKind::KwIn) || at_name("in") || at_name("out") ||
+                        at_name("inout") || at_name("options")) {
                         op->text = take().text;
                     } else if (at(TokenKind::Name)) {
                         op->text = take().text;

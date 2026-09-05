@@ -99,6 +99,18 @@ string fail_c_name(Type* t) {
     return "lb_r_" + sanitize_type_name(type_name(t));
 }
 
+string tup_c_name(Type* t) {
+    string s = "lb_t";
+    if (t == nullptr) {
+        return s;
+    }
+    for (int i = 0; i < t->ntargs; i++) {
+        s += "_";
+        s += sanitize_type_name(type_name(t->args[i]));
+    }
+    return s;
+}
+
 string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
@@ -114,6 +126,9 @@ string c_type(Type* t) {
     }
     if (t->kind == TypeKind::Atomic) {
         return "_Atomic(" + c_type(t->elem) + ")";
+    }
+    if (t->kind == TypeKind::Tuple) {
+        return tup_c_name(t);
     }
     if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
         (t->kind == TypeKind::Enum && !is_int_enum(t))) {

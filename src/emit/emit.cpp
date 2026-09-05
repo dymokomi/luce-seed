@@ -312,6 +312,21 @@ auto Emitter::note_fail(Type* payload) -> void {
         fails.push_back(payload);
     }
 
+auto Emitter::note_tup(Type* t) -> void {
+        if (t == nullptr || t->kind != TypeKind::Tuple) {
+            return;
+        }
+        for (int i = 0; i < t->ntargs; i++) {
+            note_type(t->args[i]);
+        }
+        for (size_t i = 0; i < tups.size(); i++) {
+            if (tups[i] == t) {
+                return;
+            }
+        }
+        tups.push_back(t);
+    }
+
 auto Emitter::note_type(Type* t) -> void {
         if (t == nullptr || t->kind == TypeKind::Param) {
             return;
@@ -340,8 +355,12 @@ auto Emitter::note_type(Type* t) -> void {
             }
             return;
         }
-        if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span) {
+        if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span ||
+            t->kind == TypeKind::Atomic) {
             note_type(t->elem);
+        }
+        if (t->kind == TypeKind::Tuple) {
+            note_tup(t);
         }
         if (t->kind == TypeKind::Struct && t->decl != nullptr) {
             for (Node* m = t->decl->body; m != nullptr; m = m->next) {
@@ -371,6 +390,21 @@ auto Emitter::emit_array_typedefs() -> void {
                  std::to_string(t->length) + "]; } " + array_c_name(t) + ";");
         }
         if (!arrays.empty()) {
+            out += '\n';
+        }
+    }
+
+auto Emitter::emit_tup_typedefs() -> void {
+        for (size_t i = 0; i < tups.size(); i++) {
+            Type* t = tups[i];
+            string s = "typedef struct " + tup_c_name(t) + " {";
+            for (int j = 0; j < t->ntargs; j++) {
+                s += " " + c_type(t->args[j]) + " a" + std::to_string(j) + ";";
+            }
+            s += " } " + tup_c_name(t) + ";";
+            line(s);
+        }
+        if (!tups.empty()) {
             out += '\n';
         }
     }
@@ -653,13 +687,18 @@ auto Emitter::emit_module(Node* mod) -> void {
         out += "#include <string.h>\n";
         out += "#include <stdatomic.h>\n";
         out += "#include <pthread.h>\n";
+        out += "#include <sched.h>\n";
+        out += "#include <time.h>\n";
+        out += "#include <unistd.h>\n";
         out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();
+        tups.clear();
         collect_from(mod);
         emit_array_typedefs();
         emit_types(mod);
+        emit_tup_typedefs();
         emit_opt_typedefs();
         emit_decls(mod);
         emit_ifaces(mod);
@@ -680,10 +719,14 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         out += "#include <string.h>\n";
         out += "#include <stdatomic.h>\n";
         out += "#include <pthread.h>\n";
+        out += "#include <sched.h>\n";
+        out += "#include <time.h>\n";
+        out += "#include <unistd.h>\n";
         out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();
+        tups.clear();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             collect_from(modules[static_cast<size_t>(i)]);
         }
@@ -691,6 +734,7 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_types(modules[static_cast<size_t>(i)]);
         }
+        emit_tup_typedefs();
         emit_opt_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_decls(modules[static_cast<size_t>(i)]);
