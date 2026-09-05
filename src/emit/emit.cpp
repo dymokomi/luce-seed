@@ -32,6 +32,9 @@ string func_ident(Node* fn, Node* owner, string_view prefix = {}) {
     if (owner != nullptr) {
         return p + string(owner->text) + "_" + string(fn->text);
     }
+    if (fn != nullptr && fn->text == "answer" && (fn->flags & FlagFallible) != 0) {
+        return p + "answer_impl";
+    }
     return p + string(fn->text);
 }
 
@@ -71,6 +74,9 @@ string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
     }
+    if (t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
+        return "lb_fixed";
+    }
     if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
         (t->kind == TypeKind::Enum && !is_int_enum(t))) {
         if (t->decl != nullptr) {
@@ -85,7 +91,17 @@ string c_type(Type* t) {
         return array_c_name(t);
     }
     if (t->kind == TypeKind::Pointer) {
-        return c_type_spelling(t);
+        if (t->elem != nullptr && t->elem->kind == TypeKind::Void) {
+            return "void*";
+        }
+        string q;
+        if (t->is_const) {
+            q += "const ";
+        }
+        if (t->is_volatile) {
+            q += "volatile ";
+        }
+        return q + c_type(t->elem) + "*";
     }
     if (is_opt(t)) {
         return opt_c_name(t);
@@ -221,6 +237,8 @@ struct Emitter {
         vector<Node*> defers;
         bool loop = false;
         string_view label;
+        bool restore_alloc = false;
+        string alloc_save;
     };
     vector<Scope> scopes;
 
@@ -298,9 +316,16 @@ struct Emitter {
         }
     }
 
+    void unwind_scope(const Scope& sc) {
+        run_defers(sc.defers);
+        if (sc.restore_alloc) {
+            line("lb_set_alloc(" + sc.alloc_save + ");");
+        }
+    }
+
     void run_defers_from(int from) {
         for (int i = static_cast<int>(scopes.size()) - 1; i >= from; i--) {
-            run_defers(scopes[static_cast<size_t>(i)].defers);
+            unwind_scope(scopes[static_cast<size_t>(i)]);
         }
     }
 
@@ -361,7 +386,13 @@ struct Emitter {
         Type* payload = is_fail(ft) ? ft->elem : ft;
         string s = "({ ";
         s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
-        s += "if (" + rn + ".failed) { " + snapshot_defers() + "return " + rn + "; } ";
+        s += "if (" + rn + ".failed) { " + snapshot_defers();
+        string fnr = fn_c_ret(current_fn);
+        if (fn_fallible() && fnr != rty) {
+            s += "return ((" + fnr + "){ .error = " + rn + ".error, .failed = true }); } ";
+        } else {
+            s += "return " + rn + "; } ";
+        }
         if (payload == nullptr || payload->kind == TypeKind::Unit) {
             s += "(void)0; })";
         } else {
@@ -486,6 +517,10 @@ struct Emitter {
             return emit_else(n);
         case NodeKind::Catch:
             return emit_catch(n);
+        case NodeKind::New:
+            return emit_new(n);
+        case NodeKind::Alloc:
+            return emit_alloc(n);
         case NodeKind::Match:
         case NodeKind::MatchExpr:
             return "/* match-expr */ 0";
@@ -809,6 +844,17 @@ struct Emitter {
 
     string emit_member(Node* n) {
         Type* ot = n->left != nullptr ? n->left->ty : nullptr;
+        if (ot != nullptr && ot->kind == TypeKind::Module) {
+            if (n->text == "allocator") {
+                return "lb_get_alloc()";
+            }
+            if (n->text == "heap") {
+                return "lb_heap_alloc()";
+            }
+            if (n->text == "exhausted") {
+                return "((int32_t)LB_MEMORY_EXHAUSTED)";
+            }
+        }
         bool ptr = is_ptr(ot);
         Type* raw = ptr && ot != nullptr ? ot->elem : ot;
         string base = emit_expr(n->left);
@@ -852,13 +898,13 @@ struct Emitter {
             char nbuf[32];
             snprintf(nbuf, sizeof(nbuf), "%lluULL",
                      static_cast<unsigned long long>(bt->length));
-            return "(lb_check_index((uint64_t)(" + i + "), " + nbuf + "), (" + b + ").d[" + i +
-                   "])";
+            return "((" + b + ").d[(lb_check_index((uint64_t)(" + i + "), " + nbuf + "), " + i +
+                   ")])";
         }
         if (is_span(bt) || (bt != nullptr && bt->kind == TypeKind::Str)) {
             string elem = n->ty != nullptr ? c_type(n->ty) : "uint8_t";
-            return "(lb_check_index((uint64_t)(" + i + "), " + b + ".length), ((" + elem + "*)" +
-                   b + ".data)[" + i + "])";
+            return "(((" + elem + "*)" + b + ".data)[(lb_check_index((uint64_t)(" + i + "), " + b +
+                   ".length), " + i + ")])";
         }
         if (is_ptr(bt)) {
             return "((" + b + ")[" + i + "])";
@@ -952,6 +998,9 @@ struct Emitter {
 
     string emit_call(Node* n) {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
+            return "lb_heap_alloc()";
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Node* cond = n->body != nullptr ? n->body->left : nullptr;
             string msg = "\"assert failed\"";
@@ -1038,6 +1087,22 @@ struct Emitter {
             string name = func_ident(method, owner);
             string args = emit_args(n->body);
             if (method != nullptr && (method->flags & FlagStatic) != 0) {
+                bool fixed_over = method->text == "over" &&
+                                  ((owner != nullptr && owner->text == "FixedBuffer") ||
+                                   (n->ty != nullptr && n->ty->name == "FixedBuffer"));
+                if (fixed_over) {
+                    Node* arg = n->body != nullptr ? n->body->left : nullptr;
+                    Type* at = arg != nullptr ? arg->ty : nullptr;
+                    string e = emit_expr(arg);
+                    if (is_array(at)) {
+                        return "((lb_fixed){ .data = (uint8_t*)(" + e + ".d), .cap = " +
+                               std::to_string(at->length) + "ULL, .used = 0 })";
+                    }
+                    int sid = tmp();
+                    string sn = "_lb_s" + std::to_string(sid);
+                    return "({ lb_span " + sn + " = " + e + "; (lb_fixed){ .data = (uint8_t*)" +
+                           sn + ".data, .cap = " + sn + ".length, .used = 0 }; })";
+                }
                 return name + "(" + args + ")";
             }
             string recv = emit_addr(obj);
@@ -1074,6 +1139,162 @@ struct Emitter {
         return s;
     }
 
+    string emit_exhausted_lit(Type* payload) {
+        return "((" + fail_c_name(payload) +
+               "){ .error = { .code = LB_MEMORY_EXHAUSTED, .message = "
+               "(lb_str){\"memory.exhausted\", 16} }, .failed = true })";
+    }
+
+    string emit_allocator(Node* n) {
+        if (n == nullptr) {
+            return "lb_get_alloc()";
+        }
+        Type* t = n->ty;
+        if (t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
+            return "lb_fixed_alloc(&(" + emit_expr(n) + "))";
+        }
+        return emit_expr(n);
+    }
+
+    string emit_new(Node* n) {
+        int id = tmp();
+        string an = "_lb_a" + std::to_string(id);
+        string bn = "_lb_b" + std::to_string(id);
+        string rn = "_lb_r" + std::to_string(id);
+        Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
+        string rty = fail_c_name(payload);
+        string s = "({ ";
+        s += "lb_alloc " + an + " = " + emit_allocator(n->right) + "; ";
+        if (is_span(payload)) {
+            Type* elem = payload->elem;
+            Node* count = n->type != nullptr ? n->type->right : nullptr;
+            string cn = "_lb_n" + std::to_string(id);
+            string et = c_type(elem);
+            s += "size_t " + cn + " = (size_t)(" + emit_expr(count) + "); ";
+            s += rty + " " + rn + "; ";
+            s += "if (" + cn + " != 0 && sizeof(" + et + ") > ((size_t)-1) / " + cn + ") { ";
+            s += rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+            s += "size_t _lb_bytes" + std::to_string(id) + " = sizeof(" + et + ") * " + cn + "; ";
+            s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_bytes" + std::to_string(id) +
+                 ", _Alignof(" + et + ")); ";
+            s += "if (_lb_bytes" + std::to_string(id) + " != 0 && " + bn +
+                 ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+            s += "if (" + bn + ".data != NULL) memset(" + bn + ".data, 0, _lb_bytes" +
+                 std::to_string(id) + "); ";
+            s += rn + ".value.data = " + bn + ".data; ";
+            s += rn + ".value.length = " + cn + "; ";
+            s += rn + ".failed = false; } } ";
+            s += rn + "; })";
+            return s;
+        }
+        Type* elem = is_ptr(payload) ? payload->elem : payload;
+        string et = c_type(elem);
+        string pn = "_lb_p" + std::to_string(id);
+        s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", sizeof(" + et + "), _Alignof(" + et +
+             ")); ";
+        s += rty + " " + rn + "; ";
+        s += "if (sizeof(" + et + ") != 0 && " + bn + ".data == NULL) { " + rn + " = " +
+             emit_exhausted_lit(payload) + "; } else { ";
+        s += et + "* " + pn + " = (" + et + "*)" + bn + ".data; ";
+        if (n->body != nullptr && n->body->kind == NodeKind::CaseValue) {
+            s += "if (" + pn + ") *" + pn + " = " + emit_enum_value(n->body) + "; ";
+        } else if (n->body != nullptr && n->resolved != nullptr &&
+                   n->resolved->kind == NodeKind::Struct) {
+            s += "if (" + pn + ") *" + pn + " = " + emit_ctor(n, n->resolved) + "; ";
+        } else {
+            s += "if (" + pn + ") memset(" + pn + ", 0, sizeof(" + et + ")); ";
+        }
+        s += rn + ".value = " + pn + "; ";
+        s += rn + ".failed = false; } ";
+        s += rn + "; })";
+        return s;
+    }
+
+    string emit_alloc(Node* n) {
+        int id = tmp();
+        string an = "_lb_a" + std::to_string(id);
+        string bn = "_lb_b" + std::to_string(id);
+        string rn = "_lb_r" + std::to_string(id);
+        Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
+        string rty = fail_c_name(payload);
+        string s = "({ ";
+        s += "lb_alloc " + an + " = " + emit_allocator(n->right) + "; ";
+        s += rty + " " + rn + "; ";
+        if (n->type == nullptr) {
+            string sz = emit_expr(n->body != nullptr ? n->body->left : nullptr);
+            string al = emit_expr(n->body != nullptr && n->body->next != nullptr
+                                      ? n->body->next->left
+                                      : nullptr);
+            s += "size_t _lb_sz" + std::to_string(id) + " = (size_t)(" + sz + "); ";
+            s += "size_t _lb_al" + std::to_string(id) + " = (size_t)(" + al + "); ";
+            s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_sz" + std::to_string(id) +
+                 ", _lb_al" + std::to_string(id) + "); ";
+            s += "if (_lb_sz" + std::to_string(id) + " != 0 && " + bn +
+                 ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+            s += rn + ".value = " + bn + "; " + rn + ".failed = false; } ";
+            s += rn + "; })";
+            return s;
+        }
+        Type* elem = payload != nullptr ? payload->elem : nullptr;
+        string et = c_type(elem);
+        Node* count = n->type->right;
+        string cn = "_lb_n" + std::to_string(id);
+        s += "size_t " + cn + " = (size_t)(" + emit_expr(count) + "); ";
+        s += "if (" + cn + " != 0 && sizeof(" + et + ") > ((size_t)-1) / " + cn + ") { ";
+        s += rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+        s += "size_t _lb_bytes" + std::to_string(id) + " = sizeof(" + et + ") * " + cn + "; ";
+        s += "lb_span " + bn + " = lb_alloc_bytes(" + an + ", _lb_bytes" + std::to_string(id) +
+             ", _Alignof(" + et + ")); ";
+        s += "if (_lb_bytes" + std::to_string(id) + " != 0 && " + bn +
+             ".data == NULL) { " + rn + " = " + emit_exhausted_lit(payload) + "; } else { ";
+        s += rn + ".value.data = " + bn + ".data; ";
+        s += rn + ".value.length = " + cn + "; ";
+        s += rn + ".failed = false; } } ";
+        s += rn + "; })";
+        return s;
+    }
+
+    void emit_free(Node* n) {
+        Type* t = n->left != nullptr ? n->left->ty : nullptr;
+        string a = emit_allocator(n->right);
+        string e = emit_expr(n->left);
+        if (is_ptr(t)) {
+            string et = c_type(t->elem);
+            line("lb_release_bytes(" + a + ", (lb_span){ (void*)(" + e + "), sizeof(" + et +
+                 ") });");
+            return;
+        }
+        if (is_span(t)) {
+            string et = c_type(t->elem);
+            int id = tmp();
+            string sn = "_lb_s" + std::to_string(id);
+            line("{ lb_span " + sn + " = " + e + "; lb_release_bytes(" + a + ", (lb_span){ " + sn +
+                 ".data, " + sn + ".length * sizeof(" + et + ") }); }");
+            return;
+        }
+        line("(void)(" + e + ");");
+    }
+
+    void emit_with(Node* n) {
+        int id = tmp();
+        string save = "_lb_as" + std::to_string(id);
+        line("{");
+        indent++;
+        line("lb_alloc " + save + " = lb_get_alloc();");
+        line("lb_set_alloc(" + emit_allocator(n->left) + ");");
+        Scope sc;
+        sc.restore_alloc = true;
+        sc.alloc_save = save;
+        scopes.push_back(sc);
+        emit_stmt(n->body);
+        if (!scopes.empty()) {
+            unwind_scope(scopes.back());
+            scopes.pop_back();
+        }
+        indent--;
+        line("}");
+    }
+
     void emit_block(Node* n) {
         line("{");
         indent++;
@@ -1084,7 +1305,7 @@ struct Emitter {
             }
         }
         if (!scopes.empty()) {
-            run_defers(scopes.back().defers);
+            unwind_scope(scopes.back());
             scopes.pop_back();
         }
         indent--;
@@ -1120,7 +1341,8 @@ struct Emitter {
             } else if (n->ty != nullptr &&
                        (n->ty->kind == TypeKind::Struct || n->ty->kind == TypeKind::Union ||
                         n->ty->kind == TypeKind::Enum || is_array(n->ty) || is_span(n->ty) ||
-                        n->ty->kind == TypeKind::Str || is_opt(n->ty))) {
+                        n->ty->kind == TypeKind::Str || is_opt(n->ty) ||
+                        n->ty->kind == TypeKind::Allocator)) {
                 init = "{0}";
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";
@@ -1129,6 +1351,14 @@ struct Emitter {
             break;
         }
         case NodeKind::Assign: {
+            if (n->left != nullptr && n->left->kind == NodeKind::Member &&
+                n->left->text == "allocator") {
+                Type* lt = n->left->left != nullptr ? n->left->left->ty : nullptr;
+                if (lt != nullptr && lt->kind == TypeKind::Module) {
+                    line("lb_set_alloc(" + emit_allocator(n->right) + ");");
+                    break;
+                }
+            }
             string dst = emit_expr(n->left);
             // self.x emits self->x; Name emits lb_name.
             if (n->left != nullptr && n->left->kind == NodeKind::Self) {
@@ -1268,11 +1498,17 @@ struct Emitter {
             indent--;
             line("}");
             if (!scopes.empty()) {
-                run_defers(scopes.back().defers);
+                unwind_scope(scopes.back());
                 scopes.pop_back();
             }
             break;
         }
+        case NodeKind::Free:
+            emit_free(n);
+            break;
+        case NodeKind::With:
+            emit_with(n);
+            break;
         case NodeKind::ExprStmt:
             if (is_error_call(n->left)) {
                 run_defers_from(0);
@@ -1289,7 +1525,7 @@ struct Emitter {
 
     bool any_defers() {
         for (size_t i = 0; i < scopes.size(); i++) {
-            if (!scopes[i].defers.empty()) {
+            if (!scopes[i].defers.empty() || scopes[i].restore_alloc) {
                 return true;
             }
         }
@@ -1402,7 +1638,7 @@ struct Emitter {
             line("}");
         }
         if (!scopes.empty()) {
-            run_defers(scopes.back().defers);
+            unwind_scope(scopes.back());
             scopes.pop_back();
         }
         if (!n->text.empty()) {
@@ -1426,7 +1662,7 @@ struct Emitter {
         indent--;
         line("}");
         if (!scopes.empty()) {
-            run_defers(scopes.back().defers);
+            unwind_scope(scopes.back());
             scopes.pop_back();
         }
     }
@@ -1657,7 +1893,7 @@ struct Emitter {
             emit_stmt(fn->body);
         }
         if (!scopes.empty()) {
-            run_defers(scopes.back().defers);
+            unwind_scope(scopes.back());
             scopes.pop_back();
         }
         current_fn = saved_fn;
@@ -1784,7 +2020,8 @@ struct Emitter {
         } else if (g->ty != nullptr &&
                    (g->ty->kind == TypeKind::Struct || g->ty->kind == TypeKind::Union ||
                     g->ty->kind == TypeKind::Enum || is_array(g->ty) || is_opt(g->ty) ||
-                    is_span(g->ty) || (g->ty->kind == TypeKind::Str))) {
+                    is_span(g->ty) || (g->ty->kind == TypeKind::Str) ||
+                    g->ty->kind == TypeKind::Allocator)) {
             init = "{0}";
         }
         line(tl + ty + " " + name + " = " + init + ";");
@@ -1913,7 +2150,7 @@ struct Emitter {
         }
     }
 
-    void emit_decls(Node* mod) {
+    void emit_types(Node* mod) {
         if (mod == nullptr) {
             return;
         }
@@ -1925,6 +2162,12 @@ struct Emitter {
             } else if (d->kind == NodeKind::Enum) {
                 emit_enum(d);
             }
+        }
+    }
+
+    void emit_decls(Node* mod) {
+        if (mod == nullptr) {
+            return;
         }
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
@@ -1989,7 +2232,7 @@ struct Emitter {
             emit_stmt(t->body);
         }
         if (!scopes.empty()) {
-            run_defers(scopes.back().defers);
+            unwind_scope(scopes.back());
             scopes.pop_back();
         }
         line("return ((lb_r_unit){ .failed = false });");
@@ -2011,12 +2254,46 @@ struct Emitter {
         return nullptr;
     }
 
+    Node* find_answer(Node* mod) {
+        if (mod == nullptr) {
+            return nullptr;
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Func && d->text == "answer") {
+                return d;
+            }
+        }
+        return nullptr;
+    }
+
+    void emit_answer_unwrap(Node* mod) {
+        Node* fn = find_answer(mod);
+        if (fn == nullptr || (fn->flags & FlagFallible) == 0) {
+            return;
+        }
+        line("int64_t lb_answer(void) {");
+        indent++;
+        line(fail_c_name(fn->ty) + " r = lb_answer_impl();");
+        line("if (r.failed) {");
+        indent++;
+        line("fprintf(stderr, \"error %d: %.*s\\n\", r.error.code, (int)r.error.message.length, "
+             "r.error.message.data);");
+        line("exit(1);");
+        indent--;
+        line("}");
+        line("return r.value;");
+        indent--;
+        line("}");
+        out += '\n';
+    }
+
     void emit_c_main(Node* fn) {
         bool fail = fn != nullptr && (fn->flags & FlagFallible) != 0;
         Type* at = fn != nullptr && fn->right != nullptr ? fn->right->ty : nullptr;
         bool cstr = at != nullptr && is_span(at) && at->elem != nullptr &&
                     at->elem->kind == TypeKind::CStr;
         out += "int main(int argc, char** argv) {\n";
+        out += "    lb_set_alloc(lb_heap_alloc());\n";
         if (cstr) {
             out += "    lb_cspan args = { (const void*)argv, (size_t)argc };\n";
             if (fail) {
@@ -2056,16 +2333,19 @@ struct Emitter {
         out += "/* generated by lucb */\n";
         out += "#include \"lucb_rt.h\"\n";
         out += "#include <stdio.h>\n";
-        out += "#include <stdlib.h>\n\n";
+        out += "#include <stdlib.h>\n";
+        out += "#include <string.h>\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();
         collect_from(mod);
         emit_array_typedefs();
+        emit_types(mod);
         emit_opt_typedefs();
         emit_decls(mod);
         out += '\n';
         emit_defs(mod);
+        emit_answer_unwrap(mod);
         Node* main_fn = find_main(mod);
         if (main_fn != nullptr) {
             emit_c_main(main_fn);
@@ -2076,7 +2356,8 @@ struct Emitter {
         out += "/* generated by lucb */\n";
         out += "#include \"lucb_rt.h\"\n";
         out += "#include <stdio.h>\n";
-        out += "#include <stdlib.h>\n\n";
+        out += "#include <stdlib.h>\n";
+        out += "#include <string.h>\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();
@@ -2084,6 +2365,9 @@ struct Emitter {
             collect_from(modules[static_cast<size_t>(i)]);
         }
         emit_array_typedefs();
+        for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
+            emit_types(modules[static_cast<size_t>(i)]);
+        }
         emit_opt_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_decls(modules[static_cast<size_t>(i)]);
@@ -2092,6 +2376,7 @@ struct Emitter {
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_defs(modules[static_cast<size_t>(i)]);
         }
+        emit_answer_unwrap(entry);
         Node* main_fn = find_main(entry);
         if (main_fn != nullptr) {
             emit_c_main(main_fn);

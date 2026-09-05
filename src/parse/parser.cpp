@@ -2034,18 +2034,22 @@ struct Parser {
     Node* parse_new_or_alloc(bool is_alloc) {
         Token start = take();
         Node* n = make(is_alloc ? NodeKind::Alloc : NodeKind::New, start.span);
-        n->type = parse_type();
-        if (at(TokenKind::LParen)) {
+        if (is_alloc && at(TokenKind::LParen)) {
             n->body = parse_arg_list();
-        } else if (eat(TokenKind::Dot)) {
-            Node* cse = make(NodeKind::CaseValue, cur().span);
-            if (at(TokenKind::Name)) {
-                cse->text = take().text;
-            }
+        } else {
+            n->type = parse_type();
             if (at(TokenKind::LParen)) {
-                cse->body = parse_arg_list();
+                n->body = parse_arg_list();
+            } else if (eat(TokenKind::Dot)) {
+                Node* cse = make(NodeKind::CaseValue, cur().span);
+                if (at(TokenKind::Name)) {
+                    cse->text = take().text;
+                }
+                if (at(TokenKind::LParen)) {
+                    cse->body = parse_arg_list();
+                }
+                n->body = cse;
             }
-            n->body = cse;
         }
         if (eat(TokenKind::KwIn)) {
             n->right = parse_expression();
@@ -2160,7 +2164,10 @@ struct Parser {
             Node* first = parse_type();
             if (!eat(TokenKind::Comma)) {
                 expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
-                return first;
+                Node* wrap = make(NodeKind::Type, start.span);
+                wrap->left = first;
+                wrap->span = span_from(start);
+                return wrap;
             }
             Node* t = make(NodeKind::Type, start.span);
             t->flags = FlagTupleType;

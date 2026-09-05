@@ -167,11 +167,18 @@ struct Interp {
     Value ret;
     string err_storage;
     Frame globals;
+    Value current_alloc;
     struct Deferred {
         Node* n = nullptr;
         bool err_only = false;
     };
     vector<vector<Deferred>> defers;
+
+    void init_memory() {
+        current_alloc.kind = TypeKind::Allocator;
+        current_alloc.ptr = nullptr;
+        current_alloc.u = 0;
+    }
 
     void fail(const string& message) {
         trapped = true;
@@ -301,6 +308,14 @@ struct Interp {
             return &s->value;
         }
         if (n->kind == NodeKind::Member) {
+            Type* lt = n->left != nullptr ? n->left->ty : nullptr;
+            if (lt != nullptr && lt->kind == TypeKind::Module) {
+                if (n->text == "allocator") {
+                    return &current_alloc;
+                }
+                fail("not an lvalue");
+                return nullptr;
+            }
             Value* obj = lvalue(n->left);
             if (obj != nullptr && obj->kind == TypeKind::Pointer && obj->ptr != nullptr) {
                 obj = obj->ptr;
@@ -504,6 +519,10 @@ struct Interp {
             return eval_array_lit(n);
         case NodeKind::SpanMake:
             return eval_span_make(n);
+        case NodeKind::New:
+            return eval_new(n);
+        case NodeKind::Alloc:
+            return eval_alloc(n);
         case NodeKind::Cast:
             return eval_conv(n->left, n->ty, false);
         case NodeKind::Else:
@@ -541,6 +560,21 @@ struct Interp {
     Value eval_member(Node* n) {
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
             return v_enum_case(n->resolved, n->ty);
+        }
+        Type* lt = n->left != nullptr ? n->left->ty : nullptr;
+        if (lt != nullptr && lt->kind == TypeKind::Module) {
+            if (n->text == "allocator") {
+                return current_alloc;
+            }
+            if (n->text == "heap") {
+                return heap_alloc_value();
+            }
+            if (n->text == "exhausted") {
+                Value v;
+                v.kind = TypeKind::I32;
+                v.u = 1;
+                return v;
+            }
         }
         Value obj = eval(n->left);
         if (trapped) {
@@ -707,6 +741,201 @@ struct Interp {
         v.ptr = p.ptr;
         v.length = static_cast<size_t>(as_u(len, n->ty));
         return v;
+    }
+
+    Value heap_alloc_value() {
+        Value a;
+        a.kind = TypeKind::Allocator;
+        a.ptr = nullptr;
+        a.u = 0;
+        return a;
+    }
+
+    Value fail_exhausted(Type* fail_ty) {
+        Value v;
+        v.kind = TypeKind::Fallible;
+        v.type = fail_ty;
+        v.failed = true;
+        v.err_code = 1;
+        v.err_msg = "memory.exhausted";
+        return v;
+    }
+
+    Value ok_payload(Value payload, Type* fail_ty) {
+        payload.failed = false;
+        payload.kind = TypeKind::Fallible;
+        payload.type = fail_ty;
+        return payload;
+    }
+
+    Value as_alloc(Node* n) {
+        if (n == nullptr) {
+            return current_alloc;
+        }
+        Type* t = n->ty;
+        if (t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer") {
+            Value* p = lvalue(n);
+            Value a;
+            a.kind = TypeKind::Allocator;
+            a.ptr = p;
+            a.u = 1;
+            return a;
+        }
+        return eval(n);
+    }
+
+    bool bump_fixed(Value* fb, size_t size, size_t align) {
+        if (fb == nullptr || fb->fields.size() < 3) {
+            return false;
+        }
+        size_t used = static_cast<size_t>(fb->fields[2].u);
+        size_t cap = static_cast<size_t>(fb->fields[1].u);
+        if (align < 1) {
+            align = 1;
+        }
+        size_t start = used;
+        size_t rem = start % align;
+        if (rem != 0) {
+            start += align - rem;
+        }
+        if (start + size < start || start + size > cap) {
+            return false;
+        }
+        fb->fields[2].u = start + size;
+        return true;
+    }
+
+    bool take_bytes(const Value& a, size_t size, size_t align) {
+        if (size == 0) {
+            return true;
+        }
+        if (a.kind == TypeKind::Allocator && a.ptr != nullptr) {
+            return bump_fixed(a.ptr, size, align);
+        }
+        return true;
+    }
+
+    Value eval_new(Node* n) {
+        Value a = as_alloc(n->right);
+        if (trapped) {
+            return v_unit();
+        }
+        Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
+        if (is_span(payload)) {
+            Node* count_n = n->type != nullptr ? n->type->right : nullptr;
+            Value cv = eval(count_n);
+            if (trapped) {
+                return v_unit();
+            }
+            size_t count = static_cast<size_t>(as_u(cv, count_n != nullptr ? count_n->ty : nullptr));
+            Type* elem = payload->elem;
+            int esz = type_size(elem);
+            int eal = type_align(elem);
+            if (count != 0 && esz > 0 && count > static_cast<size_t>(-1) / static_cast<size_t>(esz)) {
+                return fail_exhausted(n->ty);
+            }
+            size_t bytes = static_cast<size_t>(esz) * count;
+            if (!take_bytes(a, bytes, static_cast<size_t>(eal < 1 ? 1 : eal))) {
+                return fail_exhausted(n->ty);
+            }
+            vector<Value> elems;
+            elems.resize(count);
+            for (size_t i = 0; i < count; i++) {
+                elems[i] = zero_of(elem);
+            }
+            Value sp = make_array(payload, std::move(elems));
+            sp.kind = TypeKind::Span;
+            sp.type = payload;
+            return ok_payload(sp, n->ty);
+        }
+        Type* elem = is_ptr(payload) ? payload->elem : payload;
+        int esz = type_size(elem);
+        int eal = type_align(elem);
+        if (!take_bytes(a, static_cast<size_t>(esz < 0 ? 0 : esz), static_cast<size_t>(eal < 1 ? 1 : eal))) {
+            return fail_exhausted(n->ty);
+        }
+        Value init;
+        if (n->body != nullptr && n->body->kind == NodeKind::CaseValue) {
+            init = eval(n->body);
+        } else if (n->body != nullptr && n->resolved != nullptr &&
+                   n->resolved->kind == NodeKind::Struct) {
+            init = eval_ctor(n, n->resolved);
+        } else {
+            init = zero_of(elem);
+        }
+        if (trapped) {
+            return v_unit();
+        }
+        if (elem != nullptr && elem->kind == TypeKind::Array) {
+            Value arr = init.kind == TypeKind::Array ? init : zero_of(elem);
+            storage.push_back(vector<Value>{arr});
+            Value p;
+            p.kind = TypeKind::Pointer;
+            p.type = payload;
+            p.ptr = storage.back().data();
+            return ok_payload(p, n->ty);
+        }
+        storage.push_back(vector<Value>{init});
+        Value p;
+        p.kind = TypeKind::Pointer;
+        p.type = payload;
+        p.ptr = storage.back().data();
+        return ok_payload(p, n->ty);
+    }
+
+    Value eval_alloc(Node* n) {
+        Value a = as_alloc(n->right);
+        if (trapped) {
+            return v_unit();
+        }
+        Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
+        size_t count = 0;
+        Type* elem = payload != nullptr ? payload->elem : nullptr;
+        size_t align = static_cast<size_t>(type_align(elem) < 1 ? 1 : type_align(elem));
+        if (n->type == nullptr) {
+            Value sv = eval(n->body != nullptr ? n->body->left : nullptr);
+            Value av = eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                          : nullptr);
+            if (trapped) {
+                return v_unit();
+            }
+            count = static_cast<size_t>(as_u(sv, n->body != nullptr && n->body->left != nullptr
+                                                     ? n->body->left->ty
+                                                     : nullptr));
+            align = static_cast<size_t>(as_u(av, nullptr));
+            if (align < 1) {
+                align = 1;
+            }
+            elem = payload != nullptr ? payload->elem : nullptr;
+        } else {
+            Node* count_n = n->type->right;
+            Value cv = eval(count_n);
+            if (trapped) {
+                return v_unit();
+            }
+            count = static_cast<size_t>(as_u(cv, count_n != nullptr ? count_n->ty : nullptr));
+        }
+        int esz = type_size(elem);
+        if (n->type == nullptr) {
+            esz = 1;
+        }
+        if (count != 0 && esz > 0 && count > static_cast<size_t>(-1) / static_cast<size_t>(esz)) {
+            return fail_exhausted(n->ty);
+        }
+        size_t bytes = n->type == nullptr ? count : static_cast<size_t>(esz) * count;
+        size_t nlen = n->type == nullptr ? count : count;
+        if (!take_bytes(a, bytes, align)) {
+            return fail_exhausted(n->ty);
+        }
+        vector<Value> elems;
+        elems.resize(nlen);
+        for (size_t i = 0; i < nlen; i++) {
+            elems[i] = zero_of(elem);
+        }
+        Value sp = make_array(payload, std::move(elems));
+        sp.kind = TypeKind::Span;
+        sp.type = payload;
+        return ok_payload(sp, n->ty);
     }
 
     Value eval_unary(Node* n) {
@@ -1509,6 +1738,9 @@ struct Interp {
 
     Value eval_call(Node* n) {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
+            return heap_alloc_value();
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Value c = eval(n->body != nullptr ? n->body->left : nullptr);
             if (trapped) {
@@ -1599,6 +1831,33 @@ struct Interp {
                 return v_unit();
             }
             if ((method->flags & FlagStatic) != 0) {
+                Node* owner = lt != nullptr ? lt->decl : nullptr;
+                if (method->text == "over" && owner != nullptr && owner->text == "FixedBuffer") {
+                    Value buf = eval(n->body != nullptr ? n->body->left : nullptr);
+                    if (trapped) {
+                        return v_unit();
+                    }
+                    Value fb = zero_of(n->ty);
+                    fb.kind = TypeKind::Struct;
+                    fb.type = n->ty;
+                    fb.fields.clear();
+                    Value data;
+                    data.kind = TypeKind::Pointer;
+                    data.ptr = buf.ptr != nullptr ? buf.ptr : buf.fields.data();
+                    fb.fields.push_back(data);
+                    Value cap;
+                    cap.kind = TypeKind::Usize;
+                    cap.u = buf.length != 0 ? buf.length : buf.fields.size();
+                    if (buf.kind == TypeKind::Array && buf.type != nullptr) {
+                        cap.u = buf.type->length;
+                    }
+                    fb.fields.push_back(cap);
+                    Value used;
+                    used.kind = TypeKind::Usize;
+                    used.u = 0;
+                    fb.fields.push_back(used);
+                    return fb;
+                }
                 return call_func(method, nullptr, n->body);
             }
             Value* recv = lvalue(callee->left);
@@ -1965,6 +2224,19 @@ struct Interp {
         case NodeKind::ExprStmt:
             eval(n->left);
             break;
+        case NodeKind::Free:
+            eval(n->left);
+            if (n->right != nullptr) {
+                as_alloc(n->right);
+            }
+            break;
+        case NodeKind::With: {
+            Value saved = current_alloc;
+            current_alloc = as_alloc(n->left);
+            exec(n->body);
+            current_alloc = saved;
+            break;
+        }
         default:
             fail("unsupported statement at runtime");
             break;
@@ -1982,6 +2254,7 @@ EvalResult eval_module(Node* module) {
     Interp ip;
     ip.module = module;
     ip.all_modules.push_back(module);
+    ip.init_memory();
     ip.load_globals();
     Node* answer = ip.find_func("answer");
     if (answer == nullptr) {
@@ -2026,6 +2299,7 @@ TestRun eval_tests(const vector<Node*>& modules) {
             Interp ip;
             ip.module = modules.empty() ? mod : modules[0];
             ip.all_modules = modules;
+            ip.init_memory();
             ip.load_globals();
             ip.exec(d->body);
             string title = string(d->text);
@@ -2060,6 +2334,7 @@ int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string
         }
         return 1;
     }
+    ip.init_memory();
     ip.load_globals();
     Node* main_fn = nullptr;
     for (Node* d = ip.module->body; d != nullptr; d = d->next) {

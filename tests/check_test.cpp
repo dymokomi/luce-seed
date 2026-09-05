@@ -192,3 +192,25 @@ TEST(check_no_implicit_signedness_change) {
     CHECK(check_has("pub func answer() -> i64:\n    let x: u8 = 3\n    let y: i64 = x\n    return y\n",
                     "lucb.check.type"));
 }
+
+TEST(check_new_needs_try) {
+    CHECK(check_has("pub func answer() -> i64:\n    let p = new i64\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_free_needs_pointer) {
+    CHECK(check_has("pub func answer() -> i64:\n    free(1)\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_new_zeroable) {
+    CHECK(check_has("pub func answer() -> i64!:\n    let p = try new i64*\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+TEST(check_new_ok) {
+    CHECK(check_ok("pub func answer() -> i64!:\n"
+                   "    let p = try new i64\n"
+                   "    *p = 1\n"
+                   "    free(p)\n"
+                   "    return 0\n"));
+}

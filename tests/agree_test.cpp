@@ -459,3 +459,102 @@ TEST(agree_thread_local) {
                  "pub func answer() -> i64:\n"
                  "    return n\n"));
 }
+
+TEST(agree_new_i64) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let p = try new i64\n"
+                 "    *p = 42\n"
+                 "    let n = *p\n"
+                 "    free(p)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_new_span) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var items = try new i64[3]\n"
+                 "    items[0] = 10\n"
+                 "    items[1] = 20\n"
+                 "    items[2] = 30\n"
+                 "    let n = items[0] + items[1] + items[2]\n"
+                 "    free(items)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_new_array_ptr) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let p = try new (i64[2])\n"
+                 "    let n = (*p)[0] + (*p)[1]\n"
+                 "    free(p)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_new_struct) {
+    CHECK(agrees("struct Node:\n"
+                 "    var value: i64\n"
+                 "    var next: i64\n"
+                 "pub func answer() -> i64!:\n"
+                 "    let p = try new Node(value = 3, next = 4)\n"
+                 "    let n = p.value + p.next\n"
+                 "    free(p)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_alloc_span) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var items = try alloc i64[2]\n"
+                 "    items[0] = 5\n"
+                 "    items[1] = 6\n"
+                 "    let n = items[0] + items[1]\n"
+                 "    free(items)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_alloc_raw) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var raw = try alloc(16, 8)\n"
+                 "    let n = i64(raw.length)\n"
+                 "    free(raw)\n"
+                 "    return n\n"));
+}
+
+TEST(agree_callocator) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var a = CAllocator()\n"
+                 "    let p = try new i64 in a\n"
+                 "    *p = 9\n"
+                 "    let n = *p\n"
+                 "    free(p) in a\n"
+                 "    return n\n"));
+}
+
+TEST(agree_fixed_buffer) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var buf: u8[64]\n"
+                 "    var fb = FixedBuffer.over(buf)\n"
+                 "    with fb:\n"
+                 "        let p = try new i64\n"
+                 "        *p = 11\n"
+                 "        let n = *p\n"
+                 "        free(p)\n"
+                 "        return n\n"));
+}
+
+TEST(agree_fixed_exhausted) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    var buf: u8[4]\n"
+                 "    var fb = FixedBuffer.over(buf)\n"
+                 "    with fb:\n"
+                 "        let p = new i64 catch:\n"
+                 "            return 1\n"
+                 "        return 0\n"));
+}
+
+TEST(agree_memory_heap) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    memory.allocator = memory.heap\n"
+                 "    let p = try new i64\n"
+                 "    *p = i64(memory.exhausted)\n"
+                 "    let n = *p\n"
+                 "    free(p)\n"
+                 "    return n\n"));
+}

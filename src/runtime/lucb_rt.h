@@ -80,6 +80,26 @@ void lb_print_f64(double value);
 void lb_check_index(uint64_t i, uint64_t n);
 void lb_check_utf8(const char* s, size_t n);
 
+typedef struct lb_alloc {
+    void* ctx;
+    int kind; /* 0 heap, 1 fixed buffer, -1 unset */
+} lb_alloc;
+
+typedef struct lb_fixed {
+    uint8_t* data;
+    size_t cap;
+    size_t used;
+} lb_fixed;
+
+lb_alloc lb_heap_alloc(void);
+lb_alloc lb_fixed_alloc(lb_fixed* f);
+lb_span lb_alloc_bytes(lb_alloc a, size_t size, size_t align);
+void lb_release_bytes(lb_alloc a, lb_span block);
+lb_alloc lb_get_alloc(void);
+void lb_set_alloc(lb_alloc a);
+
+#define LB_MEMORY_EXHAUSTED 1
+
 typedef struct lb_error {
     int32_t code;
     lb_str message;

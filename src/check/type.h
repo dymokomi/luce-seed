@@ -38,6 +38,7 @@ enum class TypeKind : uint8_t {
     Union,
     Module,
     CStr,
+    Allocator,
 };
 
 struct Type {

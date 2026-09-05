@@ -46,6 +46,11 @@ struct Checker {
     Type* ty_void = nullptr;
     Type* ty_err = nullptr;
     Type* ty_cstr = nullptr;
+    Type* ty_alloc = nullptr;
+    Type* ty_fixed = nullptr;
+    Type* ty_calloc = nullptr;
+    Node* memory_mod = nullptr;
+    Node* fixed_decl = nullptr;
     vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
@@ -120,6 +125,9 @@ struct Checker {
         }
         if (name == "cstr") {
             return ty_cstr;
+        }
+        if (name == "Allocator" || name == "CAllocator") {
+            return ty_alloc;
         }
         return nullptr;
     }
@@ -215,6 +223,170 @@ struct Checker {
         t->name = keep(type_name(t));
         interned.push_back(t);
         return t;
+    }
+
+    Node* syn_node(NodeKind k, const char* name) {
+        Node* n = arena->make<Node>();
+        n->kind = k;
+        n->text = keep(name);
+        n->flags = FlagPub;
+        return n;
+    }
+
+    bool is_fixed(Type* t) {
+        return t != nullptr && t->kind == TypeKind::Struct && t->name == "FixedBuffer";
+    }
+
+    Type* check_in_allocator(Node* n) {
+        if (n == nullptr) {
+            return ty_alloc;
+        }
+        Type* t = check_expr(n);
+        if (t != nullptr && t->kind == TypeKind::Allocator) {
+            return t;
+        }
+        if (is_fixed(t)) {
+            if (!is_mut_place(n)) {
+                fail_n(n, "lucb.check.mut", "`with`/`in` needs a `var` FixedBuffer or an Allocator");
+            }
+            return t;
+        }
+        fail_n(n, "lucb.check.type", "`with`/`in` needs an Allocator");
+        return t_error();
+    }
+
+    Type* check_new(Node* n) {
+        if (n->right != nullptr) {
+            check_in_allocator(n->right);
+        }
+        Node* tn = n->type;
+        if (tn == nullptr) {
+            fail_n(n, "lucb.check.type", "`new` needs a type");
+            return intern_fail(t_error());
+        }
+        if (tn->flags & FlagArray) {
+            Type* elem = resolve_type(tn->left);
+            if (tn->right != nullptr) {
+                Type* ct = check_expr(tn->right, ty_usize);
+                if (!is_int(ct) && ct->kind != TypeKind::UntypedInt) {
+                    fail_n(tn->right, "lucb.check.type", "`new T[count]` needs a `usize` count");
+                }
+            } else {
+                fail_n(n, "lucb.check.type", "`new T[count]` needs a count");
+            }
+            return intern_fail(intern_sp(elem, false));
+        }
+        Type* t = resolve_type(tn);
+        if (n->body != nullptr && n->body->kind == NodeKind::CaseValue) {
+            check_case_value(n->body, t);
+        } else if (n->body != nullptr) {
+            if (t->kind != TypeKind::Struct || t->decl == nullptr) {
+                fail_n(n, "lucb.check.type", "`new T(...)` needs a struct type");
+            } else {
+                n->resolved = t->decl;
+                check_ctor(n, t->decl);
+            }
+        } else if (!is_zeroable(t)) {
+            fail_n(n, "lucb.check.type", "`new T` needs a zeroable type or an initialiser");
+        }
+        return intern_fail(intern_ptr(t, false, false, false));
+    }
+
+    Type* check_alloc(Node* n) {
+        if (n->right != nullptr) {
+            check_in_allocator(n->right);
+        }
+        if (n->type == nullptr) {
+            int nargs = count_args(n->body);
+            if (nargs != 2) {
+                fail_n(n, "lucb.check.call", "`alloc(size, alignment)` takes two arguments");
+            } else {
+                check_expr(n->body->left, ty_usize);
+                if (n->body->next != nullptr) {
+                    check_expr(n->body->next->left, ty_usize);
+                }
+            }
+            return intern_fail(intern_sp(ty_u8, false));
+        }
+        if (n->type->flags & FlagArray) {
+            Type* elem = resolve_type(n->type->left);
+            if (n->type->right != nullptr) {
+                Type* ct = check_expr(n->type->right, ty_usize);
+                if (!is_int(ct) && ct->kind != TypeKind::UntypedInt) {
+                    fail_n(n->type->right, "lucb.check.type", "`alloc T[count]` needs a `usize` count");
+                }
+            }
+            return intern_fail(intern_sp(elem, false));
+        }
+        fail_n(n, "lucb.check.type", "`alloc` needs `T[count]` or `(size, alignment)`");
+        return intern_fail(t_error());
+    }
+
+    void check_free(Node* n) {
+        Type* t = check_expr(n->left);
+        if (!is_ptr(t) && !is_span(t)) {
+            fail_n(n, "lucb.check.type", "`free` needs a pointer or a span");
+        }
+        if (n->right != nullptr) {
+            check_in_allocator(n->right);
+        }
+    }
+
+    void check_with(Node* n) {
+        check_in_allocator(n->left);
+        push_scope();
+        check_stmt(n->body);
+        pop_scope();
+    }
+
+    void bind_memory() {
+        if (ty_alloc == nullptr) {
+            ty_alloc = make_type(TypeKind::Allocator, "Allocator");
+        }
+        Node* data = syn_node(NodeKind::Field, "data");
+        data->ty = intern_ptr(ty_u8, false, false, false);
+        Node* cap = syn_node(NodeKind::Field, "cap");
+        cap->ty = ty_usize;
+        Node* used = syn_node(NodeKind::Field, "used");
+        used->ty = ty_usize;
+        data->next = cap;
+        cap->next = used;
+
+        Node* over = syn_node(NodeKind::Func, "over");
+        over->flags |= FlagStatic;
+        Node* bufp = syn_node(NodeKind::Param, "buffer");
+        bufp->ty = intern_sp(ty_u8, false);
+        over->right = bufp;
+
+        Node* fb = syn_node(NodeKind::Struct, "FixedBuffer");
+        fb->body = data;
+        used->next = over;
+        ty_fixed = make_type(TypeKind::Struct, "FixedBuffer");
+        ty_fixed->decl = fb;
+        fb->ty = ty_fixed;
+        over->ty = ty_fixed;
+        fixed_decl = fb;
+
+        Node* alloc_g = syn_node(NodeKind::Global, "allocator");
+        alloc_g->flags |= FlagThreadLocal;
+        alloc_g->ty = ty_alloc;
+        Node* heap_g = syn_node(NodeKind::Const, "heap");
+        heap_g->ty = ty_alloc;
+        Node* exh = syn_node(NodeKind::Const, "exhausted");
+        exh->ty = ty_i32;
+        alloc_g->next = heap_g;
+        heap_g->next = exh;
+
+        Node* mem = syn_node(NodeKind::Module, "memory");
+        mem->body = alloc_g;
+        Type* mt = make_type(TypeKind::Module, "memory");
+        mt->decl = mem;
+        memory_mod = mem;
+
+        bind("Allocator", ty_alloc, false, nullptr);
+        bind("CAllocator", ty_alloc, false, nullptr);
+        bind("FixedBuffer", ty_fixed, false, fb);
+        bind("memory", mt, false, mem);
     }
 
     void mark_local(Node* n) {
@@ -322,7 +494,8 @@ struct Checker {
         return name == "print" || name == "assert" || name == "discard" || name == "error" ||
                name == "trap" || name == "hash" || name == "format" || name == "location" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
-               named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt";
+               named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt" ||
+               name == "FixedBuffer" || name == "memory";
     }
 
     bool const_u64(Node* n, uint64_t* out) {
@@ -431,7 +604,7 @@ struct Checker {
         Binding* b = lookup(n->text);
         if (b != nullptr && b->type != nullptr &&
             (b->type->kind == TypeKind::Struct || b->type->kind == TypeKind::Enum ||
-             b->type->kind == TypeKind::Union)) {
+             b->type->kind == TypeKind::Union || b->type->kind == TypeKind::Allocator)) {
             n->ty = b->type;
             n->resolved = b->decl;
             return n->ty;
@@ -582,6 +755,12 @@ struct Checker {
             break;
         case NodeKind::SpanMake:
             t = check_span_make(n);
+            break;
+        case NodeKind::New:
+            t = check_new(n);
+            break;
+        case NodeKind::Alloc:
+            t = check_alloc(n);
             break;
         case NodeKind::Conditional: {
             Type* tc = check_expr(n->type, t_bool());
@@ -1253,6 +1432,13 @@ struct Checker {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             return check_assert(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
+            if (count_args(n->body) != 0) {
+                fail_n(n, "lucb.check.call", "`CAllocator()` takes no arguments");
+            }
+            n->resolved = nullptr;
+            return ty_alloc;
+        }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             return check_method_call(n);
         }
@@ -1779,6 +1965,7 @@ struct Checker {
                 }
                 mem->resolved = method;
                 obj->resolved = b->decl;
+                obj->ty = b->type;
                 return check_func_call(n, method, nullptr);
             }
         }
@@ -1921,6 +2108,9 @@ struct Checker {
             return b != nullptr && b->mut;
         }
         if (n->kind == NodeKind::Member) {
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::Global) {
+                return true;
+            }
             Type* ot = n->left != nullptr ? n->left->ty : nullptr;
             if (is_ptr(ot)) {
                 return !ot->is_const;
@@ -1971,6 +2161,9 @@ struct Checker {
                 }
             } else if (n->left != nullptr) {
                 Type* init = check_expr(n->left, t);
+                if (is_fail(init) && (t == nullptr || !is_fail(t))) {
+                    fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
+                }
                 if (t == nullptr) {
                     if (init != nullptr && init->kind == TypeKind::UntypedInt) {
                         init = coerce(n->left, init, t_i64());
@@ -2186,6 +2379,12 @@ struct Checker {
         case NodeKind::Match:
             check_match(n, nullptr);
             break;
+        case NodeKind::Free:
+            check_free(n);
+            break;
+        case NodeKind::With:
+            check_with(n);
+            break;
         case NodeKind::ExprStmt: {
             Type* t = check_expr(n->left);
             if (is_fail(t)) {
@@ -2225,6 +2424,8 @@ struct Checker {
         }
         case NodeKind::If:
             return always_returns(n->body) && always_returns(n->right);
+        case NodeKind::With:
+            return always_returns(n->body);
         case NodeKind::Match: {
             if (n->body == nullptr) {
                 return false;
@@ -2583,6 +2784,7 @@ struct Checker {
 
     void check_module(Node* mod) {
         push_scope();
+        bind_memory();
         bind_imports(mod);
         collect_module(mod);
         for (Node* d = mod->body; d != nullptr; d = d->next) {
@@ -2643,6 +2845,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
+    c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
     c.check_module(module);
     return diagnostics.empty();
 }
@@ -2678,6 +2881,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
+    c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
         if (modules[static_cast<size_t>(i)] != nullptr) {
             c.check_module(modules[static_cast<size_t>(i)]);

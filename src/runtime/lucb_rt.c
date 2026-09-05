@@ -5,6 +5,97 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static _Thread_local lb_alloc lb_current_alloc = {NULL, -1};
+
+lb_alloc lb_heap_alloc(void) {
+    lb_alloc a;
+    a.ctx = NULL;
+    a.kind = 0;
+    return a;
+}
+
+lb_alloc lb_fixed_alloc(lb_fixed* f) {
+    lb_alloc a;
+    a.ctx = f;
+    a.kind = 1;
+    return a;
+}
+
+lb_alloc lb_get_alloc(void) {
+    if (lb_current_alloc.kind < 0) {
+        lb_current_alloc = lb_heap_alloc();
+    }
+    return lb_current_alloc;
+}
+
+void lb_set_alloc(lb_alloc a) { lb_current_alloc = a; }
+
+static size_t align_up(size_t n, size_t a) {
+    if (a <= 1) {
+        return n;
+    }
+    return (n + (a - 1)) & ~(a - 1);
+}
+
+static size_t clamp_align(size_t a) {
+    if (a < sizeof(void*)) {
+        a = sizeof(void*);
+    }
+    size_t p = sizeof(void*);
+    while (p < a) {
+        if (p > ((size_t)-1) / 2) {
+            return p;
+        }
+        p *= 2;
+    }
+    return p;
+}
+
+lb_span lb_alloc_bytes(lb_alloc a, size_t size, size_t align) {
+    lb_span s;
+    s.data = NULL;
+    s.length = 0;
+    if (size == 0) {
+        s.length = 0;
+        s.data = (void*)8;
+        return s;
+    }
+    if (a.kind < 0) {
+        lb_trap("memory.unset");
+    }
+    if (a.kind == 0) {
+        align = clamp_align(align);
+        void* p = NULL;
+        if (posix_memalign(&p, align, size) != 0) {
+            return s;
+        }
+        s.data = p;
+        s.length = size;
+        return s;
+    }
+    if (a.kind == 1 && a.ctx != NULL) {
+        lb_fixed* f = (lb_fixed*)a.ctx;
+        size_t start = align_up(f->used, align < 1 ? 1 : align);
+        if (start + size > f->cap) {
+            return s;
+        }
+        f->used = start + size;
+        s.data = f->data + start;
+        s.length = size;
+        return s;
+    }
+    return s;
+}
+
+void lb_release_bytes(lb_alloc a, lb_span block) {
+    if (block.data == NULL || block.length == 0) {
+        return;
+    }
+    if (a.kind == 0) {
+        free(block.data);
+    }
+}
+
 void lb_trap(const char* message) {
     fprintf(stderr, "trap: %s\n", message != NULL ? message : "");
     exit(1);

@@ -66,4 +66,8 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 16.4 | `luce.toml` | partial | `[package] name`; source roots default to the manifest directory |
 | 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
 | 5.2 | `cstr` | partial | type and `main(arguments: cstr[])`; library `c` module later |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M10–M14 |
+| 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_alloc_span`, `agree_callocator` |
+| 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
+| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | builtin view; no `implements`, `PageAllocator`, or `Arena` |
+| 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, C ABI | unsupported | M11–M14 |

@@ -13,6 +13,13 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M10 — Allocation and `memory`
+
+`new` / `alloc` / `free` / `with` / `in`. Builtin `Allocator` view,
+`FixedBuffer.over(u8[])`, `CAllocator()`, `memory.allocator` /
+`memory.heap` / `memory.exhausted`. Interpreter and C backend agree.
+Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
+
 ## M9 — Modules, packages, `main`, `test`
 
 `import path` and `from path import Name` resolve `.lucb` files from a

@@ -128,6 +128,8 @@ string type_name(const Type* t) {
         return t->name.empty() ? "<module>" : string(t->name);
     case TypeKind::CStr:
         return "cstr";
+    case TypeKind::Allocator:
+        return "Allocator";
     }
     return "<unknown>";
 }
@@ -378,7 +380,7 @@ int type_align(const Type* t) {
         return 1;
     }
     if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str ||
-        t->kind == TypeKind::CStr) {
+        t->kind == TypeKind::CStr || t->kind == TypeKind::Allocator) {
         return static_cast<int>(sizeof(void*));
     }
     if (t->kind == TypeKind::Array) {
@@ -482,6 +484,8 @@ int type_size(const Type* t) {
     case TypeKind::Pointer:
     case TypeKind::CStr:
         return static_cast<int>(sizeof(void*));
+    case TypeKind::Allocator:
+        return static_cast<int>(sizeof(void*) + sizeof(int));
     case TypeKind::Span:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Optional:
@@ -601,6 +605,8 @@ const char* c_type_name(const Type* t) {
         return "lb_str";
     case TypeKind::CStr:
         return "const char*";
+    case TypeKind::Allocator:
+        return "lb_alloc";
     case TypeKind::Pointer:
         return "void*";
     case TypeKind::Span:
@@ -638,7 +644,7 @@ bool is_zeroable(const Type* t) {
     if (is_array(t)) {
         return is_zeroable(t->elem);
     }
-    if (is_opt(t) || t->kind == TypeKind::ErrorVal) {
+    if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator) {
         return true;
     }
     if (is_int_enum(t) && t->decl != nullptr) {

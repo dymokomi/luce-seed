@@ -500,3 +500,26 @@ TEST(eval_enum_checked_conv_traps) {
                        "    return i64((u32)Access(3))\n");
     CHECK(r.trapped);
 }
+
+TEST(eval_new_i64) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    let p = try new i64\n"
+                       "    *p = 42\n"
+                       "    let n = *p\n"
+                       "    free(p)\n"
+                       "    return n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 42);
+}
+
+TEST(eval_fixed_exhausted) {
+    EvalResult r = run("pub func answer() -> i64!:\n"
+                       "    var buf: u8[4]\n"
+                       "    var fb = FixedBuffer.over(buf)\n"
+                       "    with fb:\n"
+                       "        let p = new i64 catch:\n"
+                       "            return 1\n"
+                       "        return 0\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}

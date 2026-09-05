@@ -78,6 +78,7 @@ module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
 
 `new` / `alloc` / `free` / `with` / `in`. `Allocator`. `FixedBuffer` and
 `CAllocator`. `memory.exhausted`.
+**Landed.**
 
 ## M11 — Generics (monomorphise)
 
