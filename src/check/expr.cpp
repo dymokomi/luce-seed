@@ -165,6 +165,16 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
         if (!type_eq(tc, t_bool())) {
             fail_n(n, "lucb.check.type", "a condition must be `bool`");
         }
+        // An untyped literal branch takes the other branch's type: `x if c else 0`.
+        if (tv != nullptr && ta != nullptr && tv->kind == TypeKind::UntypedInt &&
+            ta->kind != TypeKind::UntypedInt) {
+            tv = coerce(n->left, tv, ta);
+            n->left->ty = tv;
+        } else if (tv != nullptr && ta != nullptr && ta->kind == TypeKind::UntypedInt &&
+                   tv->kind != TypeKind::UntypedInt) {
+            ta = coerce(n->right, ta, tv);
+            n->right->ty = ta;
+        }
         if (!type_eq(tv, ta)) {
             fail_n(n, "lucb.check.type", "conditional branches must have the same type");
         }

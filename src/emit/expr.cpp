@@ -274,7 +274,7 @@ auto Emitter::emit_expr(Node* n) -> string {
                 data = "&(" + e + ")";
             }
             string iface = n->ty->kind == TypeKind::Allocator ? string("Allocator")
-                                                                : string(n->ty->decl->text);
+                                                              : string(n->ty->decl->text);
             return "((lb_iface){ (void*)(" + data + "), &lb_vt_" + string(src->decl->text) + "_" +
                    iface + " })";
         }

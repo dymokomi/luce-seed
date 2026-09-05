@@ -1,0 +1,5 @@
+pub func answer() -> i64:
+    let xs: u8[2] = [40, 1]
+    let i: usize = 0
+    let c = xs[i] if i < 2 else 0
+    return i64(c)

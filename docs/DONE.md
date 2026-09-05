@@ -16,7 +16,9 @@ a type path; `module.constant` emitted by its global name and found by the
 oracle; the standard modules' types synthesized once per program so a
 `Writer` is one type in every module; `return try f()` keeping its failure
 in the oracle; omitted array fields zeroed by the oracle; `T[self.count]`
-as an allocation count; and `if let x = try f()` on a `T?!` result.
+as an allocation count; `if let x = try f()` on a `T?!` result; and an
+untyped literal branch of a conditional taking the other branch's type,
+found by the first luce-base slice.
 
 The sources were split along their seams (`check/resolve`, `builtins`,
 `memory`, `call`, `convert`, `intrinsics`; `interp/call`, `memory`, `ops`;
