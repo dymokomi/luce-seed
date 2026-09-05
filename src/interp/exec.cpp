@@ -72,7 +72,7 @@ auto Interp::exec(Node* n) -> void {
                         s.value.str = src->str;
                     }
                 } else {
-                    s.value = eval(n->left);
+                    s.value = copy_value(eval(n->left));
                     if (n->ty != nullptr && n->ty->kind == TypeKind::Span &&
                         s.value.kind == TypeKind::Array) {
                         s.value.ptr = s.value.ptr;
@@ -100,6 +100,7 @@ auto Interp::exec(Node* n) -> void {
             }
             if (n->op == TokenKind::Eq) {
                 Type* dt = n->left != nullptr ? n->left->ty : dst->type;
+                src = copy_value(src);
                 src.kind = dst->kind;
                 src.type = dt != nullptr ? dt : dst->type;
                 if (dt != nullptr) {

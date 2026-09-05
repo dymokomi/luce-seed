@@ -1,0 +1,24 @@
+pub let out_of_range: ErrorCode = ErrorCode.package(1)
+
+pub struct Style:
+    pub let width: f64 = 1.0
+    pub let dashed: bool = false
+    pub let color: u32 = 0xFFFFFF
+
+pub struct Percentage:
+    let value: f64
+
+    pub func init(value: f64) -> !:
+        if value < 0.0 or value > 100.0:
+            error(out_of_range, "percentage must be 0 through 100")
+        self.value = value
+
+    pub static func half() -> Percentage:
+        return Percentage(value = 50.0) catch failure: trap("50 is in range")
+
+pub func main(arguments: str[]) -> i32!:
+    let thin = Style(width = 0.5)                    # dashed and color defaulted
+    let opacity = try Percentage(75.0)
+    let half = Percentage.half()
+    print(f"{thin.width} {opacity.value} {half.value}")
+    return 0

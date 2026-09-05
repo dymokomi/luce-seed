@@ -1,0 +1,12 @@
+struct T:
+    var k: i64
+func mk() -> T!:
+    return T(k = 3)
+test "plain":
+    assert(1 + 1 == 2)
+test "with catch":
+    let t = mk() catch failure: recover T(k = 0)
+    assert(t.k == 3)
+test "with try":
+    let t = try mk()
+    assert(t.k == 3)

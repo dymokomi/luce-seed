@@ -1,0 +1,5 @@
+export func checksum(data: const u8[]) -> u32:
+    var sum: u32 = 0
+    for byte in data:
+        sum = sum *% 31 +% byte                  # byte widens to u32 implicitly
+    return sum

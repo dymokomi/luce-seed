@@ -1,0 +1,32 @@
+pub struct Builder implements Writer:
+    var bytes: u8[]
+    var length: usize
+    var allocator: Allocator
+
+    pub static func create(capacity: usize) -> Builder!:
+        return Builder(bytes = try alloc u8[capacity], length = 0, allocator = memory.allocator)
+
+    pub mutating func write(data: const u8[]) -> usize!:
+        let needed = self.length +? data.length else error(memory.exhausted, "builder overflow")
+        if needed > self.bytes.length:
+            let grown = try alloc u8[needed * 2] in self.allocator
+            memory.copy(grown, self.bytes, self.length)
+            free(self.bytes) in self.allocator
+            self.bytes = grown
+        memory.copy(self.bytes[self.length..], data, data.length)
+        self.length = needed
+        return data.length
+
+    pub func text() -> str:
+        return (str)self.bytes[..<self.length]
+
+    pub mutating func destroy():
+        free(self.bytes) in self.allocator
+
+pub func main(arguments: str[]) -> i32!:
+    var builder = try Builder.create(16)
+    defer builder.destroy()
+    for index in 0..<3:
+        try builder.write(f"line {index}\n")
+    print(builder.text())
+    return 0

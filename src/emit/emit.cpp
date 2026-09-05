@@ -32,7 +32,8 @@ auto Emitter::emit_vtable(Node* st, Node* iface_type_node) -> void {
             return;
         }
         string iname = vt_instance_name(st, iface->decl);
-        line("static const " + vt_type_name(iface) + " " + iname + " = {");
+        line("static const " + vt_type_name(iface) + " " + iname +
+             " __attribute__((unused)) = {");
         indent++;
         bool first = true;
         for (Node* m = iface->decl->body; m != nullptr; m = m->next) {
@@ -81,7 +82,7 @@ auto Emitter::emit_writer_rt() -> void {
         line("lb_r_usize r; r.failed = false; r.value = n; return r;");
         indent--;
         line("}");
-        line("static const lb_vt_Writer lb_vt_file = { .write = lb_file_write };");
+        line("static const lb_vt_Writer lb_vt_file __attribute__((unused)) = { .write = lb_file_write };");
         out += '\n';
     }
 
@@ -124,7 +125,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         string sig = ret + " " + name + "(";
         bool first = true;
         if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
-            if ((fn->flags & FlagMutating) != 0) {
+            if ((fn->flags & FlagMutating) != 0 || fn->text == "init") {
                 sig += struct_ident(owner) + "* self";
             } else {
                 sig += "const " + struct_ident(owner) + "* self";
@@ -177,6 +178,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         }
         Node* saved_fn = current_fn;
         current_fn = fn;
+        scopes.reserve(64);
         scopes.push_back(Scope{});
         if (fn->body != nullptr && fn->body->kind == NodeKind::Block) {
             for (Node* s = fn->body->body; s != nullptr; s = s->next) {
@@ -192,6 +194,8 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         if ((fn->flags & FlagFallible) != 0 &&
             (fn->ty == nullptr || fn->ty->kind == TypeKind::Unit)) {
             line("return ((lb_r_unit){ .failed = false });");
+        } else if (ret != "void") {
+            line("lb_trap(\"unreachable\");");
         }
         current_fn = saved_fn;
         indent--;
@@ -246,6 +250,7 @@ auto Emitter::emit_struct(Node* st) -> void {
         indent--;
         line("} " + struct_ident(st) + ";");
         out += '\n';
+        emit_arrays_of_decl(st);
     }
 
 auto Emitter::emit_union(Node* un) -> void {
@@ -264,6 +269,7 @@ auto Emitter::emit_union(Node* un) -> void {
         indent--;
         line("} " + struct_ident(un) + ";");
         out += '\n';
+        emit_arrays_of_decl(un);
     }
 
 auto Emitter::emit_enum(Node* en) -> void {
@@ -301,6 +307,7 @@ auto Emitter::emit_enum(Node* en) -> void {
         indent--;
         line("} " + struct_ident(en) + ";");
         out += '\n';
+        emit_arrays_of_decl(en);
     }
 
 auto Emitter::emit_global(Node* g) -> void {
@@ -473,16 +480,71 @@ auto Emitter::emit_type_forwards(Node* mod) -> void {
         }
     }
 
-auto Emitter::emit_array_typedefs(bool funcs) -> void {
+auto Emitter::array_elem_is_record(Type* t) -> bool {
+        Type* e = t != nullptr ? t->elem : nullptr;
+        while (e != nullptr && is_array(e)) {
+            e = e->elem;
+        }
+        if (e == nullptr) {
+            return false;
+        }
+        return e->kind == TypeKind::Struct || e->kind == TypeKind::Union ||
+               (e->kind == TypeKind::Enum && !is_int_enum(e));
+    }
+
+auto Emitter::emit_array_def(Type* t) -> void {
+        if (t == nullptr || t->kind != TypeKind::Array) {
+            return;
+        }
+        for (size_t i = 0; i < arrays_done.size(); i++) {
+            if (arrays_done[i] == t) {
+                return;
+            }
+        }
+        if (is_array(t->elem)) {
+            emit_array_def(t->elem);
+        }
+        line("typedef struct " + array_c_name(t) + " { " + c_type(t->elem) + " d[" +
+             std::to_string(t->length) + "]; } " + array_c_name(t) + ";");
+        arrays_done.push_back(t);
+    }
+
+auto Emitter::emit_arrays_of_decl(Node* st) -> void {
+        if (st == nullptr) {
+            return;
+        }
+        bool any = false;
+        for (size_t i = 0; i < arrays.size(); i++) {
+            Type* t = arrays[i];
+            Type* e = t != nullptr ? t->elem : nullptr;
+            if (e != nullptr && e->decl == st) {
+                size_t before = arrays_done.size();
+                emit_array_def(t);
+                if (arrays_done.size() != before) {
+                    any = true;
+                }
+            }
+        }
+        if (any) {
+            out += '\n';
+        }
+    }
+
+auto Emitter::emit_array_typedefs(bool funcs, bool records) -> void {
         bool any = false;
         for (size_t i = 0; i < arrays.size(); i++) {
             Type* t = arrays[i];
             if (is_func(t->elem) != funcs) {
                 continue;
             }
-            line("typedef struct " + array_c_name(t) + " { " + c_type(t->elem) + " d[" +
-                 std::to_string(t->length) + "]; } " + array_c_name(t) + ";");
-            any = true;
+            if (!records && array_elem_is_record(t)) {
+                continue;
+            }
+            size_t before = arrays_done.size();
+            emit_array_def(t);
+            if (arrays_done.size() != before) {
+                any = true;
+            }
         }
         if (any) {
             out += '\n';
@@ -772,7 +834,9 @@ auto Emitter::emit_c_main(Node* fn) -> void {
         out += "int main(int argc, char** argv) {\n";
         out += "    lb_set_alloc(lb_heap_alloc());\n";
         if (cstr) {
-            out += "    lb_cspan args = { (const void*)argv, (size_t)argc };\n";
+            string aty = c_type(at);
+            const char* cast = aty == "lb_cspan" ? "(const void*)" : "(void*)";
+            out += "    " + aty + " args = { " + cast + "argv, (size_t)argc };\n";
             if (fail) {
                 out += "    lb_r_i32 r = lb_main(args);\n";
                 out += "    if (r.failed) { fprintf(stderr, \"error %d: %.*s\\n\", r.error.code, "
@@ -822,6 +886,7 @@ auto Emitter::emit_module(Node* mod) -> void {
         out += "#include <unistd.h>\n";
         out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
+        arrays_done.clear();
         opts.clear();
         fails.clear();
         tups.clear();
@@ -830,9 +895,10 @@ auto Emitter::emit_module(Node* mod) -> void {
         wrote_writer_rt = false;
         collect_from(mod);
         emit_type_forwards(mod);
-        emit_types(mod);
         emit_array_typedefs(false);
         emit_tup_typedefs();
+        emit_types(mod);
+        emit_array_typedefs(false, true);
         emit_opt_typedefs();
         emit_fn_typedefs();
         emit_array_typedefs(true);
@@ -863,6 +929,7 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         out += "#include <unistd.h>\n";
         out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
+        arrays_done.clear();
         opts.clear();
         fails.clear();
         tups.clear();
@@ -875,11 +942,12 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_type_forwards(modules[static_cast<size_t>(i)]);
         }
+        emit_array_typedefs(false);
+        emit_tup_typedefs();
         for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
             emit_types(modules[static_cast<size_t>(i)]);
         }
-        emit_array_typedefs(false);
-        emit_tup_typedefs();
+        emit_array_typedefs(false, true);
         emit_opt_typedefs();
         emit_fn_typedefs();
         emit_array_typedefs(true);

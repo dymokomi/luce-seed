@@ -203,26 +203,21 @@ auto Checker::check_stmt(Node* n) -> void {
             Type* elem = nullptr;
             if (n->right != nullptr && n->right->kind == NodeKind::Binary &&
                 (n->right->op == TokenKind::DotDotLt || n->right->op == TokenKind::DotDotEq)) {
-                Type* a = check_expr(n->right->left, nullptr);
-                Type* b = check_expr(n->right->right, nullptr);
-                Type* u = unify_int(a, b);
-                if (u == nullptr || (!is_int(u) && a->kind == TypeKind::UntypedInt &&
-                                     b->kind == TypeKind::UntypedInt)) {
-                    u = t_usize();
-                    if (a->kind == TypeKind::UntypedInt) {
-                        n->right->left->ty = coerce(n->right->left, a, u);
-                    }
-                    if (b->kind == TypeKind::UntypedInt) {
-                        n->right->right->ty = coerce(n->right->right, b, u);
-                    }
+                Type* annotated = n->type != nullptr ? resolve_type(n->type) : nullptr;
+                Type* hint = (annotated != nullptr && is_int(annotated)) ? annotated : nullptr;
+                Type* a = check_expr(n->right->left, hint);
+                Type* b = check_expr(n->right->right, hint);
+                Type* u = hint != nullptr ? hint : unify_int(a, b);
+                if (u == nullptr || !is_int(u)) {
+                    u = t_i64();
                 }
-                if (a->kind == TypeKind::UntypedInt) {
-                    n->right->left->ty = coerce(n->right->left, a, u != nullptr && is_int(u) ? u : t_usize());
+                if (a != nullptr && a->kind == TypeKind::UntypedInt) {
+                    n->right->left->ty = coerce(n->right->left, a, u);
                 }
-                if (b->kind == TypeKind::UntypedInt) {
-                    n->right->right->ty = coerce(n->right->right, b, u != nullptr && is_int(u) ? u : t_usize());
+                if (b != nullptr && b->kind == TypeKind::UntypedInt) {
+                    n->right->right->ty = coerce(n->right->right, b, u);
                 }
-                elem = (u != nullptr && is_int(u)) ? u : t_usize();
+                elem = u;
                 n->right->ty = elem;
             } else if (n->flags & FlagByPtr) {
                 if (is_array(it)) {
@@ -242,10 +237,25 @@ auto Checker::check_stmt(Node* n) -> void {
             }
             if (n->type != nullptr) {
                 Type* want = resolve_type(n->type);
-                if (!type_eq(want, elem) && !can_widen(elem, want)) {
+                if (is_int(want) && (elem == nullptr || is_int(elem) ||
+                                     (elem != nullptr && elem->kind == TypeKind::UntypedInt))) {
+                    if (n->right != nullptr && n->right->kind == NodeKind::Binary &&
+                        (n->right->op == TokenKind::DotDotLt ||
+                         n->right->op == TokenKind::DotDotEq)) {
+                        if (n->right->left != nullptr) {
+                            n->right->left->ty = coerce(n->right->left, n->right->left->ty, want);
+                        }
+                        if (n->right->right != nullptr) {
+                            n->right->right->ty = coerce(n->right->right, n->right->right->ty, want);
+                        }
+                        n->right->ty = want;
+                    }
+                    elem = want;
+                } else if (!type_eq(want, elem) && !can_widen(elem, want)) {
                     fail_n(n, "lucb.check.type", "loop variable has the wrong type");
+                } else {
+                    elem = want;
                 }
-                elem = want;
             }
             n->ty = elem;
             loop_labels.push_back(n->text);

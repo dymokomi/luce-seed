@@ -1,0 +1,12 @@
+func largest[T: Comparable](values: const T[]) -> T?:
+    if values.length == 0: return none
+    var best = values[0]
+    for value in values:
+        if value.compare(best) > 0: best = value
+    return best
+
+pub func main(arguments: str[]) -> i32:
+    let numbers = [3, 9, 4]
+    let top = largest(numbers) else trap("nonempty")
+    print(f"{top}")                              # 9
+    return 0

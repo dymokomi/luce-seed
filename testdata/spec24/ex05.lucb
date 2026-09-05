@@ -1,0 +1,37 @@
+struct Link:
+    var next: Link*?
+
+struct Task:
+    var name: str
+    var priority: u32
+    var link: Link
+
+func task_of(link: Link*) -> Task*:
+    return (Task*)((u8*)link - offsetof(Task, link))
+
+func push(head: Link*?*, task: Task*):
+    task.link.next = *head
+    *head = &task.link
+
+func highest(head: Link*?) -> Task*?:
+    var best: Task*? = none
+    var current = head
+    while let link = current:
+        let task = task_of(link)
+        if let leader = best:
+            if task.priority > leader.priority: best = task
+        else:
+            best = task
+        current = link.next
+    return best
+
+pub func main(arguments: str[]) -> i32:
+    var tasks = [Task(name = "build", priority = 2, link = Link(next = none)),
+                 Task(name = "test", priority = 5, link = Link(next = none)),
+                 Task(name = "ship", priority = 1, link = Link(next = none))]
+    var head: Link*? = none
+    for task in &tasks:
+        push(&head, task)
+    if let task = highest(head):
+        print(task.name)                          # test
+    return 0

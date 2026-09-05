@@ -1,0 +1,22 @@
+extern type Window
+extern func SDL_Init(flags: u32) -> i32
+extern func SDL_GetError() -> cstr
+extern func SDL_CreateWindow(title: cstr, x: i32, y: i32, w: i32, h: i32, flags: u32) -> Window?
+extern func SDL_DestroyWindow(window: Window)
+extern blocking func SDL_Delay(ms: u32)
+extern func SDL_Quit()
+
+pub let sdl_failed: ErrorCode = ErrorCode.package(3)
+
+func last_error() -> str:
+    return str(SDL_GetError()) catch failure:
+        recover "SDL reported invalid text"
+
+pub func main(arguments: str[]) -> i32!:
+    if SDL_Init(0x20) != 0:
+        error(sdl_failed, last_error())
+    defer SDL_Quit()
+    let window = SDL_CreateWindow("Luce Base", 100, 100, 800, 600, 0) else error(sdl_failed, last_error())
+    defer SDL_DestroyWindow(window)
+    SDL_Delay(2000)
+    return 0

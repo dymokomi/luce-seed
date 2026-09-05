@@ -1,0 +1,8 @@
+pub func answer() -> i64:
+    return helper(20) + later().k
+func helper(x: i64) -> i64:
+    return x * 2
+struct K:
+    var k: i64
+func later() -> K:
+    return K(k = 0)

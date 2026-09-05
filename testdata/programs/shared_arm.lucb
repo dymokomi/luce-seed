@@ -1,0 +1,12 @@
+enum Expr:
+    number(value: i64)
+    add(left: i64, right: i64)
+    multiply(left: i64, right: i64)
+func evaluate(expression: Expr) -> i64:
+    match expression:
+        .number(value):
+            return value
+        .add(left, right), .multiply(left, right):
+            return left + right
+pub func answer() -> i64:
+    return evaluate(Expr.add(left = 10, right = 30))

@@ -1,0 +1,6 @@
+pub func main(arguments: str[]) -> i32:
+    if arguments.length < 2:
+        print("usage: greet NAME")
+        return 1
+    print(f"hello, {arguments[1]}")
+    return 0

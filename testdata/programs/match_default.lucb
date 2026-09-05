@@ -1,0 +1,16 @@
+enum Access as u32:
+    empty = 0
+    read = 1
+    write = 2
+    execute = 4
+func describe(mode: Access) -> str:
+    return match mode:
+        .empty => "no access"
+        .read => "read-only"
+        _ if (mode & Access.write) != Access.empty => "writable"
+        _ => "other"
+pub func answer() -> i64:
+    let mode = Access.read | Access.write
+    if describe(mode).length == 8:
+        return i64((u32)mode)
+    return 0

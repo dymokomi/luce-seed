@@ -1,0 +1,15 @@
+pub let out_of_range: ErrorCode = ErrorCode.package(1)
+pub struct Percentage:
+    let value: f64
+    pub func init(value: f64) -> !:
+        if value < 0.0 or value > 100.0:
+            error(out_of_range, "percentage must be 0 through 100")
+        self.value = value
+    pub static func half() -> Percentage:
+        return Percentage(value = 50.0) catch failure: trap("50 is in range")
+pub func answer() -> i64!:
+    let opacity = try Percentage(75.0)
+    let half = Percentage.half()
+    if opacity.value > 70.0 and half.value == 50.0:
+        return 40
+    return 0

@@ -1,0 +1,18 @@
+func step(out: Writer, n: i64) -> !:
+    try out.write(f"{n}")
+func work(out: Writer, fail: bool) -> !:
+    defer discard(step(out, 1) catch f: recover ())
+    errdefer discard(step(out, 9) catch f: recover ())
+    defer discard(step(out, 2) catch f: recover ())
+    try step(out, 3)
+    if fail:
+        error(1, "boom")
+    try step(out, 4)
+pub func main(arguments: str[]) -> i32!:
+    let out = io.stdout()
+    try work(out, false)
+    try out.write("|")
+    work(out, true) catch failure:
+        try out.write("|caught")
+    try out.write("\n")
+    return 0

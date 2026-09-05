@@ -1,0 +1,35 @@
+pub let full: ErrorCode = ErrorCode.package(2)
+
+pub struct Ring:
+    var items: u32[]
+    var head: usize
+    var count: usize
+    var allocator: Allocator
+
+    pub static func create(capacity: usize) -> Ring!:
+        return Ring(items = try new u32[capacity], head = 0, count = 0, allocator = memory.allocator)
+
+    pub mutating func push(value: u32) -> !:
+        if self.count == self.items.length:
+            error(full, "ring buffer is full")
+        self.items[(self.head + self.count) % self.items.length] = value
+        self.count += 1
+
+    pub mutating func pop() -> u32?:
+        if self.count == 0: return none
+        let value = self.items[self.head]
+        self.head = (self.head + 1) % self.items.length
+        self.count -= 1
+        return value
+
+    pub mutating func destroy():
+        free(self.items) in self.allocator
+
+pub func main(arguments: str[]) -> i32!:
+    var ring = try Ring.create(4)
+    defer ring.destroy()
+    for value: u32 in 1..=4:
+        try ring.push(value)
+    while let value = ring.pop():
+        print(f"{value}")
+    return 0

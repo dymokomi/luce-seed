@@ -1,0 +1,33 @@
+enum Expr:
+    number(value: f64)
+    add(left: Expr*, right: Expr*)
+    multiply(left: Expr*, right: Expr*)
+    negate(operand: Expr*)
+
+func evaluate(expression: const Expr*) -> f64:
+    return match *expression:
+        .number(value) => value
+        .add(left, right) => evaluate(left) + evaluate(right)
+        .multiply(left, right) => evaluate(left) * evaluate(right)
+        .negate(operand) => -evaluate(operand)
+
+func release(expression: Expr*):
+    match *expression:
+        .number(_): return
+        .add(left, right), .multiply(left, right):
+            release(left)
+            release(right)
+        .negate(operand): release(operand)
+    free(expression)
+
+pub func main(arguments: str[]) -> i32!:
+    let two = try new Expr.number(value = 2.0)
+    errdefer release(two)
+    let three = try new Expr.number(value = 3.0)
+    errdefer release(three)
+    let sum = try new Expr.add(left = two, right = three)
+    errdefer free(sum)
+    let negated = try new Expr.negate(operand = sum)
+    defer release(negated)
+    print(f"{evaluate(negated)}")                # -5.0
+    return 0

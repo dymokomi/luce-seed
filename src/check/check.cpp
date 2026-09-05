@@ -1454,6 +1454,9 @@ auto Checker::check_func(Node* fn, Node* owner) -> void {
         fallible_fn = (fn->flags & FlagFallible) != 0;
         push_scope();
         if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
+            if (fn->text == "init") {
+                fn->flags |= FlagMutating;
+            }
             bool mut = (fn->flags & FlagMutating) != 0;
             bind("self", owner->ty, mut, owner);
         }

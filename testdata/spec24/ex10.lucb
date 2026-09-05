@@ -1,0 +1,32 @@
+import thread
+
+struct SpinLock:
+    var locked: @bool
+
+    mutating func acquire():
+        while self.locked.swap(true, .acquire):
+            thread.pause()
+
+    mutating func release():
+        self.locked.store(false, .release)
+
+struct Shared:
+    var lock: SpinLock
+    var total: u64
+
+func bump(context: void*):
+    let shared = (Shared*)context
+    for _ in 0..<100_000:
+        shared.lock.acquire()
+        shared.total += 1
+        shared.lock.release()
+
+pub func main(arguments: str[]) -> i32!:
+    var shared: Shared
+    var handles: thread.Handle[4]
+    for index in 0..<4:
+        handles[index] = try thread.spawn(bump, &shared)
+    for handle in handles:
+        try handle.join()
+    print(f"{shared.total}")                     # 400000
+    return 0

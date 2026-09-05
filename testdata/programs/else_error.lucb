@@ -1,0 +1,9 @@
+func parse(text: str) -> i64!:
+    let n = field(text) else error(1, "missing")
+    return n
+func field(text: str) -> i64?:
+    if text.length == 0:
+        return none
+    return 40
+pub func answer() -> i64!:
+    return try parse("x")

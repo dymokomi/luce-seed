@@ -1,0 +1,3 @@
+pub func answer() -> i64:
+    print(f"{{x}}")
+    return 40

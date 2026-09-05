@@ -1,0 +1,16 @@
+func describe(bytes: usize, buffer: u8[]) -> str!:
+    if bytes >= 1 << 20:
+        return try format(buffer, f"{bytes >> 20} MiB")
+    if bytes >= 1 << 10:
+        return try format(buffer, f"{bytes >> 10} KiB")
+    return try format(buffer, f"{bytes} B")
+
+func log(message: fmt, at: Location = luce.location):
+    discard(io.stderr().write(f"{at.file}:{at.line}: {message}\n") catch failure: recover 0)
+
+pub func main(arguments: str[]) -> i32!:
+    var buffer: u8[32]
+    let size = try describe(3_145_728, buffer)
+    print(size)                                  # 3 MiB
+    log(f"described {size}")
+    return 0

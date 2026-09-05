@@ -117,6 +117,35 @@ auto Interp::make_array(Type* t, vector<Value> elems) -> Value {
         return v;
     }
 
+auto Interp::copy_value(const Value& v) -> Value {
+        if (v.kind == TypeKind::Array || (v.type != nullptr && v.type->kind == TypeKind::Array)) {
+            vector<Value> elems;
+            size_t n = v.length != 0 ? v.length : v.fields.size();
+            if (v.type != nullptr && v.type->length != 0) {
+                n = static_cast<size_t>(v.type->length);
+            }
+            elems.reserve(n);
+            if (v.ptr != nullptr) {
+                for (size_t i = 0; i < n; i++) {
+                    elems.push_back(copy_value(v.ptr[i]));
+                }
+            } else {
+                for (size_t i = 0; i < v.fields.size(); i++) {
+                    elems.push_back(copy_value(v.fields[i]));
+                }
+            }
+            return make_array(v.type, std::move(elems));
+        }
+        Value c = v;
+        if (v.kind == TypeKind::Struct || v.kind == TypeKind::Tuple) {
+            c.fields.clear();
+            for (size_t i = 0; i < v.fields.size(); i++) {
+                c.fields.push_back(copy_value(v.fields[i]));
+            }
+        }
+        return c;
+    }
+
 auto Interp::zero_of(Type* t) -> Value {
         if (t != nullptr && t->kind == TypeKind::Tuple) {
             Value v;
@@ -651,6 +680,16 @@ auto Interp::eval_member(Node* n) -> Value {
                 return v_str(obj.str);
             }
         }
+        if (obj.kind == TypeKind::Struct ||
+            (obj.type != nullptr && obj.type->kind == TypeKind::Struct && obj.type->decl != nullptr)) {
+            Node* decl = obj.type != nullptr ? obj.type->decl : nullptr;
+            if (decl != nullptr) {
+                int i = field_index(decl, n->text);
+                if (i >= 0 && i < static_cast<int>(obj.fields.size())) {
+                    return obj.fields[static_cast<size_t>(i)];
+                }
+            }
+        }
         if (view && n->text == "bytes" &&
             (raw == nullptr || raw->kind == TypeKind::Str || obj.kind == TypeKind::Str)) {
             string d = decode_string(obj.str);
@@ -789,7 +828,7 @@ auto Interp::eval_formatted(Node* n) -> Value {
         string s;
         for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
             if (p->kind == NodeKind::FormatText) {
-                s += decode_string(p->text);
+                s += unescape_format_braces(decode_string(p->text));
             } else if (p->kind == NodeKind::FormatField) {
                 Value f = eval(p->left);
                 if (trapped) {
@@ -2208,6 +2247,23 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
             return eval_ctor(n, n->resolved);
+        }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func &&
+            n->resolved->text == "init" && callee != nullptr && callee->kind == NodeKind::Name &&
+            callee->resolved != nullptr && callee->resolved->kind == NodeKind::Struct) {
+            Node* st = callee->resolved;
+            Value v = zero_of(st->ty);
+            call_func(n->resolved, &v, n->body);
+            if (trapped) {
+                return v_unit();
+            }
+            if (returning && ret.failed) {
+                returning = false;
+                ret.failed = true;
+                return ret;
+            }
+            v.failed = false;
+            return v;
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;

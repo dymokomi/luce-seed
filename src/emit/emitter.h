@@ -14,6 +14,7 @@ struct Emitter {
     string out;
     int indent = 0;
     vector<Type*> arrays;
+    vector<Type*> arrays_done;
     vector<Type*> opts;
     vector<Type*> fails;
     vector<Type*> tups;
@@ -238,6 +239,8 @@ struct Emitter {
     void run_defers_from(int from, bool failing = false);
     string snapshot_defers(bool failing = false);
     bool is_error_call(Node* n);
+    bool is_trap_call(Node* n);
+    bool is_never_expr(Node* n);
     string emit_enum_value(Node* n);
     string emit_try(Node* n);
     string emit_else(Node* n);
@@ -303,7 +306,10 @@ struct Emitter {
     void note_type(Type* t);
     void walk_types(Node* n);
     void emit_type_forwards(Node* mod);
-    void emit_array_typedefs(bool funcs);
+    bool array_elem_is_record(Type* t);
+    void emit_array_def(Type* t);
+    void emit_arrays_of_decl(Node* st);
+    void emit_array_typedefs(bool funcs, bool records = false);
     void emit_tup_typedefs();
     void emit_fn_typedefs();
     void emit_opt_typedefs();

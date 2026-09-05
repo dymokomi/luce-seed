@@ -6,29 +6,46 @@
 namespace lucb {
 
 auto Emitter::run_defers(const vector<Node*>& d, bool failing) -> void {
-        for (int i = static_cast<int>(d.size()) - 1; i >= 0; i--) {
-            Node* dn = d[static_cast<size_t>(i)];
+        vector<Node*> copy = d;
+        for (int i = static_cast<int>(copy.size()) - 1; i >= 0; i--) {
+            Node* dn = copy[static_cast<size_t>(i)];
             if (dn->kind == NodeKind::Errdefer && !failing) {
                 continue;
             }
             if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
                 emit_free(dn->left);
             } else {
-                line(emit_expr(dn->left) + ";");
+                line("(void)(" + emit_expr(dn->left) + ");");
             }
         }
     }
 
 auto Emitter::unwind_scope(const Scope& sc, bool failing) -> void {
-        run_defers(sc.defers, failing);
-        if (sc.restore_alloc) {
-            line("lb_set_alloc(" + sc.alloc_save + ");");
+        vector<Node*> defers = sc.defers;
+        bool restore = sc.restore_alloc;
+        string save = sc.alloc_save;
+        run_defers(defers, failing);
+        if (restore) {
+            line("lb_set_alloc(" + save + ");");
         }
     }
 
 auto Emitter::run_defers_from(int from, bool failing) -> void {
+        struct Snap {
+            vector<Node*> defers;
+            bool restore_alloc = false;
+            string alloc_save;
+        };
+        vector<Snap> snaps;
         for (int i = static_cast<int>(scopes.size()) - 1; i >= from; i--) {
-            unwind_scope(scopes[static_cast<size_t>(i)], failing);
+            const Scope& sc = scopes[static_cast<size_t>(i)];
+            snaps.push_back({sc.defers, sc.restore_alloc, sc.alloc_save});
+        }
+        for (size_t i = 0; i < snaps.size(); i++) {
+            run_defers(snaps[i].defers, failing);
+            if (snaps[i].restore_alloc) {
+                line("lb_set_alloc(" + snaps[i].alloc_save + ");");
+            }
         }
     }
 
@@ -118,8 +135,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 line(c_type(n->ty) + " " + tn + " = " + emit_expr(n->left) + ";");
                 int i = 0;
                 for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
-                    line(c_type(nm->ty) + " " + ident("lb_", nm->text) + " = " + tn + ".a" +
-                         std::to_string(i) + ";");
+                    line(c_type(nm->ty) + " " + ident("lb_", nm->text) +
+                         " __attribute__((unused)) = " + tn + ".a" + std::to_string(i) + ";");
                     i++;
                 }
                 break;
@@ -127,7 +144,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             string ty = c_type(n->ty);
             string name = ident("lb_", n->text);
             if (n->flags & FlagUninit) {
-                line(ty + " " + name + ";");
+                line(ty + " " + name + " __attribute__((unused));");
                 break;
             }
             string init = "0";
@@ -150,7 +167,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             } else if (n->ty != nullptr && n->ty->kind == TypeKind::Bool) {
                 init = "false";
             }
-            line(ty + " " + name + " = " + init + ";");
+            line(ty + " " + name + " __attribute__((unused)) = " + init + ";");
             break;
         }
         case NodeKind::Assign: {
@@ -257,12 +274,17 @@ auto Emitter::emit_stmt(Node* n) -> void {
             } else if (n->left != nullptr && n->left->kind == NodeKind::Free) {
                 emit_free(n->left);
             } else {
-                line(emit_expr(n->left) + ";");
+                line("(void)(" + emit_expr(n->left) + ");");
             }
             break;
         case NodeKind::Recover:
             if (!catch_var.empty()) {
-                line(catch_var + " = " + emit_expr(n->left) + ";");
+                Type* rt = n->left != nullptr ? n->left->ty : nullptr;
+                if (rt == nullptr || rt->kind == TypeKind::Unit || rt->kind == TypeKind::Never) {
+                    line("(void)(" + emit_expr(n->left) + ");");
+                } else {
+                    line(catch_var + " = " + emit_expr(n->left) + ";");
+                }
                 if (!catch_done.empty()) {
                     line("goto " + catch_done + ";");
                 }
@@ -307,7 +329,15 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 if (n->ty != nullptr && is_ptr(n->ty)) {
                     et = c_type(n->ty->elem);
                 }
-                elem_e = "((" + et + "*)" + seq + ".data)[" + idx + "]";
+                string q = (is_span(it) && it->is_const) ||
+                                   (n->ty != nullptr && n->ty->kind == TypeKind::U8 && is_span(it) &&
+                                    it->is_const)
+                               ? "const "
+                               : "";
+                if (is_span(it) && it->is_const) {
+                    q = "const ";
+                }
+                elem_e = "((" + q + et + "*)" + seq + ".data)[" + idx + "]";
             }
             Scope sc;
             sc.loop = true;
@@ -315,9 +345,11 @@ auto Emitter::emit_stmt(Node* n) -> void {
             line("for (size_t " + idx + " = 0; " + idx + " < " + len + "; " + idx + "++) {");
             indent++;
             if (n->flags & FlagByPtr) {
-                line(c_type(n->ty) + " " + ident("lb_", n->text) + " = &(" + elem_e + ");");
+                line(c_type(n->ty) + " " + ident("lb_", n->text) +
+                     " __attribute__((unused)) = &(" + elem_e + ");");
             } else {
-                line(c_type(n->ty) + " " + ident("lb_", n->text) + " = " + elem_e + ";");
+                line(c_type(n->ty) + " " + ident("lb_", n->text) +
+                     " __attribute__((unused)) = " + elem_e + ";");
             }
             emit_stmt(n->body);
             indent--;
@@ -339,7 +371,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 run_defers_from(0, true);
                 line("return " + emit_expr(n->left) + ";");
             } else {
-                line(emit_expr(n->left) + ";");
+                line("(void)(" + emit_expr(n->left) + ");");
             }
             break;
         case NodeKind::Asm: {
@@ -544,24 +576,26 @@ auto Emitter::emit_while(Node* n) -> void {
             line("if (!(" + cond + ")) break;");
             if (let != nullptr && !let->text.empty()) {
                 if (is_opt(ot) && ot->elem != nullptr) {
-                    line(c_type(ot->elem) + " " + ident("lb_", let->text) + " = " + on + ".value;");
+                    line(c_type(ot->elem) + " " + ident("lb_", let->text) +
+                         " __attribute__((unused)) = " + on + ".value;");
                 } else {
-                    line(c_type(ot) + " " + ident("lb_", let->text) + " = " + on + ";");
+                    line(c_type(ot) + " " + ident("lb_", let->text) +
+                         " __attribute__((unused)) = " + on + ";");
                 }
             }
             emit_stmt(n->body);
             if (!n->text.empty()) {
-                line("lb_cont_" + string(n->text) + ": ;");
+                line("__attribute__((unused)) lb_cont_" + string(n->text) + ": ;");
             }
             indent--;
             line("}");
         } else {
             pad();
-            out += "while (" + emit_expr(n->left) + ") {\n";
+            out += "while (!!(" + emit_expr(n->left) + ")) {\n";
             indent++;
             emit_stmt(n->body);
             if (!n->text.empty()) {
-                line("lb_cont_" + string(n->text) + ": ;");
+                line("__attribute__((unused)) lb_cont_" + string(n->text) + ": ;");
             }
             indent--;
             line("}");
@@ -571,7 +605,7 @@ auto Emitter::emit_while(Node* n) -> void {
             scopes.pop_back();
         }
         if (!n->text.empty()) {
-            line("lb_brk_" + string(n->text) + ": ;");
+            line("__attribute__((unused)) lb_brk_" + string(n->text) + ": ;");
         }
     }
 
@@ -584,8 +618,8 @@ auto Emitter::emit_for_range(Node* n) -> void {
         string a = emit_expr(n->right->left);
         string b = emit_expr(n->right->right);
         string cmp = n->right->op == TokenKind::DotDotEq ? " <= " : " < ";
-        line("for (" + ty + " " + name + " = (" + ty + ")(" + a + "); " + name + cmp + "(" + ty +
-             ")(" + b + "); " + name + "++) {");
+        line("for (" + ty + " " + name + " __attribute__((unused)) = (" + ty + ")(" + a + "); " +
+             name + cmp + "(" + ty + ")(" + b + "); " + name + "++) {");
         indent++;
         emit_stmt(n->body);
         indent--;
@@ -604,10 +638,14 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
         if (is_int(st) || is_int_enum(st) || (st != nullptr && st->kind == TypeKind::Bool)) {
             line("switch ((int64_t)(" + sv + ")) {");
             indent++;
+            bool default_emitted = false;
             for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
                 for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
                     if (pat->text == "_") {
-                        line("default:");
+                        if (!default_emitted) {
+                            line("default:");
+                            default_emitted = true;
+                        }
                     } else if (pat->resolved != nullptr &&
                                pat->resolved->kind == NodeKind::EnumCase) {
                         line("case " + std::to_string(emit_case_int(st->decl, pat->resolved)) +
@@ -628,7 +666,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 indent++;
                 if (!dest.empty()) {
                     if (arm->type != nullptr) {
-                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                        line("if (!!(" + emit_expr(arm->type) + ")) { " + dest + " = " +
                              emit_expr(arm->body) + "; break; }");
                     } else {
                         line(dest + " = " + emit_expr(arm->body) + ";");
@@ -636,7 +674,9 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 } else {
                     emit_stmt(arm->body);
                 }
-                line("break;");
+                if (arm->type == nullptr) {
+                    line("break;");
+                }
                 indent--;
                 line("}");
             }
@@ -647,10 +687,14 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
         if (is_enum(st)) {
             line("switch ((int)(" + sv + ".tag)) {");
             indent++;
+            bool default_emitted = false;
             for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
                 for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
                     if (pat->text == "_") {
-                        line("default:");
+                        if (!default_emitted) {
+                            line("default:");
+                            default_emitted = true;
+                        }
                     } else if (pat->resolved != nullptr) {
                         int tag = emit_case_tag(st->decl, pat->resolved);
                         line("case " + std::to_string(tag) + ":");
@@ -658,25 +702,78 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 }
                 line("{");
                 indent++;
+                Node* first_pay = nullptr;
                 for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
-                    Node* cse = pat->resolved;
-                    if (cse == nullptr || cse->body == nullptr) {
-                        continue;
-                    }
-                    Node* p = cse->body;
-                    Node* b = pat->body;
-                    while (p != nullptr && b != nullptr) {
-                        if (b->text != "_") {
-                            line(c_type(p->ty) + " " + ident("lb_", b->text) + " = " + sv + ".u." +
-                                 string(cse->text) + "." + string(p->text) + ";");
+                    if (pat->resolved != nullptr && pat->resolved->body != nullptr) {
+                        if (first_pay == nullptr) {
+                            first_pay = pat;
                         }
-                        p = p->next;
-                        b = b->next;
+                    }
+                }
+                if (first_pay != nullptr) {
+                    Node* cse0 = first_pay->resolved;
+                    Node* p0 = cse0->body;
+                    Node* b0 = first_pay->body;
+                    while (p0 != nullptr && b0 != nullptr) {
+                        if (b0->text != "_") {
+                            line(c_type(p0->ty) + " " + ident("lb_", b0->text) +
+                                 " __attribute__((unused)) = {0};");
+                        }
+                        p0 = p0->next;
+                        b0 = b0->next;
+                    }
+                    int n_pay = 0;
+                    for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                        if (pat->resolved != nullptr && pat->resolved->body != nullptr) {
+                            n_pay++;
+                        }
+                    }
+                    bool started = false;
+                    for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                        Node* cse = pat->resolved;
+                        if (cse == nullptr || cse->body == nullptr) {
+                            continue;
+                        }
+                        int tag = emit_case_tag(st->decl, cse);
+                        if (n_pay == 1) {
+                            Node* p = cse->body;
+                            Node* b = pat->body;
+                            while (p != nullptr && b != nullptr) {
+                                if (b->text != "_") {
+                                    line(ident("lb_", b->text) + " = " + sv + ".u." +
+                                         string(cse->text) + "." + string(p->text) + ";");
+                                }
+                                p = p->next;
+                                b = b->next;
+                            }
+                            continue;
+                        }
+                        if (!started) {
+                            line("if (" + sv + ".tag == " + std::to_string(tag) + ") {");
+                            started = true;
+                        } else {
+                            line("} else if (" + sv + ".tag == " + std::to_string(tag) + ") {");
+                        }
+                        indent++;
+                        Node* p = cse->body;
+                        Node* b = pat->body;
+                        while (p != nullptr && b != nullptr) {
+                            if (b->text != "_") {
+                                line(ident("lb_", b->text) + " = " + sv + ".u." + string(cse->text) +
+                                     "." + string(p->text) + ";");
+                            }
+                            p = p->next;
+                            b = b->next;
+                        }
+                        indent--;
+                    }
+                    if (started) {
+                        line("}");
                     }
                 }
                 if (!dest.empty()) {
                     if (arm->type != nullptr) {
-                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                        line("if (!!(" + emit_expr(arm->type) + ")) { " + dest + " = " +
                              emit_expr(arm->body) + "; break; }");
                     } else {
                         line(dest + " = " + emit_expr(arm->body) + ";");
@@ -684,7 +781,9 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 } else {
                     emit_stmt(arm->body);
                 }
-                line("break;");
+                if (arm->type == nullptr) {
+                    line("break;");
+                }
                 indent--;
                 line("}");
             }
@@ -705,8 +804,8 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                     } else if (pat->text == "some") {
                         cond = sv + ".present";
                         if (pat->body != nullptr && !pat->body->text.empty() && st->elem != nullptr) {
-                            bind = c_type(st->elem) + " " + ident("lb_", pat->body->text) + " = " +
-                                   sv + ".value;";
+                            bind = c_type(st->elem) + " " + ident("lb_", pat->body->text) +
+                                   " __attribute__((unused)) = " + sv + ".value;";
                         }
                     }
                 }
@@ -720,7 +819,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 }
                 if (!dest.empty()) {
                     if (arm->type != nullptr) {
-                        line("if (" + emit_expr(arm->type) + ") { " + dest + " = " +
+                        line("if (!!(" + emit_expr(arm->type) + ")) { " + dest + " = " +
                              emit_expr(arm->body) + "; }");
                     } else {
                         line(dest + " = " + emit_expr(arm->body) + ";");
@@ -765,9 +864,11 @@ auto Emitter::emit_if(Node* n) -> void {
             indent++;
             if (let != nullptr && !let->text.empty()) {
                 if (is_opt(ot) && ot->elem != nullptr) {
-                    line(c_type(ot->elem) + " " + ident("lb_", let->text) + " = " + on + ".value;");
+                    line(c_type(ot->elem) + " " + ident("lb_", let->text) +
+                         " __attribute__((unused)) = " + on + ".value;");
                 } else {
-                    line(c_type(ot) + " " + ident("lb_", let->text) + " = " + on + ";");
+                    line(c_type(ot) + " " + ident("lb_", let->text) +
+                         " __attribute__((unused)) = " + on + ";");
                 }
             }
             emit_stmt(n->body);
@@ -793,7 +894,7 @@ auto Emitter::emit_if(Node* n) -> void {
             return;
         }
         pad();
-        out += "if (" + emit_expr(n->left) + ") ";
+        out += "if (!!(" + emit_expr(n->left) + ")) ";
         if (n->body != nullptr && n->body->kind == NodeKind::Block) {
             out += '\n';
             emit_block(n->body);

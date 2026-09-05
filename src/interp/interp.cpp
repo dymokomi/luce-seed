@@ -198,6 +198,8 @@ TestRun eval_tests(const vector<Node*>& modules) {
             ip.all_modules = modules;
             ip.init_memory();
             ip.load_globals();
+            ip.current_fn = d;
+            ip.frames.push_back(Frame{});
             ip.exec(d->body);
             string title = string(d->text);
             if (title.size() >= 2 && title.front() == '"') {

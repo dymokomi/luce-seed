@@ -728,7 +728,7 @@ TEST(agree_extern_strlen) {
 TEST(agree_variadic_printf) {
     CHECK(agrees("extern func printf(format: cstr, ...) -> i32\n"
                  "pub func answer() -> i64:\n"
-                 "    return i64(printf(\"%d\", 40))\n"));
+                 "    return i64(printf(\"%d\", (c.int)40))\n"));
 }
 
 TEST(agree_c_int) {
@@ -967,6 +967,34 @@ TEST(agree_program_errorcode) { CHECK(agrees_file("testdata/programs/errorcode.l
 TEST(agree_program_thread_mod) { CHECK(agrees_file("testdata/programs/thread_mod.lucb")); }
 
 TEST(agree_program_export_span) { CHECK(agrees_file("testdata/programs/export_span.lucb")); }
+
+TEST(agree_program_array_field) { CHECK(agrees_file("testdata/programs/array_field.lucb")); }
+
+TEST(agree_program_nested_array_field) {
+    CHECK(agrees_file("testdata/programs/nested_array_field.lucb"));
+}
+
+TEST(agree_program_defer_discard_catch) {
+    CHECK(agrees_file("testdata/programs/defer_discard_catch.lucb"));
+}
+
+TEST(agree_program_else_error) { CHECK(agrees_file("testdata/programs/else_error.lucb")); }
+
+TEST(agree_program_fwd_struct) { CHECK(agrees_file("testdata/programs/fwd_struct.lucb")); }
+
+TEST(agree_program_match_default) { CHECK(agrees_file("testdata/programs/match_default.lucb")); }
+
+TEST(agree_program_typed_for) { CHECK(agrees_file("testdata/programs/typed_for.lucb")); }
+
+TEST(agree_program_init_assign) { CHECK(agrees_file("testdata/programs/init_assign.lucb")); }
+
+TEST(agree_program_shared_arm) { CHECK(agrees_file("testdata/programs/shared_arm.lucb")); }
+
+TEST(agree_program_shift_usize) { CHECK(agrees_file("testdata/programs/shift_usize.lucb")); }
+
+TEST(agree_program_braces) { CHECK(agrees_file("testdata/programs/braces.lucb")); }
+
+TEST(agree_program_generic_map) { CHECK(agrees_file("testdata/programs/generic_map.lucb")); }
 
 TEST(agree_user_arena) {
     CHECK(agrees("pub struct Arena implements Allocator:\n"

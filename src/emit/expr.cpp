@@ -94,6 +94,25 @@ auto Emitter::is_error_call(Node* n) -> bool {
                n->left->kind == NodeKind::Name && n->left->text == "error";
     }
 
+auto Emitter::is_trap_call(Node* n) -> bool {
+        return n != nullptr && n->kind == NodeKind::Call && n->left != nullptr &&
+               n->left->kind == NodeKind::Name && n->left->text == "trap";
+    }
+
+auto Emitter::is_never_expr(Node* n) -> bool {
+        if (n == nullptr) {
+            return false;
+        }
+        if (n->ty != nullptr && n->ty->kind == TypeKind::Never) {
+            return true;
+        }
+        if (n->kind == NodeKind::Return || n->kind == NodeKind::Break ||
+            n->kind == NodeKind::Continue) {
+            return true;
+        }
+        return is_error_call(n) || is_trap_call(n);
+    }
+
 auto Emitter::emit_enum_value(Node* n) -> string {
         Node* cse = n->resolved;
         Type* t = n->ty;
@@ -159,17 +178,27 @@ auto Emitter::emit_else(Node* n) -> string {
         Type* lt = n->left != nullptr ? n->left->ty : nullptr;
         string s = "({ ";
         s += c_type(lt) + " " + on + " = " + emit_expr(n->left) + "; ";
-        Type* rt = n->right != nullptr ? n->right->ty : nullptr;
-        bool else_never = rt != nullptr && rt->kind == TypeKind::Never;
+        bool else_never = is_never_expr(n->right);
+        auto never_stmt = [&]() -> string {
+            string rhs = emit_expr(n->right);
+            if (is_trap_call(n->right)) {
+                return rhs;
+            }
+            if (is_error_call(n->right)) {
+                if (rhs.size() < 7 || rhs.compare(0, 7, "return ") != 0) {
+                    rhs = "return " + rhs;
+                }
+            }
+            return rhs;
+        };
         if (is_opt(lt)) {
             if (else_never) {
-                s += "if (!" + on + ".present) { " + emit_expr(n->right) + "; } " + on +
-                     ".value; })";
+                s += "if (!" + on + ".present) { " + never_stmt() + "; } " + on + ".value; })";
             } else {
                 s += on + ".present ? " + on + ".value : (" + emit_expr(n->right) + "); })";
             }
         } else if (else_never) {
-            s += "if (!(" + on + ")) { " + emit_expr(n->right) + "; } " + on + "; })";
+            s += "if (!(" + on + ")) { " + never_stmt() + "; } " + on + "; })";
         } else {
             s += on + " ? " + on + " : (" + emit_expr(n->right) + "); })";
         }
@@ -203,13 +232,14 @@ auto Emitter::emit_catch(Node* n) -> string {
         Type* payload = is_fail(ft) ? ft->elem : nullptr;
         string s = "({ ";
         s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
-        s += vty + " " + vn + "; ";
+        s += vty + " " + vn + " = {0}; ";
         s += "if (" + rn + ".failed) { ";
         if (!n->text.empty()) {
-            s += "lb_error " + ident("lb_", n->text) + " = " + rn + ".error; ";
+            s += "lb_error " + ident("lb_", n->text) + " __attribute__((unused)) = " + rn +
+                 ".error; ";
         }
         s += body;
-        s += "_lb_cd" + std::to_string(id) + ": ;";
+        s += "__attribute__((unused)) _lb_cd" + std::to_string(id) + ": ;";
         s += " } else { ";
         if (payload != nullptr && payload->kind != TypeKind::Unit) {
             s += vn + " = " + rn + ".value; ";
@@ -334,6 +364,24 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             return emit_enum_value(n);
         case NodeKind::Else:
             return emit_else(n);
+        case NodeKind::Formatted: {
+            int id = tmp();
+            string buf = "_lb_fb" + std::to_string(id);
+            string bn = "_lb_ff" + std::to_string(id);
+            string s = "({ char " + buf + "[1024]; lb_fmtbuf " + bn + " = { " + buf +
+                       ", 1024, 0 }; ";
+            for (Node* p = n->body; p != nullptr; p = p->next) {
+                if (p->kind == NodeKind::FormatText) {
+                    string d = unescape_format_braces(decode_lit(p->text));
+                    s += "(void)lb_fmtbuf_put(&" + bn + ", " + c_escape(d) + ", " +
+                         std::to_string(d.size()) + "); ";
+                } else if (p->kind == NodeKind::FormatField) {
+                    s += "(void)" + emit_display_buf(bn, p->left) + "; ";
+                }
+            }
+            s += "lb_fmtbuf_finish(&" + bn + "); })";
+            return s;
+        }
         case NodeKind::Catch:
             return emit_catch(n);
         case NodeKind::New:
@@ -1039,7 +1087,7 @@ auto Emitter::emit_print_formatted(Node* n) -> string {
         string s = "({ ";
         for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
             if (p->kind == NodeKind::FormatText) {
-                string d = decode_lit(p->text);
+                string d = unescape_format_braces(decode_lit(p->text));
                 s += "fputs(" + c_escape(d) + ", stdout); ";
             } else if (p->kind == NodeKind::FormatField) {
                 Type* t = p->left != nullptr ? p->left->ty : nullptr;
@@ -1075,7 +1123,7 @@ auto Emitter::emit_format_call(Node* n) -> string {
         if (msg != nullptr && msg->kind == NodeKind::Formatted) {
             for (Node* p = msg->body; p != nullptr; p = p->next) {
                 if (p->kind == NodeKind::FormatText) {
-                    string d = decode_lit(p->text);
+                    string d = unescape_format_braces(decode_lit(p->text));
                     s += rn + " = " + rn + " || lb_fmtbuf_put(&" + bn + ", " + c_escape(d) + ", " +
                          std::to_string(d.size()) + "); ";
                 } else if (p->kind == NodeKind::FormatField) {
@@ -1108,7 +1156,7 @@ auto Emitter::emit_as_cspan(Node* n) -> string {
                        ", 1024, 0 }; ";
             for (Node* p = n->body; p != nullptr; p = p->next) {
                 if (p->kind == NodeKind::FormatText) {
-                    string d = decode_lit(p->text);
+                    string d = unescape_format_braces(decode_lit(p->text));
                     s += "(void)lb_fmtbuf_put(&" + bn + ", " + c_escape(d) + ", " +
                          std::to_string(d.size()) + "); ";
                 } else if (p->kind == NodeKind::FormatField) {
@@ -1124,6 +1172,19 @@ auto Emitter::emit_as_cspan(Node* n) -> string {
             string vn = "_lb_sp" + std::to_string(id);
             return "({ lb_str " + vn + " = " + emit_expr(n) + "; (lb_cspan){ " + vn +
                    ".data, " + vn + ".length }; })";
+        }
+        if (is_span(t)) {
+            int id = tmp();
+            string vn = "_lb_cs" + std::to_string(id);
+            string sty = t->is_const ? "lb_cspan" : "lb_span";
+            return "({ " + sty + " " + vn + " = " + emit_expr(n) + "; (lb_cspan){ " + vn +
+                   ".data, " + vn + ".length }; })";
+        }
+        if (is_array(t)) {
+            int id = tmp();
+            string vn = "_lb_ca" + std::to_string(id);
+            return "({ " + c_type(t) + " " + vn + " = " + emit_expr(n) + "; (lb_cspan){ " + vn +
+                   ".d, " + std::to_string(t->length) + "ULL }; })";
         }
         return emit_expr(n);
     }
@@ -1529,6 +1590,35 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
             return emit_ctor(n, n->resolved);
+        }
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func &&
+            n->resolved->text == "init" && callee != nullptr && callee->kind == NodeKind::Name &&
+            callee->resolved != nullptr && callee->resolved->kind == NodeKind::Struct) {
+            Node* st = callee->resolved;
+            int id = tmp();
+            string vn = "_lb_iv" + std::to_string(id);
+            string rn = "_lb_ir" + std::to_string(id);
+            string sty = struct_ident(st);
+            string initf = func_ident(n->resolved, st);
+            string args = emit_args(n->body);
+            string s = "({ " + sty + " " + vn + " = {0}; ";
+            s += fail_c_name(n->resolved->ty) + " " + rn + " = " + initf + "(&" + vn;
+            if (!args.empty()) {
+                s += ", " + args;
+            }
+            s += "); ";
+            if (n->ty != nullptr && is_fail(n->ty)) {
+                string orty = fail_c_name(n->ty);
+                s += orty + " _lb_io" + std::to_string(id) + "; ";
+                s += "if (" + rn + ".failed) { _lb_io" + std::to_string(id) +
+                     ".failed = true; _lb_io" + std::to_string(id) + ".error = " + rn +
+                     ".error; } else { _lb_io" + std::to_string(id) + ".failed = false; _lb_io" +
+                     std::to_string(id) + ".value = " + vn + "; } _lb_io" + std::to_string(id) +
+                     "; })";
+                return s;
+            }
+            s += "if (" + rn + ".failed) { return " + rn + "; } " + vn + "; })";
+            return s;
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             if (callee->resolved != nullptr && callee->resolved->kind == NodeKind::EnumCase) {

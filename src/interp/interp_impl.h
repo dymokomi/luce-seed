@@ -150,6 +150,7 @@ struct Interp {
     }
 
     Value make_array(Type* t, vector<Value> elems);
+    Value copy_value(const Value& v);
     Value zero_of(Type* t);
     Slot* find_slot(string_view name, Node* decl = nullptr);
     uint64_t enum_case_int(Node* en, Node* cse);

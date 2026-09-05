@@ -86,12 +86,45 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
     }
 
     const char* opt = release ? "-O2" : "-O0";
-    string cmd = host_cc() + " -std=gnu11 " + opt + " -I " + shell_quote(dir_path) + " " +
-                 shell_quote(src_path) + " " + shell_quote(dir_path + "/lucb_rt.c");
+    string cmd = host_cc() + " -std=gnu11 -Wall -Werror " + opt + " -I " + shell_quote(dir_path) +
+                 " " + shell_quote(src_path) + " " + shell_quote(dir_path + "/lucb_rt.c");
     if (link_answer_start) {
         cmd += " " + shell_quote(dir_path + "/start.c");
     }
     cmd += " -lm -pthread -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
+    int status = std::system(cmd.c_str());
+    if (status != 0) {
+        if (error != nullptr) {
+            *error = slurp(dir_path + "/cc.err");
+            if (error->empty()) {
+                *error = "C compile failed";
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+bool compile_c_object(const string& c_source, string* error) {
+    char tmpl[] = "/tmp/lucbXXXXXX";
+    char* dir = mkdtemp(tmpl);
+    if (dir == nullptr) {
+        if (error != nullptr) {
+            *error = "could not create a temporary directory";
+        }
+        return false;
+    }
+    string dir_path = dir;
+    string src_path = dir_path + "/gen.c";
+    if (!write_text(src_path, c_source.c_str(), error)) {
+        return false;
+    }
+    if (!write_text(dir_path + "/lucb_rt.h", lucb_rt_h(), error)) {
+        return false;
+    }
+    string cmd = host_cc() + " -std=gnu11 -Wall -Werror -c -I " + shell_quote(dir_path) + " " +
+                 shell_quote(src_path) + " -o " + shell_quote(dir_path + "/gen.o") + " 2> " +
+                 shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());
     if (status != 0) {
         if (error != nullptr) {

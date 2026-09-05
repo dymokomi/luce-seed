@@ -353,6 +353,16 @@ auto Checker::unify_int(Type* a, Type* b) -> Type* {
         if (type_eq(a, b)) {
             return a;
         }
+        if (is_int(a) && is_int(b) && is_signed_int(a) == is_signed_int(b) &&
+            int_bits(a) == int_bits(b)) {
+            if (a->kind == TypeKind::Usize || a->kind == TypeKind::Isize) {
+                return a;
+            }
+            if (b->kind == TypeKind::Usize || b->kind == TypeKind::Isize) {
+                return b;
+            }
+            return a;
+        }
         if (can_widen(a, b)) {
             return b;
         }
@@ -607,12 +617,12 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
     }
 
 auto Checker::as_index_type(Node* n) -> Type* {
-        Type* t = check_expr(n, t_usize());
-        if (is_int(t) || t->kind == TypeKind::UntypedInt) {
-            if (t->kind == TypeKind::UntypedInt) {
-                n->ty = coerce(n, t, t_usize());
-                t = n->ty;
-            }
+        Type* t = check_expr(n, nullptr);
+        if (t != nullptr && t->kind == TypeKind::UntypedInt) {
+            n->ty = coerce(n, t, t_usize());
+            return n->ty;
+        }
+        if (is_int(t)) {
             return t;
         }
         fail_n(n, "lucb.check.type", "an index must be an integer");
@@ -885,6 +895,11 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
             return float_bits(L) >= float_bits(R) ? L : R;
         }
         if (is_arith(op) || is_bit(op)) {
+            if ((op == TokenKind::LtLt || op == TokenKind::GtGt) && L != nullptr &&
+                L->kind == TypeKind::UntypedInt && R != nullptr &&
+                R->kind == TypeKind::UntypedInt) {
+                return t_untyped();
+            }
             Type* u = unify_int(L, R);
             if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
                 if (is_float(L) && is_float(R)) {
@@ -902,7 +917,10 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
                 n->right->ty = coerce(n->right, R, u);
             }
             if ((op == TokenKind::LtLt || op == TokenKind::GtGt) && is_int(R)) {
-                // shift count may be any integer; result is the left type
+                if (L != nullptr && L->kind == TypeKind::UntypedInt &&
+                    R->kind == TypeKind::UntypedInt) {
+                    return t_untyped();
+                }
                 return n->left->ty != nullptr ? n->left->ty : u;
             }
             (void)expected;
@@ -1265,6 +1283,9 @@ auto Checker::is_hashable(Type* t) -> bool {
         if (t == nullptr) {
             return false;
         }
+        if (t->kind == TypeKind::Param && (t->bounds & BoundHashable) != 0) {
+            return true;
+        }
         if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Char ||
             t->kind == TypeKind::Str || is_ptr(t)) {
             return true;
@@ -1592,7 +1613,15 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                         Node* b = pat->body;
                         while (p != nullptr && b != nullptr) {
                             if (b->text != "_") {
-                                bind(b->text, p->ty, false, b);
+                                Binding* existing = lookup(b->text);
+                                if (existing != nullptr) {
+                                    if (!type_eq(existing->type, p->ty)) {
+                                        fail_n(b, "lucb.check.type",
+                                               "shared bindings must have the same type");
+                                    }
+                                } else {
+                                    bind(b->text, p->ty, false, b);
+                                }
                             }
                             p = p->next;
                             b = b->next;
@@ -1696,6 +1725,15 @@ auto Checker::check_trap(Node* n) -> Type* {
 
 auto Checker::check_ctor(Node* n, Node* st) -> Type* {
         Type* ty = st->ty;
+        Node* init = struct_member(st, "init", NodeKind::Func);
+        if (init != nullptr) {
+            n->resolved = init;
+            check_func_call(n, init, nullptr);
+            if ((init->flags & FlagFallible) != 0) {
+                return intern_fail(ty);
+            }
+            return ty;
+        }
         for (Node* a = n->body; a != nullptr; a = a->next) {
             if (a->left == nullptr) {
                 continue;
@@ -2727,7 +2765,9 @@ auto Checker::is_mut_place(Node* n) -> bool {
         }
         if (n->kind == NodeKind::Member) {
             if (n->resolved != nullptr && (n->resolved->flags & FlagConst) != 0) {
-                return false;
+                if (current_fn == nullptr || current_fn->text != "init") {
+                    return false;
+                }
             }
             if (n->resolved != nullptr && n->resolved->kind == NodeKind::Global) {
                 return true;
