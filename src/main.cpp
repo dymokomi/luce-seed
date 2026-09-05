@@ -6,6 +6,7 @@
 #include "interp/interp.h"
 #include "lex/lexer.h"
 #include "parse/parser.h"
+#include "pkg/package.h"
 #include "source/source.h"
 #include "support/arena.h"
 #include "support/diagnostics.h"
@@ -33,11 +34,10 @@ void print_help(ostream& out) {
         << "  lucb check <file.lucb>     lex, parse, and typecheck\n"
         << "  lucb lex   <file.lucb>     print tokens\n"
         << "  lucb dump  <file.lucb>     print the parse tree\n"
-        << "  lucb eval  <file.lucb>     run `answer()` in the interpreter\n"
+        << "  lucb eval  <file.lucb>     run `answer()` or `main` in the interpreter\n"
         << "  lucb build <file.lucb> -o <exe>   emit C and compile\n"
         << "  lucb build <file.lucb> --emit=c -o <file.c>\n"
-        << "\n"
-        << "Not yet implemented: run, test.\n";
+        << "  lucb test  <file.lucb>     run `test` declarations\n";
 }
 
 string read_file(const string& path, string& error) {
@@ -90,47 +90,69 @@ int cmd_lex(const string& path) {
     return 0;
 }
 
+bool has_func(lucb::Node* mod, const char* name) {
+    if (mod == nullptr) {
+        return false;
+    }
+    for (lucb::Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind == lucb::NodeKind::Func && d->text == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+vector<lucb::Node*> program_modules(lucb::Program& program) {
+    vector<lucb::Node*> mods;
+    for (size_t i = 0; i < program.files.size(); i++) {
+        mods.push_back(program.files[i].module);
+    }
+    return mods;
+}
+
 int cmd_check(const string& path) {
     lucb::DiagnosticBag diagnostics;
-    lucb::Source source;
-    vector<lucb::Token> tokens;
-    if (!load_and_lex(path, source, tokens, diagnostics)) {
-        return print_diagnostics(diagnostics);
-    }
     lucb::Arena arena;
-    lucb::ParseResult parsed = lucb::parse(source, tokens, arena, diagnostics);
-    if (!diagnostics.empty() || parsed.module == nullptr) {
+    lucb::Program program;
+    if (!lucb::load_program(path, program, arena, diagnostics)) {
         return print_diagnostics(diagnostics);
     }
-    lucb::check_module(parsed.module, arena, diagnostics, path);
+    lucb::check_program(program_modules(program), arena, diagnostics, path);
     return print_diagnostics(diagnostics);
 }
 
 int cmd_eval(const string& path) {
     lucb::DiagnosticBag diagnostics;
-    lucb::Source source;
-    vector<lucb::Token> tokens;
-    if (!load_and_lex(path, source, tokens, diagnostics)) {
-        return print_diagnostics(diagnostics);
-    }
     lucb::Arena arena;
-    lucb::ParseResult parsed = lucb::parse(source, tokens, arena, diagnostics);
-    if (!diagnostics.empty() || parsed.module == nullptr) {
+    lucb::Program program;
+    if (!lucb::load_program(path, program, arena, diagnostics)) {
         return print_diagnostics(diagnostics);
     }
-    if (!lucb::check_module(parsed.module, arena, diagnostics, path)) {
+    vector<lucb::Node*> mods = program_modules(program);
+    if (!lucb::check_program(mods, arena, diagnostics, path)) {
         return print_diagnostics(diagnostics);
     }
-    lucb::EvalResult result = lucb::eval_module(parsed.module);
+    lucb::Node* entry = program.entry();
+    if (has_func(entry, "answer")) {
+        lucb::EvalResult result = lucb::eval_module(entry);
+        cout << result.output;
+        if (result.trapped) {
+            cerr << "trap: " << result.trap << '\n';
+            return 1;
+        }
+        if (result.has_answer) {
+            cout << result.answer << '\n';
+        }
+        return result.ok ? 0 : 1;
+    }
+    lucb::EvalResult result;
+    int32_t code = lucb::eval_main(mods, entry, {path}, &result);
     cout << result.output;
     if (result.trapped) {
         cerr << "trap: " << result.trap << '\n';
         return 1;
     }
-    if (result.has_answer) {
-        cout << result.answer << '\n';
-    }
-    return result.ok ? 0 : 1;
+    return code;
 }
 
 int cmd_build(int argc, char** argv) {
@@ -163,20 +185,18 @@ int cmd_build(int argc, char** argv) {
     }
 
     lucb::DiagnosticBag diagnostics;
-    lucb::Source source;
-    vector<lucb::Token> tokens;
-    if (!load_and_lex(in_path, source, tokens, diagnostics)) {
-        return print_diagnostics(diagnostics);
-    }
     lucb::Arena arena;
-    lucb::ParseResult parsed = lucb::parse(source, tokens, arena, diagnostics);
-    if (!diagnostics.empty() || parsed.module == nullptr) {
+    lucb::Program program;
+    if (!lucb::load_program(in_path, program, arena, diagnostics)) {
         return print_diagnostics(diagnostics);
     }
-    if (!lucb::check_module(parsed.module, arena, diagnostics, in_path)) {
+    vector<lucb::Node*> mods = program_modules(program);
+    if (!lucb::check_program(mods, arena, diagnostics, in_path)) {
         return print_diagnostics(diagnostics);
     }
-    string c = lucb::emit_c(parsed.module);
+    lucb::Node* entry = program.entry();
+    string c = mods.size() > 1 ? lucb::emit_program(mods, entry) : lucb::emit_c(entry);
+    bool link_answer = !has_func(entry, "main");
     if (emit_c_only) {
         ofstream out(out_path);
         if (!out) {
@@ -187,13 +207,35 @@ int cmd_build(int argc, char** argv) {
         return 0;
     }
     string error;
-    if (!lucb::compile_c(c, out_path, &error)) {
+    if (!lucb::compile_c(c, out_path, &error, link_answer)) {
         cerr << error;
         if (error.empty() || error.back() != '\n') {
             cerr << '\n';
         }
         return 1;
     }
+    return 0;
+}
+
+int cmd_test(const string& path) {
+    lucb::DiagnosticBag diagnostics;
+    lucb::Arena arena;
+    lucb::Program program;
+    if (!lucb::load_program(path, program, arena, diagnostics)) {
+        return print_diagnostics(diagnostics);
+    }
+    vector<lucb::Node*> mods = program_modules(program);
+    if (!lucb::check_program(mods, arena, diagnostics, path)) {
+        return print_diagnostics(diagnostics);
+    }
+    lucb::TestRun run = lucb::eval_tests(mods);
+    cout << run.output;
+    int total = run.passed + run.failed;
+    if (run.failed != 0) {
+        cout << run.failed << " failed, " << run.passed << " passed\n";
+        return 1;
+    }
+    cout << total << " passed\n";
     return 0;
 }
 
@@ -254,8 +296,11 @@ int main(int argc, char** argv) {
     if (arg1 == "eval") {
         return cmd_eval(path);
     }
-    if (arg1 == "run" || arg1 == "test") {
-        cerr << "lucb: `" << arg1 << "` is not implemented yet\n";
+    if (arg1 == "test") {
+        return cmd_test(path);
+    }
+    if (arg1 == "run") {
+        cerr << "lucb: `run` is not implemented yet\n";
         return 2;
     }
 

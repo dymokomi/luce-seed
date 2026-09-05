@@ -11,4 +11,7 @@ namespace lucb {
 bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics,
                   string_view path = {});
 
+bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& diagnostics,
+                   string_view path = {});
+
 } // namespace lucb

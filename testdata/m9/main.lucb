@@ -1,0 +1,3 @@
+pub func main(arguments: str[]) -> i32:
+    print("hello")
+    return 0

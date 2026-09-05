@@ -30,7 +30,7 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
 | 9–10 | Func/struct/enum/union/interface syntax | partial | `parse_test` |
 | 13–14 | Generics/interfaces as syntax | partial | `parse_interface` |
-| 16 | Imports, `test` | partial | `parse_import`, `parse_test_declaration` |
+| 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | partial | `parse_extern_func` |
 | 21 | Grammar | partial | parser accepts the productions; not every form has a fixture |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
@@ -61,4 +61,9 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 8.8 | `errdefer` | partial | `eval_errdefer`; C emit skips it |
 | 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let` |
 | 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `check_try_needs_fallible` |
-| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M9–M14 |
+| 9.7 | `pub func main(arguments: str[]\|cstr[]) -> i32\|i32!` | done | `agree_main_hello` |
+| 16.3 | `import` / `from … import` | done | `load_and_check_import`, `load_from_import` |
+| 16.4 | `luce.toml` | partial | `[package] name`; source roots default to the manifest directory |
+| 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
+| 5.2 | `cstr` | partial | type and `main(arguments: cstr[])`; library `c` module later |
+| 6, 11–12, 15, 18–20, 22–24 | Rest of semantics, memory, C ABI | unsupported | M10–M14 |

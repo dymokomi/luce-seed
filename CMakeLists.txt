@@ -34,6 +34,7 @@ set(LUCB_CORE_SOURCES
     src/interp/interp.cpp
     src/emit/emit.cpp
     src/emit/host.cpp
+    src/pkg/package.cpp
 )
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
@@ -54,6 +55,7 @@ add_executable(lucb_tests
     tests/check_test.cpp
     tests/eval_test.cpp
     tests/agree_test.cpp
+    tests/pkg_test.cpp
 )
 target_link_libraries(lucb_tests PRIVATE lucb_core)
 target_include_directories(lucb_tests PRIVATE src tests)

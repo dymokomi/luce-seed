@@ -1,0 +1,43 @@
+// Package loading: luce.toml, module paths, and import resolution.
+// base.md §16.
+
+#pragma once
+
+#include "lex/token.h"
+#include "parse/parser.h"
+#include "source/source.h"
+#include "support/arena.h"
+#include "support/diagnostics.h"
+
+namespace lucb {
+
+struct Manifest {
+    string name = "app";
+    string root;
+};
+
+struct LoadedModule {
+    string path;
+    string name;
+    Source source;
+    vector<Token> tokens;
+    Node* module = nullptr;
+};
+
+struct Program {
+    Manifest manifest;
+    Arena* arena = nullptr;
+    vector<LoadedModule> files;
+
+    Node* entry() const { return files.empty() ? nullptr : files[0].module; }
+};
+
+bool parse_manifest_text(const string& text, const string& root, Manifest* out, string* error);
+
+// Load `path` (.lucb file or package directory) and every imported module.
+bool load_program(const string& path, Program& program, Arena& arena, DiagnosticBag& diagnostics);
+
+string module_alias(string_view path);
+string dotted_to_path(string_view dotted);
+
+} // namespace lucb

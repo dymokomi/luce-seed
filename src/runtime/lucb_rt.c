@@ -10,6 +10,34 @@ void lb_trap(const char* message) {
     exit(1);
 }
 
+void lb_check_utf8(const char* s, size_t n) {
+    size_t i = 0;
+    while (i < n) {
+        unsigned char c = (unsigned char)s[i];
+        size_t w = 1;
+        if (c < 0x80) {
+            w = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            w = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            w = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            w = 4;
+        } else {
+            lb_trap("invalid_utf8");
+        }
+        if (i + w > n) {
+            lb_trap("invalid_utf8");
+        }
+        for (size_t k = 1; k < w; k++) {
+            if (((unsigned char)s[i + k] & 0xC0) != 0x80) {
+                lb_trap("invalid_utf8");
+            }
+        }
+        i += w;
+    }
+}
+
 static uint64_t mask_bits(int bits) {
     if (bits >= 64) {
         return ~(uint64_t)0;

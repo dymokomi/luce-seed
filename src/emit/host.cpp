@@ -51,7 +51,8 @@ string runtime_dir() {
 #endif
 }
 
-bool compile_c(const string& c_source, const string& exe_path, string* error) {
+bool compile_c(const string& c_source, const string& exe_path, string* error,
+               bool link_answer_start) {
     char tmpl[] = "/tmp/lucbXXXXXX";
     char* dir = mkdtemp(tmpl);
     if (dir == nullptr) {
@@ -74,8 +75,11 @@ bool compile_c(const string& c_source, const string& exe_path, string* error) {
 
     string rt = runtime_dir();
     string cmd = host_cc() + " -std=gnu11 -O0 -I " + shell_quote(rt) + " " + shell_quote(src_path) +
-                 " " + shell_quote(rt + "/lucb_rt.c") + " " + shell_quote(rt + "/start.c") +
-                 " -lm -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
+                 " " + shell_quote(rt + "/lucb_rt.c");
+    if (link_answer_start) {
+        cmd += " " + shell_quote(rt + "/start.c");
+    }
+    cmd += " -lm -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());
     if (status != 0) {
         if (error != nullptr) {
@@ -89,7 +93,7 @@ bool compile_c(const string& c_source, const string& exe_path, string* error) {
     return true;
 }
 
-RunResult run_exe(const string& exe_path) {
+RunResult run_exe(const string& exe_path, const vector<string>& args) {
     RunResult result;
     char tmpl[] = "/tmp/lucbXXXXXX";
     char* dir = mkdtemp(tmpl);
@@ -100,8 +104,11 @@ RunResult run_exe(const string& exe_path) {
     string dir_path = dir;
     string out_path = dir_path + "/out";
     string err_path = dir_path + "/err";
-    string cmd = shell_quote(exe_path) + " > " + shell_quote(out_path) + " 2> " +
-                 shell_quote(err_path);
+    string cmd = shell_quote(exe_path);
+    for (size_t i = 0; i < args.size(); i++) {
+        cmd += " " + shell_quote(args[i]);
+    }
+    cmd += " > " + shell_quote(out_path) + " 2> " + shell_quote(err_path);
     int status = std::system(cmd.c_str());
     result.out = slurp(out_path);
     result.err = slurp(err_path);

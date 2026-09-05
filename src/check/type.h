@@ -36,6 +36,8 @@ enum class TypeKind : uint8_t {
     ErrorVal,
     Enum,
     Union,
+    Module,
+    CStr,
 };
 
 struct Type {

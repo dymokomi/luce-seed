@@ -72,6 +72,7 @@ module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
 
 `import`, `luce.toml`, `pub func main(arguments: str[]|cstr[]) -> i32|i32!`,
 `test "...":`, `lucb test`.
+**Landed.**
 
 ## M10 — Allocation and `memory`
 

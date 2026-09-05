@@ -78,6 +78,7 @@ void lb_print_bool(bool value);
 void lb_print_str(lb_str value);
 void lb_print_f64(double value);
 void lb_check_index(uint64_t i, uint64_t n);
+void lb_check_utf8(const char* s, size_t n);
 
 typedef struct lb_error {
     int32_t code;

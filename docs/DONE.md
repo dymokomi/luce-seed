@@ -13,6 +13,14 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M9 — Modules, packages, `main`, `test`
+
+`import path` and `from path import Name` resolve `.lucb` files from a
+`luce.toml` package root. Unused and duplicate imports are errors; only
+`pub` names cross modules. `pub func main(arguments: str[]|cstr[]) -> i32|i32!`
+is the process entry. `test "name":` runs under `lucb test` with `assert`.
+Evidence: `tests/pkg_test.cpp`, `testdata/m9/`.
+
 ## M8 — Enums, unions, zeros, globals, layout
 
 Payload enums with exhaustive `match`, integer-backed `enum as u32` with

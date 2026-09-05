@@ -118,6 +118,7 @@ enum {
     FlagUsed = 1u << 28,
     FlagWeakAttr = 1u << 29,
     FlagLocal = 1u << 30, // pointer/span/str derived from a local
+    FlagImportUsed = 1u << 31,
 };
 
 struct Node {

@@ -1,0 +1,4 @@
+from util import add
+
+pub func answer() -> i64:
+    return add(1, 2)

@@ -124,6 +124,10 @@ string type_name(const Type* t) {
         return t->decl != nullptr ? string(t->decl->text) : "<enum>";
     case TypeKind::Union:
         return t->decl != nullptr ? string(t->decl->text) : "<union>";
+    case TypeKind::Module:
+        return t->name.empty() ? "<module>" : string(t->name);
+    case TypeKind::CStr:
+        return "cstr";
     }
     return "<unknown>";
 }
@@ -373,7 +377,8 @@ int type_align(const Type* t) {
     if (t == nullptr) {
         return 1;
     }
-    if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str) {
+    if (t->kind == TypeKind::Pointer || t->kind == TypeKind::Span || t->kind == TypeKind::Str ||
+        t->kind == TypeKind::CStr) {
         return static_cast<int>(sizeof(void*));
     }
     if (t->kind == TypeKind::Array) {
@@ -475,6 +480,7 @@ int type_size(const Type* t) {
     case TypeKind::Str:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Pointer:
+    case TypeKind::CStr:
         return static_cast<int>(sizeof(void*));
     case TypeKind::Span:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
@@ -593,6 +599,8 @@ const char* c_type_name(const Type* t) {
         return "uint32_t";
     case TypeKind::Str:
         return "lb_str";
+    case TypeKind::CStr:
+        return "const char*";
     case TypeKind::Pointer:
         return "void*";
     case TypeKind::Span:

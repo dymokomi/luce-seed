@@ -140,6 +140,7 @@ int field_index(Node* st, string_view name) {
 
 struct Slot {
     string_view name;
+    Node* decl = nullptr;
     Value value;
 };
 
@@ -149,6 +150,7 @@ struct Frame {
 
 struct Interp {
     Node* module = nullptr;
+    vector<Node*> all_modules;
     vector<Frame> frames;
     std::deque<vector<Value>> storage;
     string output;
@@ -207,12 +209,19 @@ struct Interp {
         return v;
     }
 
-    Slot* find_slot(string_view name) {
+    Slot* find_slot(string_view name, Node* decl = nullptr) {
         if (!frames.empty()) {
             Frame& f = frames.back();
             for (int i = static_cast<int>(f.slots.size()) - 1; i >= 0; i--) {
                 if (f.slots[static_cast<size_t>(i)].name == name) {
                     return &f.slots[static_cast<size_t>(i)];
+                }
+            }
+        }
+        if (decl != nullptr) {
+            for (size_t i = 0; i < globals.slots.size(); i++) {
+                if (globals.slots[i].decl == decl) {
+                    return &globals.slots[i];
                 }
             }
         }
@@ -284,7 +293,7 @@ struct Interp {
         }
         if (n->kind == NodeKind::Name || n->kind == NodeKind::Self) {
             string_view name = n->kind == NodeKind::Self ? string_view("self") : n->text;
-            Slot* s = find_slot(name);
+            Slot* s = find_slot(name, n->resolved);
             if (s == nullptr) {
                 fail("unknown name at runtime");
                 return nullptr;
@@ -1396,12 +1405,51 @@ struct Interp {
     }
 
     Node* find_func(string_view name) {
-        for (Node* d = module->body; d != nullptr; d = d->next) {
-            if (d->kind == NodeKind::Func && d->text == name) {
-                return d;
+        vector<Node*> mods = all_modules;
+        if (mods.empty() && module != nullptr) {
+            mods.push_back(module);
+        }
+        for (size_t i = 0; i < mods.size(); i++) {
+            if (mods[i] == nullptr) {
+                continue;
+            }
+            for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
+                if (d->kind == NodeKind::Func && d->text == name) {
+                    return d;
+                }
             }
         }
         return nullptr;
+    }
+
+    void load_globals() {
+        vector<Node*> mods = all_modules;
+        if (mods.empty() && module != nullptr) {
+            mods.push_back(module);
+        }
+        for (size_t i = 0; i < mods.size(); i++) {
+            if (mods[i] == nullptr) {
+                continue;
+            }
+            for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
+                if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
+                    continue;
+                }
+                Slot s;
+                s.name = d->text;
+                s.decl = d;
+                if (d->left != nullptr) {
+                    s.value = eval(d->left);
+                } else {
+                    s.value = zero_of(d->ty);
+                }
+                if (d->ty != nullptr) {
+                    s.value.type = d->ty;
+                    s.value.kind = d->ty->kind;
+                }
+                globals.slots.push_back(s);
+            }
+        }
     }
 
     Value call_func(Node* fn, Value* self, Node* args) {
@@ -1461,6 +1509,23 @@ struct Interp {
 
     Value eval_call(Node* n) {
         Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
+            Value c = eval(n->body != nullptr ? n->body->left : nullptr);
+            if (trapped) {
+                return v_unit();
+            }
+            if (!c.b) {
+                string msg = "assert failed";
+                if (n->body != nullptr && n->body->next != nullptr) {
+                    Value m = eval(n->body->next->left);
+                    if (m.kind == TypeKind::Str) {
+                        msg = decode_string(m.str);
+                    }
+                }
+                fail(msg);
+            }
+            return v_unit();
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
             Value a = eval(n->body != nullptr ? n->body->left : nullptr);
             if (!trapped) {
@@ -1523,6 +1588,11 @@ struct Interp {
             return eval_ctor(n, n->resolved);
         }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
+            Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
+            if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
+                n->resolved->kind == NodeKind::Func) {
+                return call_func(n->resolved, nullptr, n->body);
+            }
             Node* method = callee->resolved;
             if (method == nullptr || method->kind != NodeKind::Func) {
                 fail("unknown method");
@@ -1911,23 +1981,8 @@ EvalResult eval_module(Node* module) {
     }
     Interp ip;
     ip.module = module;
-    for (Node* d = module->body; d != nullptr; d = d->next) {
-        if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
-            continue;
-        }
-        Slot s;
-        s.name = d->text;
-        if (d->left != nullptr) {
-            s.value = ip.eval(d->left);
-        } else {
-            s.value = ip.zero_of(d->ty);
-        }
-        if (d->ty != nullptr) {
-            s.value.type = d->ty;
-            s.value.kind = d->ty->kind;
-        }
-        ip.globals.slots.push_back(s);
-    }
+    ip.all_modules.push_back(module);
+    ip.load_globals();
     Node* answer = ip.find_func("answer");
     if (answer == nullptr) {
         ip.fail("no `answer` function");
@@ -1955,6 +2010,114 @@ EvalResult eval_module(Node* module) {
         result.answer = as_s(v, v.type);
     }
     return result;
+}
+
+TestRun eval_tests(const vector<Node*>& modules) {
+    TestRun run;
+    for (size_t mi = 0; mi < modules.size(); mi++) {
+        Node* mod = modules[mi];
+        if (mod == nullptr) {
+            continue;
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind != NodeKind::Test) {
+                continue;
+            }
+            Interp ip;
+            ip.module = modules.empty() ? mod : modules[0];
+            ip.all_modules = modules;
+            ip.load_globals();
+            ip.exec(d->body);
+            string title = string(d->text);
+            if (title.size() >= 2 && title.front() == '"') {
+                title = title.substr(1, title.size() - 2);
+            }
+            if (ip.trapped) {
+                run.failed++;
+                run.output += "FAIL  " + title + "\n      trap: " + ip.trap + "\n";
+            } else if (ip.returning && ip.ret.failed) {
+                run.failed++;
+                run.output += "FAIL  " + title + "\n      error: " + string(ip.ret.err_msg) + "\n";
+            } else {
+                run.passed++;
+                run.output += "ok    " + title + "\n";
+            }
+            run.output += ip.output;
+        }
+    }
+    return run;
+}
+
+int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string>& args,
+                  EvalResult* result) {
+    Interp ip;
+    ip.module = entry != nullptr ? entry : (modules.empty() ? nullptr : modules[0]);
+    ip.all_modules = modules;
+    if (ip.module == nullptr) {
+        if (result != nullptr) {
+            result->trapped = true;
+            result->trap = "no module";
+        }
+        return 1;
+    }
+    ip.load_globals();
+    Node* main_fn = nullptr;
+    for (Node* d = ip.module->body; d != nullptr; d = d->next) {
+        if (d->kind == NodeKind::Func && d->text == "main") {
+            main_fn = d;
+            break;
+        }
+    }
+    if (main_fn == nullptr) {
+        if (result != nullptr) {
+            result->trapped = true;
+            result->trap = "no `main` function";
+        }
+        return 1;
+    }
+    vector<Value> argv;
+    for (size_t i = 0; i < args.size(); i++) {
+        argv.push_back(v_str(args[i]));
+        argv.back().length = args[i].size();
+    }
+    ip.storage.push_back(std::move(argv));
+    Value span;
+    span.kind = TypeKind::Span;
+    span.type = main_fn->right != nullptr ? main_fn->right->ty : nullptr;
+    span.ptr = ip.storage.back().data();
+    span.length = ip.storage.back().size();
+    Frame frame;
+    Slot s;
+    s.name = main_fn->right != nullptr ? main_fn->right->text : string_view("arguments");
+    s.value = span;
+    frame.slots.push_back(s);
+    ip.frames.push_back(frame);
+    ip.returning = false;
+    ip.exec(main_fn->body);
+    ip.frames.pop_back();
+    if (result != nullptr) {
+        result->output = ip.output;
+        if (ip.trapped) {
+            result->trapped = true;
+            result->trap = ip.trap;
+            return 1;
+        }
+        result->ok = true;
+    }
+    if (ip.trapped) {
+        return 1;
+    }
+    if (ip.returning && ip.ret.failed) {
+        if (result != nullptr) {
+            result->trapped = true;
+            result->trap = string(ip.ret.err_msg);
+        }
+        return 1;
+    }
+    if (ip.returning) {
+        return static_cast<int32_t>(as_s(ip.ret, ip.ret.type));
+    }
+    return 0;
 }
 
 } // namespace lucb

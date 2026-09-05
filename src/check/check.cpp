@@ -16,6 +16,7 @@ struct Binding {
     bool mut = false;
     bool from_local = false;
     Node* decl = nullptr;
+    Node* import_src = nullptr;
     int depth = 0;
 };
 
@@ -44,6 +45,7 @@ struct Checker {
     Type* ty_untyped = nullptr;
     Type* ty_void = nullptr;
     Type* ty_err = nullptr;
+    Type* ty_cstr = nullptr;
     vector<Type*> interned;
     vector<Binding> scope;
     int depth = 0;
@@ -115,6 +117,9 @@ struct Checker {
         }
         if (name == "str") {
             return ty_str;
+        }
+        if (name == "cstr") {
+            return ty_cstr;
         }
         return nullptr;
     }
@@ -248,7 +253,7 @@ struct Checker {
         return nullptr;
     }
 
-    bool bind(string_view name, Type* type, bool mut, Node* decl) {
+    bool bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src = nullptr) {
         if (lookup(name) != nullptr) {
             fail_n(decl, "lucb.check.shadow", "this name is already in scope");
             return false;
@@ -258,9 +263,52 @@ struct Checker {
         b.type = type;
         b.mut = mut;
         b.decl = decl;
+        b.import_src = import_src;
         b.depth = depth;
         scope.push_back(b);
         return true;
+    }
+
+    void mark_import(Binding* b) {
+        if (b != nullptr && b->import_src != nullptr) {
+            b->import_src->flags |= FlagImportUsed;
+        }
+    }
+
+    Node* pub_member(Node* mod, string_view name) {
+        if (mod == nullptr) {
+            return nullptr;
+        }
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->text == name && (d->flags & FlagPub) != 0 &&
+                (d->kind == NodeKind::Func || d->kind == NodeKind::Struct ||
+                 d->kind == NodeKind::Enum || d->kind == NodeKind::Union ||
+                 d->kind == NodeKind::Const || d->kind == NodeKind::Global)) {
+                return d;
+            }
+        }
+        return nullptr;
+    }
+
+    Type* decl_type(Node* d) {
+        if (d == nullptr) {
+            return t_error();
+        }
+        if (d->ty != nullptr) {
+            return d->ty;
+        }
+        if (d->kind == NodeKind::Func) {
+            return t_unit();
+        }
+        return t_error();
+    }
+
+    string last_component(string_view path) {
+        size_t dot = path.rfind('.');
+        if (dot == string_view::npos) {
+            return string(path);
+        }
+        return string(path.substr(dot + 1));
     }
 
     void set_from_local(string_view name, bool from_local) {
@@ -781,6 +829,7 @@ struct Checker {
             return t_error();
         }
         n->resolved = b->decl;
+        mark_import(b);
         if (b->from_local) {
             mark_local(n);
         }
@@ -1201,6 +1250,9 @@ struct Checker {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
             return check_offsetof(n);
         }
+        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
+            return check_assert(n);
+        }
         if (callee != nullptr && callee->kind == NodeKind::Member) {
             return check_method_call(n);
         }
@@ -1214,6 +1266,7 @@ struct Checker {
                 fail_n(n, "lucb.check.name", "unknown name `" + string(callee->text) + "`");
                 return t_error();
             }
+            mark_import(b);
             callee->resolved = b->decl;
             n->resolved = b->decl;
             if (b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
@@ -1265,6 +1318,26 @@ struct Checker {
         }
         n->body->left->ty = t;
         return t_usize();
+    }
+
+    Type* check_assert(Node* n) {
+        n->resolved = nullptr;
+        int count = count_args(n->body);
+        if (count < 1 || count > 2) {
+            fail_n(n, "lucb.check.call", "`assert` takes a condition");
+            return t_unit();
+        }
+        Type* c = check_expr(n->body->left, t_bool());
+        if (!type_eq(c, t_bool())) {
+            fail_n(n, "lucb.check.type", "`assert` needs a `bool`");
+        }
+        if (count == 2 && n->body->next != nullptr) {
+            Type* m = check_expr(n->body->next->left, t_str());
+            if (!type_eq(m, t_str())) {
+                fail_n(n, "lucb.check.type", "`assert` message must be `str`");
+            }
+        }
+        return t_unit();
     }
 
     Type* check_offsetof(Node* n) {
@@ -1656,6 +1729,29 @@ struct Checker {
         // Static: Point.origin() — obj is a type name.
         if (obj != nullptr && obj->kind == NodeKind::Name) {
             Binding* b = lookup(obj->text);
+            if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
+                mark_import(b);
+                Node* d = pub_member(b->type->decl, mem->text);
+                if (d == nullptr) {
+                    fail_n(n, "lucb.check.name", "no public `" + string(mem->text) + "`");
+                    return t_error();
+                }
+                mem->resolved = d;
+                obj->resolved = b->decl;
+                obj->ty = b->type;
+                n->resolved = d;
+                if (d->kind == NodeKind::Struct) {
+                    return check_ctor(n, d);
+                }
+                if (d->kind == NodeKind::Enum && is_int_enum(d->ty)) {
+                    return check_checked_conv(n, d->ty);
+                }
+                if (d->kind == NodeKind::Func) {
+                    return check_func_call(n, d, nullptr);
+                }
+                fail_n(n, "lucb.check.type", "`" + string(mem->text) + "` is not callable");
+                return t_error();
+            }
             if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Enum) {
                 Node* cse = enum_case(b->decl, mem->text);
                 if (cse == nullptr) {
@@ -1759,6 +1855,18 @@ struct Checker {
         }
         if (n->left != nullptr && n->left->kind == NodeKind::Name) {
             Binding* b = lookup(n->left->text);
+            if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
+                mark_import(b);
+                Node* d = pub_member(b->type->decl, n->text);
+                if (d == nullptr) {
+                    fail_n(n, "lucb.check.name", "no public `" + string(n->text) + "`");
+                    return t_error();
+                }
+                n->resolved = d;
+                n->left->resolved = b->decl;
+                n->left->ty = b->type;
+                return decl_type(d);
+            }
             if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Enum) {
                 Node* cse = enum_case(b->decl, n->text);
                 if (cse == nullptr) {
@@ -2241,6 +2349,9 @@ struct Checker {
                 bind(d->text, t_error(), true, d);
             } else if (d->kind == NodeKind::Const) {
                 bind(d->text, t_error(), false, d);
+            } else if (d->kind == NodeKind::Import || d->kind == NodeKind::FromImport ||
+                       d->kind == NodeKind::Test || d->kind == NodeKind::Assert) {
+                continue;
             } else {
                 fail_n(d, "lucb.check.unsupported",
                        "this declaration is not in this slice");
@@ -2376,8 +2487,103 @@ struct Checker {
         }
     }
 
+    void bind_imports(Node* mod) {
+        vector<string_view> seen;
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind != NodeKind::Import && d->kind != NodeKind::FromImport) {
+                continue;
+            }
+            for (size_t i = 0; i < seen.size(); i++) {
+                if (seen[i] == d->text) {
+                    fail_n(d, "lucb.check.import", "duplicate import");
+                }
+            }
+            seen.push_back(d->text);
+            Node* other = d->resolved;
+            if (other == nullptr || other->kind != NodeKind::Module) {
+                fail_n(d, "lucb.check.import", "cannot find module `" + string(d->text) + "`");
+                continue;
+            }
+            if (d->kind == NodeKind::Import) {
+                string alias = d->left != nullptr && !d->left->text.empty()
+                                   ? string(d->left->text)
+                                   : last_component(d->text);
+                Type* mt = make_type(TypeKind::Module, d->text);
+                mt->decl = other;
+                bind(keep(alias), mt, false, other, d);
+            } else {
+                for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
+                    Node* p = pub_member(other, nm->text);
+                    if (p == nullptr) {
+                        fail_n(nm, "lucb.check.import",
+                               "no public `" + string(nm->text) + "` in `" + string(d->text) + "`");
+                        continue;
+                    }
+                    bool mut = p->kind == NodeKind::Global;
+                    bind(nm->text, decl_type(p), mut, p, nm);
+                }
+            }
+        }
+    }
+
+    void check_unused_imports(Node* mod) {
+        for (Node* d = mod->body; d != nullptr; d = d->next) {
+            if (d->kind == NodeKind::Import) {
+                if ((d->flags & FlagImportUsed) == 0) {
+                    fail_n(d, "lucb.check.import", "unused import `" + string(d->text) + "`");
+                }
+            } else if (d->kind == NodeKind::FromImport) {
+                for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
+                    if ((nm->flags & FlagImportUsed) == 0) {
+                        fail_n(nm, "lucb.check.import",
+                               "unused import `" + string(nm->text) + "`");
+                    }
+                }
+            }
+        }
+    }
+
+    void check_test(Node* t) {
+        Node* saved_fn = current_fn;
+        Type* saved_ret = return_type;
+        bool saved_fail = fallible_fn;
+        current_fn = t;
+        return_type = t_unit();
+        fallible_fn = true;
+        push_scope();
+        check_stmt(t->body);
+        pop_scope();
+        current_fn = saved_fn;
+        return_type = saved_ret;
+        fallible_fn = saved_fail;
+    }
+
+    void check_main(Node* fn) {
+        if ((fn->flags & FlagPub) == 0) {
+            fail_n(fn, "lucb.check.type", "`main` must be `pub`");
+        }
+        int nparams = 0;
+        for (Node* p = fn->right; p != nullptr; p = p->next) {
+            nparams++;
+        }
+        if (nparams != 1) {
+            fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `cstr[]`");
+        } else {
+            Type* a = fn->right->ty;
+            bool ok = is_span(a) && a->elem != nullptr &&
+                      (a->elem->kind == TypeKind::Str || a->elem->kind == TypeKind::CStr);
+            if (!ok) {
+                fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `cstr[]`");
+            }
+        }
+        if (fn->ty == nullptr || fn->ty->kind != TypeKind::I32) {
+            fail_n(fn, "lucb.check.type", "`main` returns `i32` or `i32!`");
+        }
+    }
+
     void check_module(Node* mod) {
         push_scope();
+        bind_imports(mod);
         collect_module(mod);
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Struct) {
@@ -2391,8 +2597,16 @@ struct Checker {
         for (Node* d = mod->body; d != nullptr; d = d->next) {
             if (d->kind == NodeKind::Func) {
                 check_func(d, nullptr);
+                if (d->text == "main") {
+                    check_main(d);
+                }
+            } else if (d->kind == NodeKind::Test) {
+                check_test(d);
+            } else if (d->kind == NodeKind::Assert) {
+                check_assert(d);
             }
         }
+        check_unused_imports(mod);
         pop_scope();
     }
 };
@@ -2425,10 +2639,50 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.ty_f64 = c.make_type(TypeKind::F64, "f64");
     c.ty_char = c.make_type(TypeKind::Char, "char");
     c.ty_str = c.make_type(TypeKind::Str, "str");
+    c.ty_cstr = c.make_type(TypeKind::CStr, "cstr");
     c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
     c.ty_void = c.make_type(TypeKind::Void, "void");
     c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
     c.check_module(module);
+    return diagnostics.empty();
+}
+
+bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& diagnostics,
+                   string_view path) {
+    if (modules.empty()) {
+        return false;
+    }
+    Checker c;
+    c.arena = &arena;
+    c.diag = &diagnostics;
+    c.path = string(path);
+    c.ty_error = c.make_type(TypeKind::Error, "");
+    c.ty_never = c.make_type(TypeKind::Never, "never");
+    c.ty_unit = c.make_type(TypeKind::Unit, "unit");
+    c.ty_bool = c.make_type(TypeKind::Bool, "bool");
+    c.ty_i8 = c.make_type(TypeKind::I8, "i8");
+    c.ty_i16 = c.make_type(TypeKind::I16, "i16");
+    c.ty_i32 = c.make_type(TypeKind::I32, "i32");
+    c.ty_i64 = c.make_type(TypeKind::I64, "i64");
+    c.ty_isize = c.make_type(TypeKind::Isize, "isize");
+    c.ty_u8 = c.make_type(TypeKind::U8, "u8");
+    c.ty_u16 = c.make_type(TypeKind::U16, "u16");
+    c.ty_u32 = c.make_type(TypeKind::U32, "u32");
+    c.ty_u64 = c.make_type(TypeKind::U64, "u64");
+    c.ty_usize = c.make_type(TypeKind::Usize, "usize");
+    c.ty_f32 = c.make_type(TypeKind::F32, "f32");
+    c.ty_f64 = c.make_type(TypeKind::F64, "f64");
+    c.ty_char = c.make_type(TypeKind::Char, "char");
+    c.ty_str = c.make_type(TypeKind::Str, "str");
+    c.ty_cstr = c.make_type(TypeKind::CStr, "cstr");
+    c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
+    c.ty_void = c.make_type(TypeKind::Void, "void");
+    c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
+    for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
+        if (modules[static_cast<size_t>(i)] != nullptr) {
+            c.check_module(modules[static_cast<size_t>(i)]);
+        }
+    }
     return diagnostics.empty();
 }
 
