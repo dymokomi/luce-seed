@@ -50,5 +50,6 @@ lucb build <file.lucb> --emit=c -o <file.c>
 
 ## Status
 
-M0–M14 landed. This repo is the seed: enough Base to write `luce-base`.
-See `docs/PLAN.md` and `docs/FEATURES.md` for what stays out of seed.
+**luce-seed-0.1.** M0–M14 landed. This repo is the seed: enough Base to
+write `luce-base`. See `docs/PLAN.md` and `docs/FEATURES.md` for what
+stays out of seed.

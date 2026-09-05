@@ -1,6 +1,7 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
+This tree is **luce-seed-0.1**.
 
 ## Writer.write consumes fmt, process capture, seed freeze
 
