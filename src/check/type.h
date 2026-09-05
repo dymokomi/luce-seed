@@ -42,6 +42,7 @@ enum class TypeKind : uint8_t {
     Param,
     Interface,
     Fmt,
+    Atomic,
 };
 
 struct Type {
@@ -105,6 +106,9 @@ bool is_fail(const Type* t);
 bool is_enum(const Type* t);
 bool is_int_enum(const Type* t);
 bool is_union(const Type* t);
+inline bool is_atomic(const Type* t) {
+    return t != nullptr && t->kind == TypeKind::Atomic;
+}
 Type* elem_of(const Type* t);
 int type_offset(const Type* t, string_view field);
 

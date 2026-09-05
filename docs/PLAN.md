@@ -99,6 +99,7 @@ generated header. `cstr`.
 ## M14 — Atomics, volatile, threads, `asm`
 
 Last. Interpreter rejects `asm` (§8.9); C backend only.
+**Landed.**
 
 ## After this compiler
 

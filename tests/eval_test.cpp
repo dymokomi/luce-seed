@@ -559,6 +559,15 @@ TEST(eval_extern_abs) {
     CHECK_EQ(r.answer, 40);
 }
 
+TEST(eval_asm_rejected) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    asm arm64:\n"
+                       "        nop\n"
+                       "    return 40\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find("asm") != std::string::npos);
+}
+
 TEST(eval_null_foreign) {
     EvalResult r = run("extern func lb_null_probe() -> i64*\n"
                        "pub func answer() -> i64:\n"

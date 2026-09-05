@@ -650,7 +650,10 @@ auto Emitter::emit_module(Node* mod) -> void {
         out += "#include \"lucb_rt.h\"\n";
         out += "#include <stdio.h>\n";
         out += "#include <stdlib.h>\n";
-        out += "#include <string.h>\n\n";
+        out += "#include <string.h>\n";
+        out += "#include <stdatomic.h>\n";
+        out += "#include <pthread.h>\n";
+        out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();
@@ -674,7 +677,10 @@ auto Emitter::emit_many(const vector<Node*>& modules, Node* entry) -> void {
         out += "#include \"lucb_rt.h\"\n";
         out += "#include <stdio.h>\n";
         out += "#include <stdlib.h>\n";
-        out += "#include <string.h>\n\n";
+        out += "#include <string.h>\n";
+        out += "#include <stdatomic.h>\n";
+        out += "#include <pthread.h>\n";
+        out += "typedef struct lb_Handle { size_t id; } lb_Handle;\n\n";
         arrays.clear();
         opts.clear();
         fails.clear();

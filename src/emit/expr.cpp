@@ -868,6 +868,104 @@ auto Emitter::emit_call(Node* n) -> string {
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
             return "lb_heap_alloc()";
         }
+        if (callee != nullptr && callee->kind == NodeKind::Member) {
+            Type* ot = callee->left != nullptr ? callee->left->ty : nullptr;
+            Type* recv = ot;
+            if (is_ptr(ot) && ot->elem != nullptr) {
+                recv = ot->elem;
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "fence") {
+                string ord = "memory_order_seq_cst";
+                Node* a = n->body != nullptr ? n->body->left : nullptr;
+                if (a != nullptr && (a->kind == NodeKind::CaseValue || a->kind == NodeKind::Member)) {
+                    if (a->text == "relaxed") {
+                        ord = "memory_order_relaxed";
+                    } else if (a->text == "acquire") {
+                        ord = "memory_order_acquire";
+                    } else if (a->text == "release") {
+                        ord = "memory_order_release";
+                    } else if (a->text == "acq_rel") {
+                        ord = "memory_order_acq_rel";
+                    }
+                }
+                return "(atomic_thread_fence(" + ord + "))";
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Module && callee->text == "spawn") {
+                Node* entry = n->body != nullptr ? n->body->left : nullptr;
+                Node* ctx = n->body != nullptr && n->body->next != nullptr ? n->body->next->left
+                                                                          : nullptr;
+                string fn = entry != nullptr && entry->resolved != nullptr
+                                ? func_ident(entry->resolved, nullptr)
+                                : "lb_unknown";
+                string c = ctx != nullptr ? emit_expr(ctx) : "NULL";
+                int id = tmp();
+                string tn = "_lb_th" + std::to_string(id);
+                string rn = "_lb_tr" + std::to_string(id);
+                return "({ pthread_t " + tn + "; " + fail_c_name(n->ty) + " " + rn +
+                       "; if (pthread_create(&" + tn + ", NULL, (void*(*)(void*))(void*)" + fn +
+                       ", (void*)(" + c + ")) != 0) { " + rn +
+                       " = (" + fail_c_name(n->ty) +
+                       "){ .failed = true, .error = { .code = 1, .message = (lb_str){\"spawn\", 5} } }; } else { " +
+                       rn + ".failed = false; " + rn + ".value = (lb_Handle){ (size_t)" + tn +
+                       " }; } " + rn + "; })";
+            }
+            if (is_atomic(ot) || is_atomic(recv)) {
+                string loc = is_ptr(ot) ? emit_expr(callee->left) : ("&(" + emit_expr(callee->left) + ")");
+                string ord = "memory_order_seq_cst";
+                Node* extra = nullptr;
+                if (n->body != nullptr && n->body->next != nullptr) {
+                    extra = n->body->next->left;
+                } else if (n->body != nullptr && callee->text == "load") {
+                    extra = n->body->left;
+                }
+                if (extra != nullptr &&
+                    (extra->kind == NodeKind::CaseValue || extra->kind == NodeKind::Member)) {
+                    if (extra->text == "relaxed") {
+                        ord = "memory_order_relaxed";
+                    } else if (extra->text == "acquire") {
+                        ord = "memory_order_acquire";
+                    } else if (extra->text == "release") {
+                        ord = "memory_order_release";
+                    } else if (extra->text == "acq_rel") {
+                        ord = "memory_order_acq_rel";
+                    }
+                }
+                Type* elem = is_atomic(ot) ? ot->elem : recv->elem;
+                string et = c_type(elem);
+                if (callee->text == "load") {
+                    return "(" + et + ")atomic_load_explicit(" + loc + ", " + ord + ")";
+                }
+                string val = n->body != nullptr ? emit_expr(n->body->left) : "0";
+                if (callee->text == "store") {
+                    return "(atomic_store_explicit(" + loc + ", (" + et + ")(" + val + "), " + ord +
+                           "), (void)0)";
+                }
+                const char* op = "atomic_fetch_add_explicit";
+                if (callee->text == "sub") {
+                    op = "atomic_fetch_sub_explicit";
+                } else if (callee->text == "set") {
+                    op = "atomic_fetch_or_explicit";
+                } else if (callee->text == "clear") {
+                    op = "atomic_fetch_and_explicit";
+                } else if (callee->text == "flip") {
+                    op = "atomic_fetch_xor_explicit";
+                } else if (callee->text == "swap") {
+                    op = "atomic_exchange_explicit";
+                }
+                string arg = val;
+                if (callee->text == "clear") {
+                    arg = "~(" + val + ")";
+                }
+                return "(" + et + ")" + string(op) + "(" + loc + ", (" + et + ")(" + arg + "), " +
+                       ord + ")";
+            }
+            if (recv != nullptr && recv->kind == TypeKind::Struct && recv->name == "Handle" &&
+                callee->text == "join") {
+                string h = emit_expr(callee->left);
+                return "({ pthread_join((pthread_t)(" + h + ".id), NULL); (" + fail_c_name(n->ty) +
+                       "){ .failed = false }; })";
+            }
+        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
             Node* cond = n->body != nullptr ? n->body->left : nullptr;
             string msg = "\"assert failed\"";

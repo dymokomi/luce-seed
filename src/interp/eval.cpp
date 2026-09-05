@@ -1605,12 +1605,90 @@ auto Interp::eval_call(Node* n) -> Value {
             Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
             if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
                 n->resolved->kind == NodeKind::Func) {
+                if (callee->text == "fence") {
+                    return v_unit();
+                }
+                if (callee->text == "spawn") {
+                    Node* entry = n->body != nullptr ? n->body->left : nullptr;
+                    Node* fn = entry != nullptr ? entry->resolved : nullptr;
+                    Node* ctxn = n->body != nullptr && n->body->next != nullptr
+                                     ? n->body->next
+                                     : nullptr;
+                    if (fn != nullptr) {
+                        call_func(fn, nullptr, ctxn);
+                    }
+                    Value h;
+                    h.kind = TypeKind::Struct;
+                    h.type = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    Value id;
+                    id.kind = TypeKind::Usize;
+                    id.u = 1;
+                    h.fields.push_back(id);
+                    return ok_payload(h, n->ty);
+                }
                 return call_func(n->resolved, nullptr, n->body);
             }
             Node* method = callee->resolved;
             Type* ot = callee->left != nullptr ? callee->left->ty : nullptr;
             if (is_ptr(ot) && ot->elem != nullptr) {
                 ot = ot->elem;
+            }
+            if (is_atomic(callee->left != nullptr ? callee->left->ty : nullptr) || is_atomic(ot)) {
+                Type* at = is_atomic(callee->left->ty) ? callee->left->ty : ot;
+                Type* elem = at->elem;
+                Value* slot = lvalue(callee->left);
+                if (slot == nullptr) {
+                    fail("atomic needs an lvalue");
+                    return v_unit();
+                }
+                Value arg = n->body != nullptr && callee->text != "load" ? eval(n->body->left)
+                                                                        : v_unit();
+                if (callee->text == "load") {
+                    Value v = *slot;
+                    v.type = elem;
+                    v.kind = elem != nullptr ? elem->kind : v.kind;
+                    return v;
+                }
+                if (callee->text == "store") {
+                    arg.type = elem;
+                    if (elem != nullptr) {
+                        arg.kind = elem->kind;
+                    }
+                    *slot = arg;
+                    return v_unit();
+                }
+                Value prev = *slot;
+                prev.type = elem;
+                if (elem != nullptr) {
+                    prev.kind = elem->kind;
+                }
+                TokenKind op = TokenKind::PlusPercent;
+                if (callee->text == "sub") {
+                    op = TokenKind::MinusPercent;
+                } else if (callee->text == "set") {
+                    op = TokenKind::Pipe;
+                } else if (callee->text == "clear") {
+                    op = TokenKind::Amp;
+                    arg.u = ~arg.u;
+                } else if (callee->text == "flip") {
+                    op = TokenKind::Caret;
+                } else if (callee->text == "swap") {
+                    *slot = arg;
+                    return prev;
+                }
+                Value r = arith(elem, *slot, arg, op);
+                if (!trapped) {
+                    *slot = r;
+                }
+                return prev;
+            }
+            if (ot != nullptr && ot->kind == TypeKind::Struct && ot->name == "Handle" &&
+                callee->text == "join") {
+                Value ok;
+                ok.kind = TypeKind::Fallible;
+                ok.failed = false;
+                ok.type = n->ty;
+                return ok;
             }
             if (ot != nullptr && ot->kind == TypeKind::Interface) {
                 Value view = eval(callee->left);

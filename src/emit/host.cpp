@@ -79,7 +79,7 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
     if (link_answer_start) {
         cmd += " " + shell_quote(rt + "/start.c");
     }
-    cmd += " -lm -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
+    cmd += " -lm -pthread -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());
     if (status != 0) {
         if (error != nullptr) {

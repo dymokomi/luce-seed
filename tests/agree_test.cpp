@@ -693,6 +693,40 @@ TEST(agree_extern_as_name) {
                  "    return i64(labs_of(-7))\n"));
 }
 
+TEST(agree_atomic_add) {
+    CHECK(agrees("var hits: @u64\n"
+                 "pub func answer() -> i64:\n"
+                 "    hits += 1\n"
+                 "    hits += 1\n"
+                 "    return i64(hits)\n"));
+}
+
+TEST(agree_atomic_method) {
+    CHECK(agrees("var hits: @u64\n"
+                 "pub func answer() -> i64:\n"
+                 "    let prev = hits.add(3, .relaxed)\n"
+                 "    return i64(hits) + i64(prev)\n"));
+}
+
+TEST(agree_volatile_store) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var n: i64 = 40\n"
+                 "    let p: volatile i64* = &n\n"
+                 "    *p = 41\n"
+                 "    return *p\n"));
+}
+
+TEST(agree_thread_spawn) {
+    CHECK(agrees("func run(context: void*):\n"
+                 "    let p = (i64*)context\n"
+                 "    *p = 40\n"
+                 "pub func answer() -> i64!:\n"
+                 "    var n: i64 = 0\n"
+                 "    let h = try thread.spawn(run, (void*)(&n))\n"
+                 "    try h.join()\n"
+                 "    return n\n"));
+}
+
 TEST(header_export_func) {
     DiagnosticBag diagnostics;
     Source source = Source::from_bytes("t.lucb",

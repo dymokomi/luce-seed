@@ -109,6 +109,12 @@ string c_type(Type* t) {
     if (t->kind == TypeKind::Struct && t->name == "Location") {
         return "lb_Location";
     }
+    if (t->kind == TypeKind::Struct && t->name == "Handle") {
+        return "lb_Handle";
+    }
+    if (t->kind == TypeKind::Atomic) {
+        return "_Atomic(" + c_type(t->elem) + ")";
+    }
     if (t->kind == TypeKind::Struct || t->kind == TypeKind::Union ||
         (t->kind == TypeKind::Enum && !is_int_enum(t))) {
         if (t->decl != nullptr) {

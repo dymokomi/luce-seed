@@ -151,6 +151,23 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 dst = "(*self)";
             }
             string src = emit_expr(n->right);
+            Type* lt = n->left != nullptr ? n->left->ty : nullptr;
+            if (is_atomic(lt)) {
+                if (n->op == TokenKind::Eq) {
+                    line(dst + " = " + src + ";");
+                } else if (n->op == TokenKind::PlusEq) {
+                    line(dst + " += " + src + ";");
+                } else if (n->op == TokenKind::MinusEq) {
+                    line(dst + " -= " + src + ";");
+                } else if (n->op == TokenKind::AmpEq) {
+                    line(dst + " &= " + src + ";");
+                } else if (n->op == TokenKind::PipeEq) {
+                    line(dst + " |= " + src + ";");
+                } else if (n->op == TokenKind::CaretEq) {
+                    line(dst + " ^= " + src + ";");
+                }
+                break;
+            }
             if (n->op == TokenKind::Eq) {
                 line(dst + " = " + src + ";");
                 break;
@@ -303,6 +320,29 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 line(emit_expr(n->left) + ";");
             }
             break;
+        case NodeKind::Asm: {
+            string body;
+            for (Node* ln = n->body; ln != nullptr; ln = ln->next) {
+                if (ln->kind == NodeKind::Literal) {
+                    string t = string(ln->text);
+                    body += t;
+                    if (t.empty() || t.back() != '\n') {
+                        body += '\n';
+                    }
+                }
+            }
+            string arch = string(n->text);
+            if (arch == "arm64") {
+                line("#if defined(__aarch64__)");
+            } else if (arch == "x86_64") {
+                line("#if defined(__x86_64__)");
+            } else {
+                line("#if 0");
+            }
+            line("asm volatile(" + c_escape(body) + ":::\"memory\");");
+            line("#endif");
+            break;
+        }
         default:
             line("/* unsupported stmt */");
             break;

@@ -124,12 +124,20 @@ auto Interp::exec(Node* n) -> void {
                 fail("unsupported assignment");
                 return;
             }
-            Value r = arith(n->left->ty, *dst, src, op);
+            Type* at = n->left != nullptr ? n->left->ty : nullptr;
+            if (is_atomic(at) && (op == TokenKind::Plus || op == TokenKind::Minus)) {
+                op = op == TokenKind::Plus ? TokenKind::PlusPercent : TokenKind::MinusPercent;
+                at = at->elem;
+            }
+            Value r = arith(at, *dst, src, op);
             if (!trapped) {
                 *dst = r;
             }
             break;
         }
+        case NodeKind::Asm:
+            fail("asm");
+            return;
         case NodeKind::If: {
             if (n->flags & FlagIfLet) {
                 Node* let = n->left;

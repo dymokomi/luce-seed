@@ -9,7 +9,7 @@
 
 namespace lucb {
 
-const uint32_t k_type_flags_unsupported = FlagAtomic | FlagFuncType | FlagTupleType;
+const uint32_t k_type_flags_unsupported = FlagFuncType | FlagTupleType;
 
 struct Binding {
     string_view name;
@@ -374,6 +374,9 @@ struct Checker {
     Type* intern_opt(Type* elem);
     Type* intern_fail(Type* elem);
     Type* intern_sp(Type* elem, bool is_const);
+    Type* intern_atomic(Type* elem);
+    bool atomic_ok(Type* t);
+    void check_asm(Node* n);
     Node* syn_node(NodeKind k, const char* name);
     bool is_fixed(Type* t);
     Type* check_in_allocator(Node* n);

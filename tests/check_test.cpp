@@ -231,6 +231,20 @@ TEST(check_extern_out_unsupported) {
                     "lucb.check.unsupported"));
 }
 
+TEST(check_atomic_ok) {
+    CHECK(check_ok("var hits: @u64\n"
+                   "pub func answer() -> i64:\n"
+                   "    hits += 1\n"
+                   "    return i64(hits)\n"));
+}
+
+TEST(check_atomic_bad_type) {
+    CHECK(check_has("var hits: @str\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_c_int_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n"
                    "    var n: c.int = 40\n"

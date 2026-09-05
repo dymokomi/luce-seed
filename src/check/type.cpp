@@ -136,6 +136,8 @@ string type_name(const Type* t) {
         return t->name.empty() ? "<interface>" : string(t->name);
     case TypeKind::Fmt:
         return "fmt";
+    case TypeKind::Atomic:
+        return "@" + type_name(t->elem);
     }
     return "<unknown>";
 }
@@ -505,6 +507,8 @@ int type_size(const Type* t) {
         return type_size(t->elem) + static_cast<int>(sizeof(void*) * 2 + 1);
     case TypeKind::ErrorVal:
         return static_cast<int>(sizeof(int32_t) + sizeof(void*) + sizeof(size_t));
+    case TypeKind::Atomic:
+        return type_size(t->elem);
     case TypeKind::Array:
         return type_size(t->elem) * static_cast<int>(t->length);
     case TypeKind::Void:
@@ -648,6 +652,9 @@ const char* c_type_name(const Type* t) {
 bool is_zeroable(const Type* t) {
     if (t == nullptr) {
         return false;
+    }
+    if (is_atomic(t)) {
+        return is_zeroable(t->elem);
     }
     if (is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Unit ||
         t->kind == TypeKind::Str || t->kind == TypeKind::Char || t->kind == TypeKind::Span) {

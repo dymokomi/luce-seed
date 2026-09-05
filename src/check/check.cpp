@@ -1,6 +1,7 @@
 #include "check/check.h"
 #include "check/checker.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace lucb {
@@ -235,6 +236,30 @@ auto Checker::intern_sp(Type* elem, bool is_const) -> Type* {
         return t;
     }
 
+auto Checker::intern_atomic(Type* elem) -> Type* {
+        for (size_t i = 0; i < interned.size(); i++) {
+            Type* t = interned[i];
+            if (t->kind == TypeKind::Atomic && t->elem == elem) {
+                return t;
+            }
+        }
+        Type* t = make_type(TypeKind::Atomic, {});
+        t->elem = elem;
+        t->name = keep(type_name(t));
+        interned.push_back(t);
+        return t;
+    }
+
+auto Checker::atomic_ok(Type* t) -> bool {
+        if (t == nullptr) {
+            return false;
+        }
+        if (is_int(t) || t->kind == TypeKind::Bool || is_ptr(t)) {
+            return type_size(t) <= static_cast<int>(sizeof(void*));
+        }
+        return false;
+    }
+
 auto Checker::syn_node(NodeKind k, const char* name) -> Node* {
         Node* n = arena->make<Node>();
         n->kind = k;
@@ -427,6 +452,79 @@ auto Checker::bind_memory() -> void {
         ty_location->decl = loc;
         loc->ty = ty_location;
         bind("Location", ty_location, false, loc);
+
+        Node* ord = syn_node(NodeKind::Enum, "Ordering");
+        Type* ot = make_type(TypeKind::Enum, "Ordering");
+        ot->decl = ord;
+        ot->elem = ty_i32;
+        ord->ty = ot;
+        const char* onames[] = {"relaxed", "acquire", "release", "acq_rel", "seq_cst"};
+        const int ovals[] = {0, 2, 3, 4, 5};
+        Node* oprev = nullptr;
+        for (int i = 0; i < 5; i++) {
+            Node* cse = syn_node(NodeKind::EnumCase, onames[i]);
+            cse->ty = ot;
+            Node* lit = arena->make<Node>();
+            lit->kind = NodeKind::Literal;
+            lit->op = TokenKind::IntLit;
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%d", ovals[i]);
+            lit->text = keep(buf);
+            cse->left = lit;
+            if (oprev != nullptr) {
+                oprev->next = cse;
+            } else {
+                ord->body = cse;
+            }
+            oprev = cse;
+        }
+        bind("Ordering", ot, false, ord);
+
+        Node* fence = syn_node(NodeKind::Func, "fence");
+        Node* oarg = syn_node(NodeKind::Param, "order");
+        oarg->ty = ot;
+        fence->right = oarg;
+        fence->ty = t_unit();
+        Node* amod = syn_node(NodeKind::Module, "atomic");
+        amod->body = fence;
+        Type* amt = make_type(TypeKind::Module, "atomic");
+        amt->decl = amod;
+        bind("atomic", amt, false, amod);
+
+        Node* hid = syn_node(NodeKind::Field, "id");
+        hid->ty = ty_usize;
+        Node* join = syn_node(NodeKind::Func, "join");
+        join->flags |= FlagFallible;
+        join->ty = t_unit();
+        hid->next = join;
+        Node* hs = syn_node(NodeKind::Struct, "Handle");
+        hs->body = hid;
+        Type* ht = make_type(TypeKind::Struct, "Handle");
+        ht->decl = hs;
+        hs->ty = ht;
+        join->ty = t_unit();
+
+        Node* spawn = syn_node(NodeKind::Func, "spawn");
+        spawn->flags |= FlagFallible;
+        Node* sp_entry = syn_node(NodeKind::Param, "entry");
+        sp_entry->ty = intern_ptr(ty_void, false, false, false);
+        Node* sp_ctx = syn_node(NodeKind::Param, "context");
+        sp_ctx->ty = intern_ptr(ty_void, false, false, false);
+        sp_entry->next = sp_ctx;
+        spawn->right = sp_entry;
+        spawn->ty = ht;
+        spawn->next = nullptr;
+        Node* tmod = syn_node(NodeKind::Module, "thread");
+        Node* hpub = syn_node(NodeKind::Struct, "Handle");
+        hpub->ty = ht;
+        hpub->body = hs->body;
+        hpub->flags |= FlagPub;
+        spawn->flags |= FlagPub;
+        tmod->body = spawn;
+        spawn->next = hpub;
+        Type* tt = make_type(TypeKind::Module, "thread");
+        tt->decl = tmod;
+        bind("thread", tt, false, tmod);
     }
 
 auto Checker::mark_local(Node* n) -> void {
@@ -577,6 +675,16 @@ auto Checker::resolve_type(Node* n) -> Type* {
             n->ty = t_error();
             return n->ty;
         }
+        if (n->flags & FlagAtomic) {
+            Type* inner = resolve_type(n->left);
+            if (!atomic_ok(inner)) {
+                fail_n(n, "lucb.check.type", "`@T` needs an integer, `bool`, or pointer of at most pointer width");
+                n->ty = t_error();
+                return n->ty;
+            }
+            n->ty = intern_atomic(inner);
+            return n->ty;
+        }
         if (n->flags & FlagFallible) {
             Type* inner = t_unit();
             if (n->left != nullptr) {
@@ -684,6 +792,19 @@ auto Checker::resolve_type(Node* n) -> Type* {
                 n->ty = t;
                 n->resolved = b->decl;
                 return n->ty;
+            }
+        }
+        size_t dot = n->text.find('.');
+        if (dot != string_view::npos && dot > 0 && dot + 1 < n->text.size()) {
+            Binding* mb = lookup(n->text.substr(0, dot));
+            if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
+                Node* d = pub_member(mb->type->decl, n->text.substr(dot + 1));
+                if (d != nullptr) {
+                    Type* t = decl_type(d);
+                    n->ty = t;
+                    n->resolved = d;
+                    return n->ty;
+                }
             }
         }
         fail_n(n, "lucb.check.type", "unknown type `" + string(n->text) + "`");
@@ -1007,7 +1128,8 @@ auto Checker::collect_module(Node* mod) -> void {
             } else if (d->kind == NodeKind::Const) {
                 bind(d->text, t_error(), false, d);
             } else if (d->kind == NodeKind::Import || d->kind == NodeKind::FromImport ||
-                       d->kind == NodeKind::Test || d->kind == NodeKind::Assert) {
+                       d->kind == NodeKind::Test || d->kind == NodeKind::Assert ||
+                       d->kind == NodeKind::Asm) {
                 continue;
             } else {
                 fail_n(d, "lucb.check.unsupported",
@@ -1315,6 +1437,8 @@ auto Checker::check_module(Node* mod) -> void {
                 check_test(d);
             } else if (d->kind == NodeKind::Assert) {
                 check_assert(d);
+            } else if (d->kind == NodeKind::Asm) {
+                check_asm(d);
             }
         }
         vector<string> export_syms;

@@ -223,6 +223,10 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             n->kind == NodeKind::Literal && n->op == TokenKind::StringLit) {
             return expected;
         }
+        if (is_atomic(got) && expected != nullptr &&
+            (type_eq(got->elem, expected) || can_widen(got->elem, expected))) {
+            return expected;
+        }
         if (type_eq(got, expected) || can_widen(got, expected) || can_ptr_convert(got, expected, n)) {
             if (is_array(got) && is_span(expected)) {
                 mark_local(n);
@@ -663,6 +667,12 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         }
         Type* L = check_expr(n->left, nullptr);
         Type* R = check_expr(n->right, nullptr);
+        if (is_atomic(L)) {
+            L = L->elem;
+        }
+        if (is_atomic(R)) {
+            R = R->elem;
+        }
         if (is_ptr(L) || is_ptr(R)) {
             if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
                 return t_bool();
@@ -993,6 +1003,9 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
         if (src == nullptr || dest == nullptr) {
             return false;
         }
+        if (is_atomic(src)) {
+            src = src->elem;
+        }
         Node* srcn = n->kind == NodeKind::Cast ? n->left
                                                : (n->body != nullptr ? n->body->left : n);
         if (src->kind == TypeKind::UntypedInt) {
@@ -1083,6 +1096,10 @@ auto Checker::check_print(Node* n) -> Type* {
             return t_unit();
         }
         Type* a = check_expr(n->body->left, nullptr);
+        if (is_atomic(a)) {
+            a = a->elem;
+            n->body->left->ty = a;
+        }
         if (a != nullptr && a->kind == TypeKind::UntypedInt) {
             a = coerce(n->body->left, a, t_i64());
             n->body->left->ty = a;
@@ -1482,6 +1499,34 @@ auto Checker::check_method_call(Node* n) -> Type* {
                     return check_checked_conv(n, d->ty);
                 }
                 if (d->kind == NodeKind::Func) {
+                    if (b->type->name == "thread" && mem->text == "spawn") {
+                        n->resolved = d;
+                        mem->resolved = d;
+                        int nargs = count_args(n->body);
+                        if (nargs < 2) {
+                            fail_n(n, "lucb.check.call", "`thread.spawn` needs an entry and a context");
+                            return intern_fail(d->ty);
+                        }
+                        Node* entry = n->body != nullptr ? n->body->left : nullptr;
+                        if (entry == nullptr || entry->kind != NodeKind::Name) {
+                            fail_n(n, "lucb.check.type", "`thread.spawn` needs a function name");
+                        } else {
+                            Binding* fb = lookup(entry->text);
+                            if (fb == nullptr || fb->decl == nullptr ||
+                                fb->decl->kind != NodeKind::Func) {
+                                fail_n(n, "lucb.check.type", "`thread.spawn` needs a function name");
+                            } else {
+                                entry->resolved = fb->decl;
+                            }
+                        }
+                        if (n->body != nullptr && n->body->next != nullptr) {
+                            Type* ct = check_expr(n->body->next->left, nullptr);
+                            if (!is_ptr(ct) && ct->kind != TypeKind::Void) {
+                                fail_n(n, "lucb.check.type", "`thread.spawn` context needs a pointer");
+                            }
+                        }
+                        return intern_fail(d->ty);
+                    }
                     if (is_generic_decl(d) || n->type != nullptr) {
                         return check_generic_call(n, d, nullptr);
                     }
@@ -1529,6 +1574,51 @@ auto Checker::check_method_call(Node* n) -> Type* {
         Type* recv = ot;
         if (is_ptr(ot) && ot->elem != nullptr) {
             recv = ot->elem;
+        }
+        if (is_atomic(ot) || is_atomic(recv)) {
+            Type* at = is_atomic(ot) ? ot : recv;
+            Type* elem = at->elem;
+            n->resolved = nullptr;
+            mem->resolved = nullptr;
+            int nargs = count_args(n->body);
+            Binding* ob = lookup("Ordering");
+            Type* ord = ob != nullptr ? ob->type : ty_i32;
+            if (mem->text == "load") {
+                if (nargs > 1) {
+                    fail_n(n, "lucb.check.call", "`load` takes an optional ordering");
+                }
+                if (nargs == 1) {
+                    check_expr(n->body->left, ord);
+                }
+                return elem;
+            }
+            if (mem->text == "store") {
+                if (nargs < 1 || nargs > 2) {
+                    fail_n(n, "lucb.check.call", "`store` takes a value");
+                }
+                if (n->body != nullptr) {
+                    check_expr(n->body->left, elem);
+                    if (n->body->next != nullptr) {
+                        check_expr(n->body->next->left, ord);
+                    }
+                }
+                return t_unit();
+            }
+            if (mem->text == "add" || mem->text == "sub" || mem->text == "swap" ||
+                mem->text == "set" || mem->text == "clear" || mem->text == "flip") {
+                if (nargs < 1 || nargs > 2) {
+                    fail_n(n, "lucb.check.call", "this atomic method takes a value");
+                }
+                if (n->body != nullptr) {
+                    check_expr(n->body->left, elem);
+                    if (n->body->next != nullptr) {
+                        check_expr(n->body->next->left, ord);
+                    }
+                }
+                return elem;
+            }
+            fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "` on an atomic");
+            return t_error();
         }
         if (recv != nullptr && recv->kind == TypeKind::Interface && recv->decl != nullptr) {
             Node* method = struct_member(recv->decl, mem->text, NodeKind::Func);

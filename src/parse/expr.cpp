@@ -148,7 +148,8 @@ auto Parser::parse_postfix() -> Node* {
             if (eat(TokenKind::Dot)) {
                 Node* m = make(NodeKind::Member, start.span);
                 m->left = value;
-                if (!at(TokenKind::Name) && !at(TokenKind::KwNone)) {
+                if (!at(TokenKind::Name) && !at(TokenKind::KwNone) &&
+                    !at(TokenKind::KwSpawn)) {
                     fail("lucb.parse.expect", "expected a member name");
                 } else {
                     m->text = take().text;

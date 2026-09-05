@@ -64,14 +64,26 @@ auto Checker::check_stmt(Node* n) -> void {
             if (!is_mut_place(n->left)) {
                 fail_n(n, "lucb.check.mut", "this place is not assignable");
             }
+            Type* dest = is_atomic(lt) ? lt->elem : lt;
             if (n->op == TokenKind::Eq) {
-                Type* rt = check_expr(n->right, lt);
-                if (!type_eq(lt, rt) && !can_widen(rt, lt) && !can_ptr_convert(rt, lt, n->right)) {
+                Type* rt = check_expr(n->right, dest);
+                if (!type_eq(dest, rt) && !can_widen(rt, dest) &&
+                    !can_ptr_convert(rt, dest, n->right)) {
                     fail_n(n, "lucb.check.type", "assignment type mismatch");
                 }
             } else {
-                Type* rt = check_expr(n->right, lt);
-                if (!is_int(lt) || (!is_int(rt) && rt->kind != TypeKind::UntypedInt)) {
+                Type* rt = check_expr(n->right, dest);
+                if (is_atomic(lt)) {
+                    if (n->op != TokenKind::PlusEq && n->op != TokenKind::MinusEq &&
+                        n->op != TokenKind::AmpEq && n->op != TokenKind::PipeEq &&
+                        n->op != TokenKind::CaretEq) {
+                        fail_n(n, "lucb.check.type",
+                               "an atomic compound assignment is `+=` `-=` `|=` `&=` or `^=`");
+                    }
+                    if (!is_int(dest) && dest->kind != TypeKind::Bool && !is_ptr(dest)) {
+                        fail_n(n, "lucb.check.type", "compound assignment requires a number");
+                    }
+                } else if (!is_int(lt) || (!is_int(rt) && rt->kind != TypeKind::UntypedInt)) {
                     if (!(is_float(lt) && is_float(rt))) {
                         fail_n(n, "lucb.check.type", "compound assignment requires a number");
                     }
@@ -79,6 +91,9 @@ auto Checker::check_stmt(Node* n) -> void {
             }
             break;
         }
+        case NodeKind::Asm:
+            check_asm(n);
+            break;
         case NodeKind::If: {
             if (n->flags & FlagIfLet) {
                 Node* let = n->left;
@@ -267,6 +282,17 @@ auto Checker::check_stmt(Node* n) -> void {
         default:
             fail_n(n, "lucb.check.unsupported", "this statement is not in the scalar core yet");
             break;
+        }
+    }
+
+auto Checker::check_asm(Node* n) -> void {
+        for (Node* op = n != nullptr ? n->left : nullptr; op != nullptr; op = op->next) {
+            if (op->text == "options") {
+                continue;
+            }
+            if (op->left != nullptr) {
+                check_expr(op->left, nullptr);
+            }
         }
     }
 

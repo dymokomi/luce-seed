@@ -13,6 +13,15 @@ with ASAN+UBSAN.
 The lexer of `base.md` §3, §4, and the tokens of §21. `asm` suites emit `raw`
 lines, not tokens. Evidence: `tests/lex_test.cpp` and `tests/source_test.cpp`.
 
+## M14 — Atomics, volatile, threads, `asm`
+
+`@T` atomic integers and pointers with wrapping `+=`/`-=`/`|=`/`&=`/`^=`,
+`load`/`store`/`add` and friends, `Ordering`, and `atomic.fence`. `volatile T*`
+loads and stores. `thread.spawn` / `Handle.join` over pthreads. `asm` is
+rejected in the interpreter and emitted as GNU `asm volatile` for the host
+architecture. Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`,
+`tests/check_test.cpp`.
+
 ## M13 — Calling C
 
 `extern func` / `type` / `var` / `struct` / `union`, `as "name"`, `export`
