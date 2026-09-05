@@ -13,6 +13,7 @@ struct EvalResult {
     bool has_answer = false;
     int64_t answer = 0;
     string output;
+    string err;
 };
 
 EvalResult eval_module(Node* module);

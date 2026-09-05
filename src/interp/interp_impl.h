@@ -15,6 +15,7 @@ struct Interp {
     vector<Frame> frames;
     std::deque<vector<Value>> storage;
     string output;
+    string err;
     bool trapped = false;
     string trap;
     bool returning = false;
@@ -29,6 +30,7 @@ struct Interp {
     string err_storage;
     Frame globals;
     Value current_alloc;
+    Value stdio_dummy;
     std::deque<string> strings;
     struct Deferred {
         Node* n = nullptr;

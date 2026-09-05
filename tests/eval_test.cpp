@@ -733,6 +733,14 @@ TEST(eval_match_expr_int) {
     CHECK_EQ(r.answer, 20);
 }
 
+TEST(eval_luce_location) {
+    EvalResult r = run("pub func answer() -> i64:\n"
+                       "    let loc = luce.location\n"
+                       "    return i64(loc.line)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}
+
 TEST(eval_method_value) {
     EvalResult r = run("struct Point:\n"
                        "    pub let x: i64\n"

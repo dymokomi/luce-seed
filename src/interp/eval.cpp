@@ -440,6 +440,40 @@ auto Interp::eval_member(Node* n) -> Value {
                 v.u = 1;
                 return v;
             }
+            if (lt->name == "luce") {
+                string file = module != nullptr && !module->text.empty() ? string(module->text)
+                                                                         : string("t.lucb");
+                if (n->text == "file") {
+                    strings.push_back(file);
+                    return v_str(strings.back());
+                }
+                if (n->text == "line") {
+                    return v_int(n->ty != nullptr ? n->ty : nullptr, n->span.line);
+                }
+                if (n->text == "function") {
+                    string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
+                    strings.push_back(fn);
+                    return v_str(strings.back());
+                }
+                if (n->text == "location") {
+                    Value v;
+                    v.kind = TypeKind::Struct;
+                    v.type = n->ty;
+                    strings.push_back(file);
+                    v.fields.push_back(v_str(strings.back()));
+                    Value line;
+                    line.kind = TypeKind::U32;
+                    line.u = n->span.line;
+                    v.fields.push_back(line);
+                    string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
+                    strings.push_back(fn);
+                    v.fields.push_back(v_str(strings.back()));
+                    return v;
+                }
+            }
+            if (lt->name == "files" && n->text == "missing") {
+                return v_int(n->ty != nullptr ? n->ty : nullptr, 2);
+            }
         }
         Value obj = eval(n->left);
         if (trapped) {
@@ -1616,20 +1650,6 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             return v_unit();
         }
-        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
-            Value v;
-            v.kind = TypeKind::Struct;
-            v.type = n->ty;
-            v.fields.push_back(v_str(n->ty != nullptr ? string_view("t.lucb") : string_view("t.lucb")));
-            Value line;
-            line.kind = TypeKind::U32;
-            line.u = n->span.line;
-            v.fields.push_back(line);
-            string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
-            strings.push_back(fn);
-            v.fields.push_back(v_str(strings.back()));
-            return v;
-        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
             return eval_format(n);
         }
@@ -1690,6 +1710,105 @@ auto Interp::eval_call(Node* n) -> Value {
             Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
             if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
                 n->resolved->kind == NodeKind::Func) {
+                if (lt->name == "io" && (callee->text == "stdout" || callee->text == "stderr")) {
+                    stdio_dummy.u = callee->text == "stdout" ? 1 : 2;
+                    stdio_dummy.type = n->ty;
+                    Value v;
+                    v.kind = TypeKind::Interface;
+                    v.type = n->ty;
+                    v.u = stdio_dummy.u;
+                    v.ptr = &stdio_dummy;
+                    return v;
+                }
+                if (lt->name == "c" &&
+                    (callee->text == "stdin" || callee->text == "stdout" ||
+                     callee->text == "stderr")) {
+                    Value v;
+                    v.kind = TypeKind::Pointer;
+                    v.type = n->ty;
+                    v.u = callee->text == "stdin" ? 1 : callee->text == "stdout" ? 2 : 3;
+                    return v;
+                }
+                if (lt->name == "files" && callee->text == "read") {
+                    Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    string path = decode_string(pv.str);
+                    FILE* f = fopen(path.c_str(), "rb");
+                    if (f == nullptr) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 2;
+                        e.err_msg = "missing";
+                        return e;
+                    }
+                    fseek(f, 0, SEEK_END);
+                    long nbyte = ftell(f);
+                    rewind(f);
+                    if (nbyte < 0) {
+                        nbyte = 0;
+                    }
+                    Type* sp = n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty;
+                    Type* elem = sp != nullptr ? sp->elem : nullptr;
+                    vector<Value> elems;
+                    if (nbyte > 0) {
+                        vector<char> buf(static_cast<size_t>(nbyte));
+                        size_t got = fread(buf.data(), 1, static_cast<size_t>(nbyte), f);
+                        elems.resize(got);
+                        for (size_t i = 0; i < got; i++) {
+                            elems[i] = v_int(elem, static_cast<unsigned char>(buf[i]));
+                        }
+                    }
+                    fclose(f);
+                    Value span = make_array(sp, std::move(elems));
+                    span.kind = TypeKind::Span;
+                    span.type = sp;
+                    return ok_payload(span, n->ty);
+                }
+                if (lt->name == "files" && callee->text == "write") {
+                    string path;
+                    if (n->body != nullptr && n->body->left != nullptr &&
+                        n->body->left->kind == NodeKind::Literal) {
+                        path = decode_string(n->body->left->text);
+                    }
+                    Value bv = n->body != nullptr && n->body->next != nullptr
+                                   ? eval(n->body->next->left)
+                                   : v_unit();
+                    FILE* f = fopen(path.c_str(), "wb");
+                    if (f == nullptr) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 2;
+                        e.err_msg = "missing";
+                        return e;
+                    }
+                    string bytes;
+                    if (bv.kind == TypeKind::Span || bv.kind == TypeKind::Array) {
+                        size_t nlen = bv.length != 0 ? bv.length : bv.fields.size();
+                        Value* p = bv.ptr != nullptr ? bv.ptr : bv.fields.data();
+                        for (size_t i = 0; i < nlen; i++) {
+                            bytes.push_back(static_cast<char>(p[i].u));
+                        }
+                    }
+                    size_t w = bytes.empty() ? 0 : fwrite(bytes.data(), 1, bytes.size(), f);
+                    fclose(f);
+                    if (w != bytes.size()) {
+                        Value e;
+                        e.failed = true;
+                        e.kind = TypeKind::Fallible;
+                        e.type = n->ty;
+                        e.err_code = 1;
+                        e.err_msg = "write";
+                        return e;
+                    }
+                    Value ok;
+                    ok.failed = false;
+                    ok.kind = TypeKind::Fallible;
+                    ok.type = n->ty;
+                    return ok;
+                }
                 if (callee->text == "fence" || callee->text == "pause" ||
                     callee->text == "yield" || callee->text == "sleep") {
                     return v_unit();
@@ -1921,6 +2040,23 @@ auto Interp::eval_call(Node* n) -> Value {
                 if (trapped || view.ptr == nullptr) {
                     fail("null interface");
                     return v_unit();
+                }
+                if ((view.u == 1 || view.u == 2) && callee->text == "write") {
+                    Value bytes = n->body != nullptr ? eval(n->body->left) : v_unit();
+                    string s;
+                    size_t nlen = bytes.length != 0 ? bytes.length : bytes.fields.size();
+                    Value* p = bytes.ptr != nullptr ? bytes.ptr : bytes.fields.data();
+                    for (size_t i = 0; i < nlen; i++) {
+                        s.push_back(static_cast<char>(p[i].u));
+                    }
+                    if (view.u == 1) {
+                        output += s;
+                    } else {
+                        err += s;
+                    }
+                    Value nwritten = v_int(n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty,
+                                           nlen);
+                    return ok_payload(nwritten, n->ty);
                 }
                 Value* obj = view.ptr;
                 Type* ct = obj->type;

@@ -385,16 +385,7 @@ auto Parser::parse_params(bool extern_form) -> Node* {
                 }
                 p->type = parse_type();
                 if (eat(TokenKind::Eq)) {
-                    if (at(TokenKind::Name) && cur().text == "location" &&
-                        peek(1).kind == TokenKind::LParen) {
-                        Node* call = make(NodeKind::Call, cur().span);
-                        call->left = make_tok(NodeKind::Name, take());
-                        expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
-                        expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
-                        p->left = call;
-                    } else {
-                        p->left = parse_expression();
-                    }
+                    p->left = parse_expression();
                 }
                 append_node(&list, p);
                 if (!eat(TokenKind::Comma)) {

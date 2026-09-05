@@ -19,6 +19,12 @@ struct Emitter {
     vector<Type*> tups;
     vector<Type*> fns;
     Node* current_fn = nullptr;
+    string src_file = "t.lucb";
+    bool wrote_writer_rt = false;
+    void emit_writer_rt();
+    string emit_src_file();
+    string emit_src_function();
+    string emit_src_location(Node* n);
     int temps = 0;
     string catch_var;
 

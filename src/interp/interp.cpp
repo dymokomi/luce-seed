@@ -108,7 +108,10 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
         }
         frames.push_back(frame);
         returning = false;
+        Node* saved_fn = current_fn;
+        current_fn = fn;
         exec(fn->body);
+        current_fn = saved_fn;
         if (self != nullptr && !frames.empty()) {
             Slot* ss = nullptr;
             Frame& top = frames.back();
@@ -152,6 +155,7 @@ EvalResult eval_module(Node* module) {
     }
     Value v = ip.call_func(answer, nullptr, nullptr);
     result.output = ip.output;
+    result.err = ip.err;
     if (ip.trapped) {
         result.trapped = true;
         result.trap = ip.trap;
@@ -258,6 +262,7 @@ int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string
     ip.frames.pop_back();
     if (result != nullptr) {
         result->output = ip.output;
+        result->err = ip.err;
         if (ip.trapped) {
             result->trapped = true;
             result->trap = ip.trap;

@@ -637,6 +637,72 @@ auto Checker::bind_memory() -> void {
         loc->ty = ty_location;
         bind("Location", ty_location, false, loc);
 
+        Node* l_loc = syn_node(NodeKind::Const, "location");
+        l_loc->ty = ty_location;
+        Node* l_file = syn_node(NodeKind::Const, "file");
+        l_file->ty = ty_str;
+        Node* l_line = syn_node(NodeKind::Const, "line");
+        l_line->ty = ty_u32;
+        Node* l_fn = syn_node(NodeKind::Const, "function");
+        l_fn->ty = ty_str;
+        l_loc->next = l_file;
+        l_file->next = l_line;
+        l_line->next = l_fn;
+        Node* luce = syn_node(NodeKind::Module, "luce");
+        luce->body = l_loc;
+        Type* luce_t = make_type(TypeKind::Module, "luce");
+        luce_t->decl = luce;
+        bind("luce", luce_t, false, luce);
+
+        Node* io_out = syn_node(NodeKind::Func, "stdout");
+        io_out->ty = ty_writer;
+        Node* io_err = syn_node(NodeKind::Func, "stderr");
+        io_err->ty = ty_writer;
+        io_out->next = io_err;
+        Node* io = syn_node(NodeKind::Module, "io");
+        io->body = io_out;
+        Type* io_t = make_type(TypeKind::Module, "io");
+        io_t->decl = io;
+        bind("io", io_t, false, io);
+
+        Node* f_read = syn_node(NodeKind::Func, "read");
+        f_read->flags |= FlagFallible;
+        Node* rp = syn_node(NodeKind::Param, "path");
+        rp->ty = ty_cstr;
+        f_read->right = rp;
+        f_read->ty = intern_sp(ty_u8, false);
+        Node* f_write = syn_node(NodeKind::Func, "write");
+        f_write->flags |= FlagFallible;
+        Node* wp = syn_node(NodeKind::Param, "path");
+        wp->ty = ty_cstr;
+        Node* wb = syn_node(NodeKind::Param, "bytes");
+        wb->ty = intern_sp(ty_u8, true);
+        wp->next = wb;
+        f_write->right = wp;
+        f_write->ty = t_unit();
+        Node* f_miss = syn_node(NodeKind::Const, "missing");
+        f_miss->ty = ty_i32;
+        f_read->next = f_write;
+        f_write->next = f_miss;
+        Node* files = syn_node(NodeKind::Module, "files");
+        files->body = f_read;
+        Type* files_t = make_type(TypeKind::Module, "files");
+        files_t->decl = files;
+        bind("files", files_t, false, files);
+
+        Node* c_in = syn_node(NodeKind::Func, "stdin");
+        c_in->ty = intern_ptr(ty_void, false, false, false);
+        Node* c_out = syn_node(NodeKind::Func, "stdout");
+        c_out->ty = intern_ptr(ty_void, false, false, false);
+        Node* c_err = syn_node(NodeKind::Func, "stderr");
+        c_err->ty = intern_ptr(ty_void, false, false, false);
+        c_in->next = c_out;
+        c_out->next = c_err;
+        Node* cmod = syn_node(NodeKind::Module, "c");
+        cmod->body = c_in;
+        ty_c_mod = make_type(TypeKind::Module, "c");
+        ty_c_mod->decl = cmod;
+
         Node* ord = syn_node(NodeKind::Enum, "Ordering");
         Type* ot = make_type(TypeKind::Enum, "Ordering");
         ot->decl = ord;
@@ -884,11 +950,12 @@ auto Checker::set_from_local(string_view name, bool from_local) -> void {
 
 auto Checker::is_core_name(string_view name) -> bool {
         return name == "print" || name == "assert" || name == "discard" || name == "error" ||
-               name == "trap" || name == "hash" || name == "format" || name == "location" ||
+               name == "trap" || name == "hash" || name == "format" ||
                name == "sizeof" || name == "alignof" || name == "offsetof" || name == "hex" ||
                named_scalar(name) != nullptr || name == "f16" || name == "cstr" || name == "fmt" ||
                name == "FixedBuffer" || name == "memory" || name == "fmt" || name == "format" ||
-               name == "location" || name == "Writer" || name == "Location";
+               name == "luce" || name == "io" || name == "files" || name == "Writer" ||
+               name == "Location";
     }
 
 auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
@@ -1199,16 +1266,11 @@ auto Checker::check_params(Node* fn) -> void {
             }
             p->ty = resolve_type(p->type);
             if (p->left != nullptr) {
-                bool loc = p->left->kind == NodeKind::Call && p->left->left != nullptr &&
-                           p->left->left->kind == NodeKind::Name &&
-                           p->left->left->text == "location";
-                if (!loc) {
-                    Type* dt = check_expr(p->left, p->ty);
-                    if (!type_eq(dt, p->ty) && !can_widen(dt, p->ty)) {
-                        fail_n(p, "lucb.check.type",
-                               "default has type " + type_name(dt) + ", expected " +
-                                   type_name(p->ty));
-                    }
+                Type* dt = check_expr(p->left, p->ty);
+                if (!type_eq(dt, p->ty) && !can_widen(dt, p->ty)) {
+                    fail_n(p, "lucb.check.type",
+                           "default has type " + type_name(dt) + ", expected " +
+                               type_name(p->ty));
                 }
             }
             bind(p->text, p->ty, false, p);
@@ -1754,6 +1816,9 @@ auto Checker::check_main(Node* fn) -> void {
 
 auto Checker::check_module(Node* mod) -> void {
         current_module = mod;
+        if (mod != nullptr && mod->text.empty() && !path.empty()) {
+            mod->text = keep(path);
+        }
         push_scope();
         bind_memory();
         bind_imports(mod);

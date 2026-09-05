@@ -27,6 +27,24 @@ string memorder_of(Node* n) {
     return "memory_order_seq_cst";
 }
 
+auto Emitter::emit_src_file() -> string {
+        string file = src_file.empty() ? string("t.lucb") : src_file;
+        return "((lb_str){" + c_escape(file) + ", " + std::to_string(file.size()) + "})";
+    }
+
+auto Emitter::emit_src_function() -> string {
+        string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
+        return "((lb_str){" + c_escape(fn) + ", " + std::to_string(fn.size()) + "})";
+    }
+
+auto Emitter::emit_src_location(Node* n) -> string {
+        uint32_t line = n != nullptr ? n->span.line : 1;
+        char lbuf[16];
+        snprintf(lbuf, sizeof(lbuf), "%u", line);
+        return "((lb_Location){ .file = " + emit_src_file() + ", .line = " + lbuf +
+               "u, .function = " + emit_src_function() + " })";
+    }
+
 auto Emitter::produces_opt(Node* n) -> bool {
         if (n == nullptr || !is_opt(n->ty)) {
             return false;
@@ -650,6 +668,25 @@ auto Emitter::emit_member(Node* n) -> string {
             if (n->text == "exhausted") {
                 return "((int32_t)LB_MEMORY_EXHAUSTED)";
             }
+            if (ot->name == "luce") {
+                if (n->text == "location") {
+                    return emit_src_location(n);
+                }
+                if (n->text == "file") {
+                    return emit_src_file();
+                }
+                if (n->text == "line") {
+                    char lbuf[16];
+                    snprintf(lbuf, sizeof(lbuf), "%uu", n->span.line);
+                    return lbuf;
+                }
+                if (n->text == "function") {
+                    return emit_src_function();
+                }
+            }
+            if (ot->name == "files" && n->text == "missing") {
+                return "2";
+            }
         }
         bool ptr = is_ptr(ot);
         Type* raw = ptr && ot != nullptr ? ot->elem : ot;
@@ -915,17 +952,6 @@ auto Emitter::emit_extern_args(Node* n) -> string {
 
 auto Emitter::emit_call(Node* n) -> string {
         Node* callee = n->left;
-        if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
-            string file = "t.lucb";
-            uint32_t line = n->span.line;
-            string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
-            char lbuf[16];
-            snprintf(lbuf, sizeof(lbuf), "%u", line);
-            return "((lb_Location){ .file = (lb_str){" + c_escape(file) + ", " +
-                   std::to_string(file.size()) + "}, .line = " + lbuf +
-                   "u, .function = (lb_str){" + c_escape(fn) + ", " + std::to_string(fn.size()) +
-                   "} })";
-        }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
             return emit_format_call(n);
         }
@@ -1202,6 +1228,61 @@ auto Emitter::emit_call(Node* n) -> string {
             Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
             if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
                 n->resolved->kind == NodeKind::Func) {
+                if (lt->name == "io" && callee->text == "stdout") {
+                    return "((lb_iface){ (void*)stdout, &lb_vt_file })";
+                }
+                if (lt->name == "io" && callee->text == "stderr") {
+                    return "((lb_iface){ (void*)stderr, &lb_vt_file })";
+                }
+                if (lt->name == "c" && callee->text == "stdin") {
+                    return "((void*)stdin)";
+                }
+                if (lt->name == "c" && callee->text == "stdout") {
+                    return "((void*)stdout)";
+                }
+                if (lt->name == "c" && callee->text == "stderr") {
+                    return "((void*)stderr)";
+                }
+                if (lt->name == "files" && callee->text == "read") {
+                    Node* parg = n->body != nullptr ? n->body->left : nullptr;
+                    string p = parg != nullptr ? emit_expr(parg) : "NULL";
+                    string pathc = parg != nullptr && parg->ty != nullptr &&
+                                           parg->ty->kind == TypeKind::CStr
+                                       ? p
+                                       : "((" + p + ").data)";
+                    string rty = fail_c_name(n->ty);
+                    return "({ const char* _lb_fp = " + pathc + "; FILE* _lb_f = fopen(_lb_fp, "
+                           "\"rb\"); " +
+                           rty + " _lb_fr; if (_lb_f == NULL) { _lb_fr.failed = true; _lb_fr.error = "
+                           "(lb_error){ .code = 2, .message = (lb_str){\"missing\", 7} }; } else { "
+                           "fseek(_lb_f, 0, SEEK_END); long _lb_n = ftell(_lb_f); rewind(_lb_f); "
+                           "if (_lb_n < 0) _lb_n = 0; lb_span _lb_b = lb_alloc_bytes(lb_get_alloc(), "
+                           "(size_t)_lb_n, 1); if (_lb_n > 0 && _lb_b.data == NULL) { _lb_fr.failed = "
+                           "true; _lb_fr.error = (lb_error){ .code = 1, .message = "
+                           "(lb_str){\"memory.exhausted\", 16} }; fclose(_lb_f); } else { "
+                           "if (_lb_n > 0) fread(_lb_b.data, 1, (size_t)_lb_n, _lb_f); "
+                           "fclose(_lb_f); _lb_fr.failed = false; _lb_fr.value = _lb_b; } } _lb_fr; })";
+                }
+                if (lt->name == "files" && callee->text == "write") {
+                    Node* parg = n->body != nullptr ? n->body->left : nullptr;
+                    string p = parg != nullptr ? emit_expr(parg) : "NULL";
+                    string pathc = parg != nullptr && parg->ty != nullptr &&
+                                           parg->ty->kind == TypeKind::CStr
+                                       ? p
+                                       : "((" + p + ").data)";
+                    string b = n->body != nullptr && n->body->next != nullptr
+                                   ? emit_expr(n->body->next->left)
+                                   : "((lb_cspan){NULL,0})";
+                    string rty = fail_c_name(n->ty);
+                    return "({ const char* _lb_fp = " + pathc + "; lb_cspan _lb_fb = " + b +
+                           "; FILE* _lb_f = fopen(_lb_fp, \"wb\"); " + rty +
+                           " _lb_fr; if (_lb_f == NULL) { _lb_fr.failed = true; _lb_fr.error = "
+                           "(lb_error){ .code = 2, .message = (lb_str){\"missing\", 7} }; } else { "
+                           "size_t _lb_n = _lb_fb.length; size_t _lb_w = _lb_n == 0 ? 0 : "
+                           "fwrite(_lb_fb.data, 1, _lb_n, _lb_f); fclose(_lb_f); if (_lb_w != _lb_n) { "
+                           "_lb_fr.failed = true; _lb_fr.error = (lb_error){ .code = 1, .message = "
+                           "(lb_str){\"write\", 5} }; } else { _lb_fr.failed = false; } } _lb_fr; })";
+                }
                 return func_ident(n->resolved, nullptr) + "(" + emit_args(n->body) + ")";
             }
             if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&

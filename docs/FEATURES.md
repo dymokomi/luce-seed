@@ -84,7 +84,9 @@ Status: `done` (gate-green), `partial`, `unsupported`.
 | 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
 | 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`; user `Display` not yet |
-| 5.5 / 9.1 | `fmt`, `format`, `location()` | done | `agree_format`, `agree_location` |
+| 5.5 / 9.1 | `fmt`, `format`, `luce.location` | done | `agree_format`, `agree_location` |
+| 16.6 | `io.stdout` / `io.stderr` as `Writer` | done | `agree_io_stderr` |
+| 16.6 | `files.read` / `files.write` | done | `agree_files_roundtrip` |
 | 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` unsupported |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
 | 17.6 | Export header | partial | `header_export_func`, `lucb header`; status-form fallible export later |

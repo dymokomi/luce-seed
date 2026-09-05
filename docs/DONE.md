@@ -2,11 +2,20 @@
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
 
+## Compile-time `luce` facts, `io`, and `files`
+
+`luce.location`, `luce.file`, `luce.line`, and `luce.function` are
+compile-time replacements at the use site (and at the call site when used
+as a default). `location()` is refused. `io.stdout()` / `io.stderr()` are
+`Writer`s over the C streams. `files.read` / `files.write` load and store
+whole files through the current allocator. Evidence: `agree_location`,
+`agree_io_stderr`, `agree_files_roundtrip`.
+
 ## Base coverage — aliases, func values, tuples
 
 Type aliases, `func(A, B) -> R` types and function values, capture-free
 lambdas, `discard`, default parameters (including named skip and
-`location()` at the call site), tuple expressions and multiple results,
+`luce.location` at the call site), tuple expressions and multiple results,
 match-expression C emit, and `errdefer` C emit on the failure path.
 Interpreter and C backend agree. Evidence: `tests/agree_test.cpp`,
 `tests/eval_test.cpp`, `tests/check_test.cpp`, `tests/parse_test.cpp`.
@@ -47,7 +56,7 @@ so it can agree with the C backend. `out` parameters, `luce bind`, and
 
 Nominal `implements`, two-word interface views with a vtable, builtin
 `Writer` and `Location`, `print(f"...")`, `format(buffer, fmt) -> str!`,
-`fmt`, and `location()`. Compiler Display covers scalars and `str`.
+`fmt`, and `luce.location`. Compiler Display covers scalars and `str`.
 Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 
 ## M11 — Generics

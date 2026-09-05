@@ -118,6 +118,11 @@ static bool agrees(const char* text) {
                      both.native.out.c_str());
         return false;
     }
+    if (both.interp.err != both.native.err) {
+        std::fprintf(stderr, "    stderr mismatch\n    interp: %s    native: %s",
+                     both.interp.err.c_str(), both.native.err.c_str());
+        return false;
+    }
     return true;
 }
 
@@ -523,8 +528,33 @@ TEST(agree_format) {
 
 TEST(agree_location) {
     CHECK(agrees("pub func answer() -> i64:\n"
-                 "    let loc = location()\n"
+                 "    let loc = luce.location\n"
                  "    return i64(loc.line)\n"));
+}
+
+TEST(agree_luce_file) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    return i64(luce.file.length)\n"));
+}
+
+TEST(agree_location_default) {
+    CHECK(agrees("func log(at: Location = luce.location) -> i64:\n"
+                 "    return i64(at.line)\n"
+                 "pub func answer() -> i64:\n"
+                 "    return log()\n"));
+}
+
+TEST(agree_io_stderr) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    let n = try io.stderr().write(\"e\".bytes)\n"
+                 "    return i64(n)\n"));
+}
+
+TEST(agree_files_roundtrip) {
+    CHECK(agrees("pub func answer() -> i64!:\n"
+                 "    try files.write(\"/tmp/lucb_rt.txt\", \"hi\".bytes)\n"
+                 "    let b = try files.read(\"/tmp/lucb_rt.txt\")\n"
+                 "    return i64(b.length)\n"));
 }
 
 TEST(agree_generic_id) {

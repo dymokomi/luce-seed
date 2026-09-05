@@ -28,7 +28,7 @@ Each chapter states its rules first, then the reasons under the heading **Why.**
 
 Code in this document is Base source unless marked otherwise. A fenced block marked `c` is C, shown for comparison.
 
-Builtin names are single words. The language's own operations are keywords (`new`, `alloc`, `free`, `with`), operators (`+%`, `+?`), C's words (`sizeof`, `offsetof`), or one-word core functions (`format`, `location`, `assert`). A compound name such as `format_into` never appears in the builtin surface; user code may name things as it likes.
+Builtin names are single words. The language's own operations are keywords (`new`, `alloc`, `free`, `with`), operators (`+%`, `+?`), C's words (`sizeof`, `offsetof`), or one-word core functions (`format`, `assert`). Compile-time source facts live on the `luce` module (`luce.location`, `luce.file`, `luce.line`, `luce.function`) and are replaced at the use site, not called. A compound name such as `format_into` never appears in the builtin surface; user code may name things as it likes.
 
 ### 1.2 What it looks like
 
@@ -172,7 +172,7 @@ Types, interfaces, and unions are `PascalCase`; functions, methods, bindings, fi
 
 Names resolve lexically. A module's declarations share one namespace and are order-independent. Members of a type have their own namespace. Locals are sequential; use before declaration is rejected. A local may not shadow another visible local, parameter, or imported name; renaming is the repair. A loop, `catch`, `if let`, or `match` binding owns its nested scope. A loop label (§8.5) lives in its own namespace.
 
-The compiler-known core namespace cannot be redeclared: `assert`, `discard`, `error`, `trap`, `hash`, `print`, `format`, `location`, `sizeof`, `alignof`, `offsetof`, `hex`, and the core type names. These parse as ordinary calls; only their checked types and semantics are special.
+The compiler-known core namespace cannot be redeclared: `assert`, `discard`, `error`, `trap`, `hash`, `print`, `format`, `sizeof`, `alignof`, `offsetof`, `hex`, the `luce` / `io` / `files` / `memory` / `c` modules, and the core type names. Calls such as `sizeof` parse as ordinary calls; only their checked types and semantics are special. `luce.location` and its pieces are not calls: they are compile-time replacements.
 
 **Why.** No shadowing removes a refactoring hazard and keeps every diagnostic that names a binding unambiguous. Making `sizeof` a core name rather than a keyword keeps the grammar small: it is a call whose argument may be a type.
 
@@ -460,7 +460,7 @@ A module may declare `var` at top level. It is zero before `main` runs, or holds
 
 ### 6.4 Constant expressions
 
-A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; arithmetic, bit, comparison, and cast operators on constants; array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`.
+A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; `luce.location`, `luce.file`, `luce.line`, and `luce.function`; arithmetic, bit, comparison, and cast operators on constants; array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`. `luce.location` (and its pieces) expand to the file, line, and function of the use site; when used as a default argument they expand at the call site.
 
 ### 6.5 Assignment
 
@@ -760,7 +760,7 @@ pub func clamp(value: f64, minimum: f64, maximum: f64) -> f64:
 func render(scene: Scene*, samples: u32 = 64, denoise: bool = true) -> Image!:
     ...
 
-func log(level: Level, message: fmt, at: Location = location()):
+func log(level: Level, message: fmt, at: Location = luce.location):
     io.stderr().write(f"{at.file}:{at.line}: {message}\n")
 
 let image = try render(&scene, samples = 256, denoise = false)
@@ -768,7 +768,7 @@ log(.warn, f"lost {count} packets")
 ```
 
 - Parameter types and every non-`unit` result are explicit. A missing `->` means `unit`. A fallible function that returns nothing is written `-> !`, the short form of `-> unit!`; both are accepted.
-- Arguments are positional or named with `name = value`; positional ones come first. A default is a constant expression embedded at the call site, or the call `location()`, which is evaluated at the call site and yields the caller's `Location`: `file`, `line`, and `function`, all `str` or `u32`. Duplicate, unknown, and missing arguments are compile errors.
+- Arguments are positional or named with `name = value`; positional ones come first. A default is a constant expression embedded at the call site. `luce.location` is a compile-time `Location` (`file` and `function` as `str`, `line` as `u32`); as a default it expands at the call site, which is how a log records the caller without a macro. Duplicate, unknown, and missing arguments are compile errors.
 - A parameter of type `fmt` accepts a formatted string or a `str`. Inside the function it may be written to a `Writer`, passed to `print` or `format`, or passed on to another `fmt` parameter, and nothing else: it cannot be stored, returned, or compared. It is lowered as a pointer to the caller's field values beside a generated formatting function, with no allocation. This is what makes a logging function possible without a macro.
 - One scope holds at most one callable with a given name: no overloading. Alternatives get semantic names: `Image.open`, `Image.decode`.
 - No variadic Base functions in this revision (§20). Calls to variadic C functions are §17.2.
@@ -777,7 +777,7 @@ log(.warn, f"lost {count} packets")
 
 **Why `=` for named arguments.** `:` already means "has this type" everywhere in the language. Using it for "takes this value" would put two relations behind one symbol at exactly the two places a reader confuses them.
 
-**Why `fmt` and `location`.** Function-like macros in C exist for two things above all: a logging call that takes a format string and forwards it, and a check that reports its own file and line. A parameter type that carries a formatted string without materialising it, and a default argument evaluated at the call site, cover both without a preprocessor.
+**Why `fmt` and `luce.location`.** Function-like macros in C exist for two things above all: a logging call that takes a format string and forwards it, and a check that reports its own file and line. A parameter type that carries a formatted string without materialising it, and a compile-time source location expanded at the use site, cover both without a preprocessor. `location()` as a fake function would have been a runtime-shaped lie about a fact the compiler already knows.
 
 ### 9.2 Parameters and the calling convention
 
@@ -1579,7 +1579,7 @@ A Base executable links a startup shim and a trap reporter and no Luce runtime (
 
 Absent from Base, each with the reason it is not a loss:
 
-- **The preprocessor, conditional compilation, macros.** Generics, constants, per-target modules, `asm ARCH`, `fmt` parameters, `location()`, and `luce bind` cover every use.
+- **The preprocessor, conditional compilation, macros.** Generics, constants, per-target modules, `asm ARCH`, `fmt` parameters, `luce.location`, and `luce bind` cover every use.
 - **Implicit narrowing, signedness change, and integer-float conversion.** These change values; the one implicit conversion, same-signedness widening, cannot.
 - **`NULL` and nullable-by-default pointers.** `T*?`.
 - **`->`.** Auto-dereference on `.`.
@@ -1623,7 +1623,7 @@ function_sig    = [ "mutating" ], "func", IDENT, [ generic_params ],
 generic_params  = "[", generic_param, { ",", generic_param }, [ "," ], "]" ;
 generic_param   = TYPE_IDENT, [ ":", interface_type, { "&", interface_type } ] ;
 parameter_list  = "(", [ parameter, { ",", parameter }, [ "," ] ], ")" ;
-parameter       = IDENT, ":", [ "noalias" ], type, [ "=", ( constant_expression | "location", "(", ")" ) ] ;
+parameter       = IDENT, ":", [ "noalias" ], type, [ "=", constant_expression ] ;
 result_clause   = [ "->", ( type | "!" ) ] ;
 
 implements_clause
@@ -1817,7 +1817,7 @@ _Thread_local int t;         thread_local var t: i32
 #ifdef __x86_64__            asm x86_64: ... / per-target modules
 printf("%d\n", n)            print(f"{n}")
 LOG("x=%d", x) (macro)       log(f"x={x}")   with a `fmt` parameter
-__FILE__, __LINE__           location()
+__FILE__, __LINE__           luce.file, luce.line, luce.location
 _Atomic int n; n++;          var n: @i32; n += 1
 union { int i; float f; }    union Value: / integer: i32 / real: f32
 __attribute__((noreturn))    -> never
@@ -2227,7 +2227,7 @@ func describe(bytes: usize, buffer: u8[]) -> str!:
         return try format(buffer, f"{bytes >> 10} KiB")
     return try format(buffer, f"{bytes} B")
 
-func log(message: fmt, at: Location = location()):
+func log(message: fmt, at: Location = luce.location):
     discard(io.stderr().write(f"{at.file}:{at.line}: {message}\n") catch failure: recover 0)
 
 pub func main(arguments: str[]) -> i32!:

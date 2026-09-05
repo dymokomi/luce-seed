@@ -608,3 +608,16 @@ TEST(check_func_no_zero) {
                     "    return 0\n",
                     "lucb.check.type"));
 }
+
+TEST(check_location_call_rejected) {
+    CHECK(check_has("pub func answer() -> i64:\n"
+                    "    let loc = location()\n"
+                    "    return i64(loc.line)\n",
+                    "lucb.check.name"));
+}
+
+TEST(check_luce_location_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n"
+                   "    let loc = luce.location\n"
+                   "    return i64(loc.line)\n"));
+}

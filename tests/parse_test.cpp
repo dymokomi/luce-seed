@@ -203,7 +203,7 @@ TEST(parse_discard) {
 }
 
 TEST(parse_default_args) {
-    Parsed p("func f(n: i64 = 1, at: Location = location()) -> i64:\n    return n\n");
+    Parsed p("func f(n: i64 = 1, at: Location = luce.location) -> i64:\n    return n\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("\"location\"") != std::string::npos);
 }

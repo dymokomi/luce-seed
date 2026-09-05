@@ -53,6 +53,7 @@ struct Checker {
     Type* ty_fmt = nullptr;
     Type* ty_writer = nullptr;
     Type* ty_location = nullptr;
+    Type* ty_c_mod = nullptr;
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
@@ -476,7 +477,6 @@ struct Checker {
     Type* check_formatted(Node* n);
     Type* check_print(Node* n);
     Type* check_format(Node* n);
-    Type* check_location(Node* n);
     Type* check_error(Node* n);
     Type* check_else(Node* n, Type* expected);
     Type* check_catch(Node* n, Type* expected);

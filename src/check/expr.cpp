@@ -894,7 +894,8 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
             return check_format(n);
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
-            return check_location(n);
+            fail_n(n, "lucb.check.name", "write `luce.location`");
+            return t_error();
         }
         if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
             return check_trap(n);
@@ -1235,14 +1236,6 @@ auto Checker::check_format(Node* n) -> Type* {
             fail_n(n, "lucb.check.type", "`format` needs a formatted string or `str`");
         }
         return intern_fail(t_str());
-    }
-
-auto Checker::check_location(Node* n) -> Type* {
-        n->resolved = nullptr;
-        if (count_args(n->body) != 0) {
-            fail_n(n, "lucb.check.call", "`location` takes no arguments");
-        }
-        return ty_location;
     }
 
 auto Checker::check_error(Node* n) -> Type* {
@@ -1617,21 +1610,9 @@ auto Checker::fill_call_args(Node* n, Node* params) -> void {
                 a->kind = NodeKind::Param;
                 a->text = p->text;
                 a->span = n->span;
-                bool loc = p->left->kind == NodeKind::Call && p->left->left != nullptr &&
-                           p->left->left->kind == NodeKind::Name &&
-                           p->left->left->text == "location";
-                if (loc) {
-                    Node* call = arena->make<Node>();
-                    call->kind = NodeKind::Call;
-                    call->span = n->span;
-                    Node* nm = arena->make<Node>();
-                    nm->kind = NodeKind::Name;
-                    nm->text = "location";
-                    nm->span = n->span;
-                    call->left = nm;
-                    a->left = call;
-                } else {
-                    a->left = clone_node(p->left);
+                a->left = clone_node(p->left);
+                if (a->left != nullptr && a->left->kind == NodeKind::Member) {
+                    a->left->span = n->span;
                 }
             }
             a->next = nullptr;
@@ -1901,6 +1882,14 @@ auto Checker::check_method_call(Node* n) -> Type* {
         Node* mem = n->left;
         Node* obj = mem->left;
         // Static: Point.origin() — obj is a type name.
+        if (obj != nullptr && obj->kind == NodeKind::Name && obj->text == "c" && ty_c_mod != nullptr &&
+            (mem->text == "stdin" || mem->text == "stdout" || mem->text == "stderr")) {
+            Node* d = pub_member(ty_c_mod->decl, mem->text);
+            mem->resolved = d;
+            obj->ty = ty_c_mod;
+            n->resolved = d;
+            return intern_ptr(ty_void, false, false, false);
+        }
         if (obj != nullptr && obj->kind == NodeKind::Name) {
             Binding* b = lookup(obj->text);
             if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
@@ -2161,7 +2150,8 @@ auto Checker::check_method_call(Node* n) -> Type* {
         if ((method->flags & FlagStatic) != 0) {
             fail_n(n, "lucb.check.call", "a static method is called on the type");
         }
-        bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const);
+        bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const) ||
+                      (recv != nullptr && recv->kind == TypeKind::Interface);
         if ((method->flags & FlagMutating) != 0 && !mut_ok) {
             fail_n(n, "lucb.check.mut", "a mutating method needs a `var` receiver");
         }
@@ -2254,6 +2244,9 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
                 n->resolved = d;
                 n->left->resolved = b->decl;
                 n->left->ty = b->type;
+                if (d->kind == NodeKind::Func || d->kind == NodeKind::ExternFunc) {
+                    return func_type_of(d);
+                }
                 return decl_type(d);
             }
             if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Enum) {
