@@ -1,7 +1,7 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.1**.
+This tree is **luce-seed-0.2**.
 
 ## Remaining audit items
 
