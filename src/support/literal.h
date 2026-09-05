@@ -30,6 +30,11 @@ ParsedInt parse_int_literal(string_view text);
 ParsedFloat parse_float_literal(string_view text);
 bool parse_char_literal(string_view text, uint32_t* out);
 
+// The bytes a string, byte, raw, or triple-quoted literal denotes (base.md §4.4):
+// delimiters and prefix removed, CRLF normalised and indentation stripped for
+// triple quotes, escapes decoded except in raw text.
+string decode_string_literal(string_view token);
+
 inline string unescape_format_braces(string_view s) {
     string o;
     o.reserve(s.size());

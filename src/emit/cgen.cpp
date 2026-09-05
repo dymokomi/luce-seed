@@ -333,26 +333,7 @@ string c_escape(string_view s) {
 }
 
 string decode_lit(string_view tok) {
-    if (tok.size() >= 2 && tok[0] == '"') {
-        tok = tok.substr(1, tok.size() - 2);
-    }
-    string out;
-    for (size_t i = 0; i < tok.size(); i++) {
-        if (tok[i] == '\\' && i + 1 < tok.size()) {
-            char e = tok[i + 1];
-            if (e == 'n') {
-                out += '\n';
-            } else if (e == 't') {
-                out += '\t';
-            } else {
-                out += e;
-            }
-            i++;
-        } else {
-            out += tok[i];
-        }
-    }
-    return out;
+    return decode_string_literal(tok);
 }
 
 } // namespace lucb

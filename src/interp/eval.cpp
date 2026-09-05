@@ -244,29 +244,7 @@ auto Interp::lvalue(Node* n) -> Value* {
 }
 
 auto Interp::decode_string(string_view tok) -> string {
-    // Strip quotes; keep simple escapes.
-    if (tok.size() >= 2 && tok[0] == '"') {
-        tok = tok.substr(1, tok.size() - 2);
-    }
-    string out;
-    for (size_t i = 0; i < tok.size(); i++) {
-        if (tok[i] == '\\' && i + 1 < tok.size()) {
-            char e = tok[i + 1];
-            if (e == 'n') {
-                out += '\n';
-            } else if (e == 't') {
-                out += '\t';
-            } else if (e == '\\' || e == '"') {
-                out += e;
-            } else {
-                out += e;
-            }
-            i++;
-        } else {
-            out += tok[i];
-        }
-    }
-    return out;
+    return decode_string_literal(tok);
 }
 
 auto Interp::show(const Value& v) -> string {
