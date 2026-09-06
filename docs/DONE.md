@@ -1,7 +1,38 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.4**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.5**, the seed `luce-base` is written against.
+
+## 0.5: the oracle audited
+
+An audit of both compilers against the specification found what the seed
+got wrong as the reference, and every finding is fixed and pinned:
+
+- Conformance is written `struct Name: Interface:`, with several interfaces
+  separated by commas; `implements` is no longer a word of the language.
+  The specification's grammar and every program follow.
+- `weak func` and `weak var` are the attributes of §9.8; only `weak` on a
+  field is full Luce. Attributes reach the C: `noinline`, `cold`, `naked`,
+  `used`, `weak`, and `section("...")` become `__attribute__`.
+- A `naked func` body is asm blocks only and is emitted as bare asm.
+- `value.bits()` and `f64.bits(u)` / `f32.bits(u)` (§7.5) in the checker,
+  the interpreter, and the C.
+- A labeled loop keeps its loop variable: the label has its own field on
+  the node instead of borrowing the variable's. Range loops accept
+  `break label` and `continue label` in the C.
+- A top-level `let` or `var` may end with a suite (a `match` or `catch`
+  block), and an `asm` header may span lines inside its parentheses.
+- A union reinterprets through the target's byte layout in the interpreter
+  (`interp/punning`): the member last reached through a member place is
+  encoded and the requested member decoded, for integers, floats, bools,
+  arrays, and nested records. A member written only through a pointer taken
+  earlier is not seen; the C backend is exact.
+- An untyped arithmetic expression, `(256 << 32) | 7`, takes the width of
+  the operand it meets, all the way down; a float literal adapts to an
+  `f32` operand; a floating literal is emitted with a point.
+- A method may be called on a value receiver, `Flags.a.name()` or a call's
+  result, in both executions; an integer-backed enum is forward-declared so
+  its methods can be.
 
 ## Found by luce-base's first two slices
 
