@@ -1099,6 +1099,9 @@ auto Checker::note_unused_local(const Binding& b) -> void {
     if (b.decl->text != b.name) {
         return; // a tuple binding's names are not pruned
     }
+    if (b.decl->left != nullptr && b.decl->left->kind == NodeKind::Else) {
+        return; // `let d = x else return ...` is a guard: the binding is the condition
+    }
     warn_n(b.decl, "lucb.warn.unused", "unused local `" + string(b.name) + "`");
     b.decl->flags |= FlagUnused;
 }
