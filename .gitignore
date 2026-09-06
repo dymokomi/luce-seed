@@ -6,3 +6,4 @@
 .DS_Store
 compile_commands.json
 CMakeUserPresets.json
+/build-dev/
