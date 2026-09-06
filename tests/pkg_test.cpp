@@ -95,7 +95,8 @@ TEST(check_unused_import) {
         load_program("testdata/programs/modules/imports/unused.lucb", program, arena, diagnostics));
     check_program(mods_of(program), arena, diagnostics,
                   "testdata/programs/modules/imports/unused.lucb");
-    CHECK(diagnostics.has_code("lucb.check.import"));
+    // an unused import is pruned by the checker, not reported (base.md §16.3)
+    CHECK(!diagnostics.has_code("lucb.check.import"));
 }
 
 TEST(eval_tests_pass_and_fail) {

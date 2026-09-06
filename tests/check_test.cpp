@@ -149,6 +149,10 @@ TEST(check_untyped_expression_against_typed_operand) {
     CHECK(check_ok("pub func answer() -> i64:\n    let w: u64 = 7\n    if w == 256 | 7:\n        return 1\n    if w == (256 << 1):\n        return 2\n    return 42\n"));
 }
 
+TEST(check_unused_import_is_pruned) {
+    CHECK(check_ok("import memory\npub func answer() -> i64:\n    return 42\n"));
+}
+
 TEST(check_escape_local) {
     CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
                     "lucb.check.escape"));

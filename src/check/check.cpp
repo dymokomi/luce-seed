@@ -820,18 +820,30 @@ auto Checker::bind_imports(Node* mod) -> void {
     }
 }
 
-auto Checker::check_unused_imports(Node* mod) -> void {
-    for (Node* d = mod->body; d != nullptr; d = d->next) {
+// An import nothing resolved through leaves the tree here, so nothing after the checker
+// sees it (base.md §16.3). A `from` import keeps only the names that were used.
+auto Checker::prune_unused_imports(Node* mod) -> void {
+    Node** link = &mod->body;
+    while (*link != nullptr) {
+        Node* d = *link;
+        bool drop = false;
         if (d->kind == NodeKind::Import) {
-            if ((d->flags & FlagImportUsed) == 0) {
-                fail_n(d, "lucb.check.import", "unused import `" + string(d->text) + "`");
-            }
+            drop = (d->flags & FlagImportUsed) == 0;
         } else if (d->kind == NodeKind::FromImport) {
-            for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
-                if ((nm->flags & FlagImportUsed) == 0) {
-                    fail_n(nm, "lucb.check.import", "unused import `" + string(nm->text) + "`");
+            Node** name_link = &d->body;
+            while (*name_link != nullptr) {
+                if (((*name_link)->flags & FlagImportUsed) == 0) {
+                    *name_link = (*name_link)->next;
+                } else {
+                    name_link = &(*name_link)->next;
                 }
             }
+            drop = d->body == nullptr;
+        }
+        if (drop) {
+            *link = d->next;
+        } else {
+            link = &d->next;
         }
     }
 }
@@ -951,7 +963,7 @@ auto Checker::check_module(Node* mod) -> void {
         append_node(&mod->body, pending_clones[i]);
     }
     pending_clones.clear();
-    check_unused_imports(mod);
+    prune_unused_imports(mod);
     pop_scope();
 }
 

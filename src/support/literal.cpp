@@ -272,6 +272,12 @@ static auto append_utf8(string& out, uint32_t cp) -> void {
 // Triple-quoted text: CRLF becomes LF, and every line loses as many leading
 // spaces as stand before the closing delimiter.
 static auto strip_triple(string_view body) -> string {
+    // a newline directly after the opening delimiter is not part of the text (§4.4)
+    if (body.size() >= 2 && body[0] == '\r' && body[1] == '\n') {
+        body.remove_prefix(2);
+    } else if (!body.empty() && body[0] == '\n') {
+        body.remove_prefix(1);
+    }
     string text;
     text.reserve(body.size());
     for (size_t i = 0; i < body.size(); i++) {

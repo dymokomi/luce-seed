@@ -301,7 +301,7 @@ struct Checker {
     void check_union(Node* un);
     void resolve_sig(Node* fn);
     void bind_imports(Node* mod);
-    void check_unused_imports(Node* mod);
+    void prune_unused_imports(Node* mod);
     void check_test(Node* t);
     void check_main(Node* fn);
     void check_module(Node* mod);

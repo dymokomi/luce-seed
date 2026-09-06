@@ -1,5 +1,5 @@
-# A triple-quoted literal drops its delimiters, normalises line ends, and
-# strips the indentation of its closing delimiter (base.md §4.4).
+# A triple-quoted literal drops its delimiters and the newline after the opening one,
+# normalises line ends, and strips the indentation of its closing delimiter (base.md §4.4).
 let flat: str = """
 abc
 def"""
@@ -13,9 +13,9 @@ func indented() -> str:
 
 pub func answer() -> i64:
     var score: i64 = 0
-    if flat == "\nabc\ndef":
+    if flat == "abc\ndef":
         score += 1
-    if indented() == "\none\n  two\n":
+    if indented() == "one\n  two\n":
         score += 10
     if "tab\there".length == 8:
         score += 100
