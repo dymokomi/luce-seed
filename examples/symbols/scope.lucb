@@ -5,7 +5,7 @@
 pub enum Kind as u8:
     variable = 1
     function = 2
-    type = 3
+    type_ = 3
 
 pub struct Symbol:
     pub var name: u32

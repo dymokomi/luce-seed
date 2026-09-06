@@ -495,7 +495,7 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
             }
             take();
         }
-        if (!at_ident()) {
+        if (!at(TokenKind::Name)) {
             fail("lucb.parse.expect", "expected a field name");
         } else {
             f->text = take().text;
@@ -562,7 +562,7 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
         }
         Token t = cur();
         Node* c = make(NodeKind::EnumCase, t.span);
-        if (!at_ident()) {
+        if (!at(TokenKind::Name)) {
             fail("lucb.parse.expect", "expected a case name");
             sync_line();
             continue;

@@ -24,7 +24,7 @@ pub func answer() -> i64!:
 
     # module scope
     try table.declare(ids[0], scope.Kind.function)
-    try table.declare(ids[4], scope.Kind.type)
+    try table.declare(ids[4], scope.Kind.type_)
     table.enter()
     try table.declare(ids[1], scope.Kind.variable)
     table.enter()
@@ -44,7 +44,7 @@ pub func answer() -> i64!:
     if let gone = table.resolve(ids[1]):
         return 3
     if let point = table.resolve(ids[4]):
-        if point.kind == scope.Kind.type:
+        if point.kind == scope.Kind.type_:
             score += 10                           # 10
     if names.lookup(ids[9]) != "zed":
         return 4

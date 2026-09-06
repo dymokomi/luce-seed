@@ -170,7 +170,7 @@ TEST(check_packed_addr_rejected) {
 TEST(check_none_case_rejected) {
     CHECK(check_has("enum E:\n    none\n"
                     "pub func answer() -> i64:\n    return 0\n",
-                    "lucb.check.type"));
+                    "lucb.parse.expect"));
 }
 
 TEST(check_u8_literal_ok) {
@@ -532,17 +532,13 @@ TEST(check_new_count_ok) {
                    "    return 0\n"));
 }
 
-TEST(check_keyword_enum_ok) {
-    CHECK(check_ok("enum TokenKind:\n"
-                   "    eof\n"
-                   "    func\n"
-                   "pub func answer() -> i64:\n"
-                   "    let t = TokenKind.func\n"
-                   "    match t:\n"
-                   "        .eof:\n"
-                   "            return 0\n"
-                   "        .func:\n"
-                   "            return 1\n"));
+TEST(check_keyword_enum_rejected) {
+    CHECK(check_has("enum TokenKind:\n"
+                    "    eof\n"
+                    "    func\n"
+                    "pub func answer() -> i64:\n"
+                    "    return 0\n",
+                    "lucb.parse.expect"));
 }
 
 TEST(check_type_alias_ok) {

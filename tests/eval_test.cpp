@@ -618,21 +618,6 @@ TEST(eval_slice_from_zero) {
     CHECK_EQ(r.answer, 3);
 }
 
-TEST(eval_keyword_enum) {
-    EvalResult r = run("enum TokenKind:\n"
-                       "    eof\n"
-                       "    func\n"
-                       "pub func answer() -> i64:\n"
-                       "    let t = TokenKind.func\n"
-                       "    match t:\n"
-                       "        .eof:\n"
-                       "            return 0\n"
-                       "        .func:\n"
-                       "            return 1\n");
-    CHECK(r.ok);
-    CHECK_EQ(r.answer, 1);
-}
-
 TEST(eval_field_default) {
     EvalResult r = run("struct Style:\n"
                        "    var width: i64 = 1\n"

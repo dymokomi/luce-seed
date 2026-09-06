@@ -1117,19 +1117,6 @@ TEST(agree_escape_global) {
                  "    return *addr()\n"));
 }
 
-TEST(agree_keyword_enum) {
-    CHECK(agrees("enum TokenKind:\n"
-                 "    eof\n"
-                 "    func\n"
-                 "pub func answer() -> i64:\n"
-                 "    let t = TokenKind.func\n"
-                 "    match t:\n"
-                 "        .eof:\n"
-                 "            return 0\n"
-                 "        .func:\n"
-                 "            return 1\n"));
-}
-
 TEST(agree_sizeof_ptr) {
     CHECK(agrees("struct Node:\n"
                  "    var n: i64\n"

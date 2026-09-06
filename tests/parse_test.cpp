@@ -331,6 +331,16 @@ TEST(parse_enum_as_integer) {
     CHECK(p.dump().find("(enum \"Access\"") != std::string::npos);
 }
 
+TEST(parse_keyword_is_not_a_case_name) {
+    Parsed p("enum Kind:\n    func\n    struct_\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
+TEST(parse_keyword_is_not_a_field_name) {
+    Parsed p("struct Node:\n    var type: i64\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
 TEST(parse_goto_is_reserved) {
     Parsed p("func f():\n    goto done\n");
     CHECK(p.has("lucb.parse.reserved"));
@@ -424,12 +434,6 @@ TEST(parse_import_not_top) {
 TEST(parse_const_without_star) {
     Parsed p("func f(x: const i64) -> i64:\n    return 0\n");
     CHECK(p.has("lucb.parse.type"));
-}
-
-TEST(parse_field_named_type) {
-    Parsed p("struct Node:\n    var type: i64\nfunc f() -> i64:\n    return 0\n");
-    CHECK(p.diagnostics.empty());
-    CHECK(p.dump().find("(field \"type\"") != std::string::npos);
 }
 
 TEST(lex_asm_body_is_raw) {
