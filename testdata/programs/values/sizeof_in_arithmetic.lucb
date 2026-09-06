@@ -1,0 +1,17 @@
+## `sizeof` and `alignof` of a type name in arithmetic keep their size: a scalar type
+## name is a type reference, so `n * sizeof(str)` is the right number of bytes, not `n`.
+pub func answer() -> i64:
+    var total: i64 = 0
+    total += (i64)(sizeof(str))
+    total += (i64)(2 * sizeof(str))
+    total += (i64)(sizeof(str) * 3)
+    total += (i64)((4 if true else 1) * sizeof(str))
+    total += (i64)(sizeof(u64) + sizeof(u32))
+    var room = try_room(4)
+    total += (i64)room
+    return total - 194
+
+## The bytes a `str[N]` needs, the way an argument vector is sized.
+func try_room(count: usize) -> usize:
+    return (count if count > 0 else 1) * sizeof(str)
+# answer: 42
