@@ -198,6 +198,7 @@ struct Checker {
     void desugar_iterable_for(Node* n);
     Type* display_iface();
     Type* extern_result(Node* fn);
+    void check_asm_references(Node* n);
     bool displays_itself(Type* t);
     void display_through_sink(Node* field);
     Node* syn_call(Node* receiver, const char* method, Span span);

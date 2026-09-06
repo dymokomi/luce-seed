@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.14**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.15**, the seed `luce-base` is written against.
+
+## 0.15: `reg` operands and `{name}` in assembly text
+
+A `reg` operand of an `asm` block leaves the register to the compiler, and
+`{name}` in the text stands for the register chosen for the `reg` operand
+whose expression is the name `name` (§8.9). The C emitter makes such an
+operand a named one, `[name] "r"(...)`, and spells `{name}` as `%[name]`;
+the checker refuses a `{name}` that names no `reg` operand
+(`check_asm_references`). `testdata/programs/values/asm_reg_operands.lucb`
+is proven by the C build; `tests/check_test.cpp` pins the rule.
 
 ## 0.14: an extern's `out` parameters are extra results
 

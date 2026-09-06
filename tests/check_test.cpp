@@ -386,6 +386,18 @@ TEST(check_generic_interface_conformance) {
                    "pub func answer() -> i64:\n    return 42\n"));
 }
 
+// `{name}` in an asm block's text names a `reg` operand whose expression is that name (§8.9).
+TEST(check_asm_reg_references) {
+    CHECK(check_ok("func f(a: u64) -> u64:\n    var out: u64 = 0\n    asm arm64(in(reg) a, out(reg) out):\n        mov {out}, {a}\n    return out\n"
+                   "pub func answer() -> i64:\n    return 42\n"));
+    CHECK(check_has("func f(a: u64) -> u64:\n    var out: u64 = 0\n    asm arm64(in(reg) a, out(reg) out):\n        mov {out}, {missing}\n    return out\n"
+                    "pub func answer() -> i64:\n    return 42\n",
+                    "lucb.check.asm"));
+    CHECK(check_has("func f(a: u64) -> u64:\n    var out: u64 = 0\n    asm arm64(in(\"x1\") a, out(reg) out):\n        mov {out}, {a}\n    return out\n"
+                    "pub func answer() -> i64:\n    return 42\n",
+                    "lucb.check.asm"));
+}
+
 // An extern's `out` parameters take no argument and are answered after the declared result,
 // as a tuple when there is more than one value (§17.1); an `export` cannot have them.
 TEST(check_out_parameters) {

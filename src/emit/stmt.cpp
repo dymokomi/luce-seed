@@ -449,12 +449,19 @@ auto Emitter::emit_stmt(Node* n) -> void {
             } else {
                 line("register " + ty + " " + rn + " asm(\"" + place + "\");");
             }
+            // a `reg` operand whose expression is a name is the named operand `[name]`, which
+            // the text reaches as `{name}` (§8.9)
+            string label;
+            if ((place == "reg" || place.empty()) && op->left != nullptr &&
+                op->left->kind == NodeKind::Name) {
+                label = "[" + string(op->left->text) + "] ";
+            }
             if (is_out) {
                 if (!first_out) {
                     outs += ", ";
                 }
                 first_out = false;
-                outs += string(is_in ? "\"+r\"(" : "\"=r\"(") + rn + ")";
+                outs += label + string(is_in ? "\"+r\"(" : "\"=r\"(") + rn + ")";
                 if (op->left != nullptr) {
                     out_lhs.push_back(emit_expr(op->left));
                     out_rhs.push_back(rn);
@@ -464,13 +471,20 @@ auto Emitter::emit_stmt(Node* n) -> void {
                     ins += ", ";
                 }
                 first_in = false;
-                ins += "\"r\"(" + rn + ")";
+                ins += label + "\"r\"(" + rn + ")";
             }
         }
         string tmpl = body;
         string escaped;
+        bool in_name = false;
         for (size_t i = 0; i < tmpl.size(); i++) {
-            if (tmpl[i] == '%') {
+            if (tmpl[i] == '{') {
+                escaped += "%[";
+                in_name = true;
+            } else if (tmpl[i] == '}' && in_name) {
+                escaped += "]";
+                in_name = false;
+            } else if (tmpl[i] == '%') {
                 escaped += "%%";
             } else {
                 escaped += tmpl[i];

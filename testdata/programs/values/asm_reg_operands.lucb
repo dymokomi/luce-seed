@@ -1,0 +1,13 @@
+# answer: 40
+# oracle: none
+## `reg` operands of an asm block (§8.9): the compiler chooses the registers, and `{name}`
+## in the text is the one it chose for the operand whose expression is that name.
+func double_and_add(a: u64, b: u64) -> u64:
+    var out: u64 = 0
+    asm arm64(in(reg) a, in(reg) b, out(reg) out):
+        add {out}, {a}, {a}
+        add {out}, {out}, {b}
+    return out
+
+pub func answer() -> i64:
+    return (i64)double_and_add(19, 2)

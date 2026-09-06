@@ -430,6 +430,46 @@ auto Checker::check_asm(Node* n) -> void {
             }
         }
     }
+    check_asm_references(n);
+}
+
+// Whether asm block `n` has a `reg` operand whose expression is the name `name`.
+static bool asm_names_operand(Node* n, string_view name) {
+    for (Node* op = n->left; op != nullptr; op = op->next) {
+        string_view place = op->type != nullptr ? op->type->text : string_view{};
+        if (place.size() >= 2 && place.front() == '"') {
+            place = place.substr(1, place.size() - 2);
+        }
+        if (place == "reg" && op->left != nullptr && op->left->kind == NodeKind::Name &&
+            op->left->text == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// `{name}` in the text stands for the register chosen for the `reg` operand whose
+// expression is the name `name` (§8.9); anything else is an error.
+auto Checker::check_asm_references(Node* n) -> void {
+    for (Node* line = n->body; line != nullptr; line = line->next) {
+        string_view text = line->text;
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] != '{') {
+                continue;
+            }
+            size_t close = text.find('}', i);
+            if (close == string_view::npos) {
+                fail_n(line, "lucb.check.asm", "an unclosed `{` in assembly text");
+                return;
+            }
+            string_view name = text.substr(i + 1, close - i - 1);
+            if (!asm_names_operand(n, name)) {
+                fail_n(line, "lucb.check.asm",
+                       "`{" + string(name) + "}` in assembly text must name a `reg` operand");
+            }
+            i = close;
+        }
+    }
 }
 
 // True if a `break` anywhere under `n` could leave the enclosing loop.
