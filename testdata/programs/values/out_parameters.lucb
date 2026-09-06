@@ -1,0 +1,13 @@
+# answer: 40
+# oracle: none
+## An extern's `out` parameters are extra results (§17.1): `frexp` answers the mantissa and
+## writes the exponent, so the call answers the pair; `modf` has one `out` beside its result.
+import c
+
+extern func frexp(value: f64, out exponent: c.int) -> f64
+extern func modf(value: f64, out whole: f64) -> f64
+
+pub func answer() -> i64:
+    let (mantissa, exponent) = frexp(549755813888.0)
+    let (fraction, whole) = modf(2.5)
+    return i64(exponent) + i64(mantissa * 2.0) - 1 + i64(whole) - 2 + i64(fraction * 2.0) - 1

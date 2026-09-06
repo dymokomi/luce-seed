@@ -357,12 +357,6 @@ TEST(check_extern_str_rejected) {
                     "lucb.check.type"));
 }
 
-TEST(check_extern_out_unsupported) {
-    CHECK(check_has("extern func get(out n: i32) -> bool\n"
-                    "pub func answer() -> i64:\n"
-                    "    return 0\n",
-                    "lucb.check.unsupported"));
-}
 
 TEST(check_atomic_ok) {
     CHECK(check_ok("var hits: @u64\n"
@@ -390,6 +384,18 @@ TEST(check_generic_interface_conformance) {
                     "lucb.check.type"));
     CHECK(check_ok("from luce import Iterator\nstruct Ones: Iterator[u32]:\n    var n: u32\n    mutating func next() -> u32?:\n        return none\n"
                    "pub func answer() -> i64:\n    return 42\n"));
+}
+
+// An extern's `out` parameters take no argument and are answered after the declared result,
+// as a tuple when there is more than one value (§17.1); an `export` cannot have them.
+TEST(check_out_parameters) {
+    CHECK(check_ok("import c\nextern func frexp(value: f64, out exponent: c.int) -> f64\n"
+                   "pub func answer() -> i64:\n    let (m, e) = frexp(8.0)\n    return i64(e) + i64(m)\n"));
+    CHECK(check_ok("extern func modf(value: f64, out whole: f64) -> f64\n"
+                   "pub func answer() -> i64:\n    let (f, w) = modf(2.5)\n    return i64(f + w)\n"));
+    CHECK(check_has("extern func modf(value: f64, out whole: f64) -> f64\n"
+                    "pub func answer() -> i64:\n    var w: f64 = 0\n    let f = modf(2.5, w)\n    return i64(f)\n",
+                    "lucb.check.call"));
 }
 
 // A formatted string shows a struct only when it is `Display` (§14.4).

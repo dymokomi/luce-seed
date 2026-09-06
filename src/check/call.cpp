@@ -511,10 +511,15 @@ auto Checker::check_variadic_arg(Node* a) -> Type* {
 
 auto Checker::check_extern_call(Node* n, Node* fn) -> Type* {
     n->resolved = fn;
+    // an `out` parameter takes no argument: the callee writes it, and the call answers it
+    // beside the declared result (§17.1)
     int nparams = 0;
     int nfixed = 0;
     bool variadic = false;
     for (Node* p = fn->right; p != nullptr; p = p->next) {
+        if (p->flags & FlagOut) {
+            continue;
+        }
         nparams++;
         if (p->flags & FlagVariadic) {
             variadic = true;
@@ -534,6 +539,10 @@ auto Checker::check_extern_call(Node* n, Node* fn) -> Type* {
     Node* a = n->body;
     int i = 0;
     while (p != nullptr && a != nullptr && i < nfixed) {
+        if (p->flags & FlagOut) {
+            p = p->next;
+            continue;
+        }
         Type* at = check_expr(a->left, p->ty);
         if (!extern_arg_ok(at, p->ty, a->left)) {
             fail_n(a, "lucb.check.type",
@@ -548,11 +557,29 @@ auto Checker::check_extern_call(Node* n, Node* fn) -> Type* {
         check_variadic_arg(a);
         a = a->next;
     }
-    Type* result = fn->ty;
-    if (result == nullptr) {
-        result = t_unit();
+    return extern_result(fn);
+}
+
+// What a call of `fn` answers: its declared result, and after it every `out` parameter, as
+// a tuple when there is more than one value (§17.1).
+auto Checker::extern_result(Node* fn) -> Type* {
+    Type* declared = fn->ty != nullptr ? fn->ty : t_unit();
+    vector<Type*> parts;
+    if (declared->kind != TypeKind::Unit) {
+        parts.push_back(declared);
     }
-    return result;
+    for (Node* p = fn->right; p != nullptr; p = p->next) {
+        if (p->flags & FlagOut) {
+            parts.push_back(p->ty);
+        }
+    }
+    if (parts.empty()) {
+        return declared;
+    }
+    if (parts.size() == 1) {
+        return parts[0];
+    }
+    return intern_tup(parts.data(), static_cast<int>(parts.size()));
 }
 
 auto Checker::check_memory_copy(Node* n, string_view name) -> Type* {

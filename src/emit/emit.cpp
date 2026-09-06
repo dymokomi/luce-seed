@@ -230,6 +230,9 @@ auto Emitter::emit_decls(Node* mod) -> void {
                 }
                 first = false;
                 sig += c_type(p->ty);
+                if (p->flags & FlagOut) {
+                    sig += "*"; // written through, answered beside the result (§17.1)
+                }
             }
             if (variadic) {
                 if (!first) {

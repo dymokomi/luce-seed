@@ -103,15 +103,69 @@ auto Emitter::emit_direct_call(Node* fn, Node* owner, Node* args) -> string {
     return s;
 }
 
-auto Emitter::emit_extern_args(Node* n) -> string {
+bool has_out_params(Node* fn) {
+    for (Node* p = fn != nullptr ? fn->right : nullptr; p != nullptr; p = p->next) {
+        if (p->flags & FlagOut) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// `({ int32_t _lb_o1; double _lb_r = frexp(x, &_lb_o1); (tuple){ _lb_r, _lb_o1 }; })`: an
+// extern's `out` parameters are locals passed by address and answered after the declared
+// result (§17.1).
+auto Emitter::emit_extern_out_call(Node* n) -> string {
+    Node* fn = n->resolved;
+    int id = tmp();
+    string prefix = "_lb_o" + std::to_string(id) + "_";
+    string s = "({ ";
+    int k = 0;
+    for (Node* p = fn->right; p != nullptr; p = p->next) {
+        if (p->flags & FlagOut) {
+            s += c_type(p->ty) + " " + prefix + std::to_string(k++) + "; ";
+        }
+    }
+    bool has_result = fn->ty != nullptr && fn->ty->kind != TypeKind::Unit;
+    string result = "_lb_or" + std::to_string(id);
+    if (has_result) {
+        s += c_type(fn->ty) + " " + result + " = ";
+    }
+    s += func_ident(fn, nullptr) + "(" + emit_extern_args(n, prefix) + "); ";
+    vector<string> parts;
+    if (has_result) {
+        parts.push_back(result);
+    }
+    for (int i = 0; i < k; i++) {
+        parts.push_back(prefix + std::to_string(i));
+    }
+    if (parts.size() == 1) {
+        s += parts[0] + "; })";
+        return s;
+    }
+    s += "((" + c_type(n->ty) + "){ ";
+    for (size_t i = 0; i < parts.size(); i++) {
+        s += (i == 0 ? "" : ", ") + parts[i];
+    }
+    s += " }); })";
+    return s;
+}
+
+auto Emitter::emit_extern_args(Node* n, const string& out_prefix) -> string {
     string s;
     bool first = true;
+    int outs = 0;
     Node* p = n->resolved != nullptr ? n->resolved->right : nullptr;
-    for (Node* a = n->body; a != nullptr; a = a->next) {
+    for (Node* a = n->body; a != nullptr || (p != nullptr && (p->flags & FlagOut) != 0);) {
         if (!first) {
             s += ", ";
         }
         first = false;
+        if (p != nullptr && (p->flags & FlagOut) != 0) {
+            s += "&" + out_prefix + std::to_string(outs++);
+            p = p->next;
+            continue;
+        }
         Node* v = a->left;
         Type* pt = p != nullptr && (p->flags & FlagVariadic) == 0 ? p->ty : nullptr;
         if (v != nullptr && v->kind == NodeKind::Literal && v->op == TokenKind::StringLit &&
@@ -126,6 +180,7 @@ auto Emitter::emit_extern_args(Node* n) -> string {
         if (p != nullptr && (p->flags & FlagVariadic) == 0) {
             p = p->next;
         }
+        a = a->next;
     }
     return s;
 }
@@ -755,6 +810,9 @@ auto Emitter::emit_call(Node* n) -> string {
     if (n->resolved != nullptr &&
         (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
         string call;
+        if (n->resolved->kind == NodeKind::ExternFunc && has_out_params(n->resolved)) {
+            return emit_extern_out_call(n);
+        }
         if (n->resolved->kind == NodeKind::ExternFunc) {
             string name = func_ident(n->resolved, nullptr);
             string args = n->body != nullptr ? emit_extern_args(n) : emit_args(n->body);

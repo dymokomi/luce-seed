@@ -197,6 +197,7 @@ struct Checker {
     void bind_generic_params(Node* gen);
     void desugar_iterable_for(Node* n);
     Type* display_iface();
+    Type* extern_result(Node* fn);
     bool displays_itself(Type* t);
     void display_through_sink(Node* field);
     Node* syn_call(Node* receiver, const char* method, Span span);

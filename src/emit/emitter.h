@@ -124,7 +124,8 @@ struct Emitter {
     void emit_ifaces(Node* mod);
     string emit_as_cspan(Node* n);
     string emit_args(Node* args);
-    string emit_extern_args(Node* n);
+    string emit_extern_args(Node* n, const string& out_prefix = "");
+    string emit_extern_out_call(Node* n);
     string emit_call(Node* n);
     string emit_ctor(Node* n, Node* st);
     string emit_exhausted_lit(Type* payload);

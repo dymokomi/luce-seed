@@ -240,8 +240,8 @@ auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
         if (p->flags & FlagVariadic) {
             continue;
         }
-        if (p->flags & FlagOut) {
-            fail_n(p, "lucb.check.unsupported", "`out` parameters are not in this slice");
+        if ((p->flags & FlagOut) != 0 && exported) {
+            fail_n(p, "lucb.check.unsupported", "an `export` cannot have `out` parameters");
         }
         if (p->ty != nullptr && p->ty->kind == TypeKind::Str) {
             fail_n(p, "lucb.check.type", where);

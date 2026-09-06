@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.13**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.14**, the seed `luce-base` is written against.
+
+## 0.14: an extern's `out` parameters are extra results
+
+`extern func frexp(value: f64, out exponent: c.int) -> f64` is called as
+`let (mantissa, exponent) = frexp(x)` (§17.1): an `out` parameter takes no
+argument, the C emitter passes the address of a local for it, and the call
+answers the declared result followed by every `out` value, as a tuple when
+there is more than one (`extern_result`, `emit_extern_out_call`). The
+interpreter cannot call C, so `testdata/programs/values/out_parameters.lucb`
+is proven by the C build alone; `tests/check_test.cpp` pins the typing.
 
 ## 0.13: `for` consumes the Iterable protocol; generic interfaces
 
