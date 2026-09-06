@@ -674,8 +674,20 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
             dest->elem->kind != TypeKind::Unit && x.ptr != nullptr) {
             x.punned = true;
         }
+        // C text carried as an object pointer keeps its bytes and reads as non-null,
+        // so `(cstr)` can bring it back.
+        if (src != nullptr && src->kind == TypeKind::CStr && x.ptr == nullptr) {
+            static Value text_marker;
+            x.ptr = &text_marker;
+        }
         x.type = dest;
         x.kind = TypeKind::Pointer;
+        return x;
+    }
+    if (dest != nullptr && dest->kind == TypeKind::CStr && is_ptr(src)) {
+        x.type = dest;
+        x.kind = TypeKind::CStr;
+        x.ptr = nullptr;
         return x;
     }
     if (dest->kind == TypeKind::Str &&
