@@ -224,6 +224,15 @@ TEST(check_binding_forms_negative) {
     CHECK(check_has("pub func answer() -> i64:\n    let y = x + 1\n    let x = 41\n    return y\n", "lucb.check.name"));
 }
 
+TEST(check_core_names_are_not_declared) {
+    CHECK(check_has("enum Kind as u8:\n    i8 = 1\n    unit = 2\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("struct P:\n    var str: i64\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("pub func answer() -> i64:\n    let error = 1\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("func f(format: i64) -> i64:\n    return format\npub func answer() -> i64:\n    return f(42)\n", "lucb.check.shadow"));
+    CHECK(check_has("func trap() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_ok("enum Kind as u8:\n    i8_ = 1\n    unit_ = 2\nstruct P:\n    var text: i64\npub func answer() -> i64:\n    let c = 1\n    return 41 + c\n"));
+}
+
 TEST(check_escape_local) {
     CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
                     "lucb.check.escape"));

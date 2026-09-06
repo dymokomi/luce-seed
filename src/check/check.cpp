@@ -86,6 +86,9 @@ auto Checker::lookup(string_view name) -> Binding* {
 }
 
 auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src) -> bool {
+    if (import_src == nullptr && decl != nullptr && (decl->flags & FlagBuiltin) == 0) {
+        check_declared_name(decl, name);
+    }
     if (lookup(name) != nullptr) {
         fail_n(decl, "lucb.check.shadow", "this name is already in scope");
         return false;
@@ -166,16 +169,31 @@ auto Checker::set_from_local(string_view name, bool from_local) -> void {
     }
 }
 
+// The names of the language itself (base.md §3.5): the core functions and the core type
+// names. No declaration of any kind may take one. The reserved words are tokens and never
+// reach a declaration; the standard modules' names bind only where they are imported.
+static const char* const k_core_names[] = {
+    "assert", "discard", "error", "trap", "hash", "print", "format", "sizeof", "alignof",
+    "offsetof", "hex", "bin", "pad",
+    "bool", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize",
+    "f16", "f32", "f64", "char", "str", "cstr", "unit", "never", "void", "fmt",
+    "Error", "ErrorCode",
+};
+
 auto Checker::is_core_name(string_view name) -> bool {
-    return name == "print" || name == "assert" || name == "discard" || name == "error" ||
-           name == "trap" || name == "hash" || name == "format" || name == "sizeof" ||
-           name == "alignof" || name == "offsetof" || name == "hex" || name == "bin" ||
-           name == "pad" || named_scalar(name) != nullptr || name == "f16" || name == "cstr" ||
-           name == "fmt" || name == "FixedBuffer" || name == "memory" || name == "fmt" ||
-           name == "format" || name == "luce" || name == "io" || name == "files" ||
-           name == "process" || name == "Writer" || name == "Location" || name == "Error" ||
-           name == "ErrorCode" || name == "thread" || name == "sync" || name == "atomic" ||
-           name == "c";
+    for (const char* n : k_core_names) {
+        if (name == n) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A declared name of any kind is rejected when it is a core name.
+auto Checker::check_declared_name(Node* n, string_view name) -> void {
+    if (n != nullptr && is_core_name(name)) {
+        fail_n(n, "lucb.check.shadow", "`" + string(name) + "` belongs to the language; a declaration cannot take it");
+    }
 }
 
 auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
@@ -321,6 +339,7 @@ auto Checker::check_struct(Node* st) -> void {
     }
     for (Node* m = st->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
+            check_declared_name(m, m->text);
             if (struct_member(st, m->text, NodeKind::Func) != nullptr) {
                 fail_n(m, "lucb.check.shadow", "a method already uses this name");
             }
@@ -646,6 +665,7 @@ auto Checker::check_enum(Node* en) -> void {
     bool saw_value = false;
     for (Node* m = en->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::EnumCase) {
+            check_declared_name(m, m->text);
             if (m->body != nullptr) {
                 saw_payload = true;
             }
