@@ -127,6 +127,28 @@ TEST(check_escape_str_of_local) {
     CHECK(check_has("func leak() -> str:\n    var b: u8[16]\n    return (str)b[..<4]\n", "lucb.check.escape"));
 }
 
+TEST(check_weak_is_a_base_attribute) {
+    CHECK(check_ok("weak func f() -> i64:\n    return 1\nweak var g: i64 = 2\npub func answer() -> i64:\n    return f() + g\n"));
+}
+
+TEST(check_naked_body_is_asm_only) {
+    CHECK(check_ok("naked func f() -> i64:\n    asm arm64:\n        mov x0, #42\n        ret\npub func answer() -> i64:\n    return f()\n"));
+    CHECK(check_has("naked func f() -> i64:\n    return 1\n", "lucb.check.naked"));
+}
+
+TEST(check_float_bits) {
+    CHECK(check_ok("pub func answer() -> i64:\n    let x: f64 = 1.5\n    let b = x.bits()\n    let y = f64.bits(b)\n    let s: f32 = 2.0\n    let sb: u32 = s.bits()\n    return (i64)b + (i64)sb + (i64)f32.bits(sb)\n"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x: f64 = 1.5\n    return (i64)x.bits(1)\n", "lucb.check.call"));
+}
+
+TEST(check_labeled_loop_keeps_its_variable) {
+    CHECK(check_ok("pub func answer() -> i64:\n    var t: i64 = 0\n    outer: for i in 0..<3:\n        for j in 0..<3:\n            if i == j: continue outer\n            t += i\n    return t\n"));
+}
+
+TEST(check_untyped_expression_against_typed_operand) {
+    CHECK(check_ok("pub func answer() -> i64:\n    let w: u64 = 7\n    if w == 256 | 7:\n        return 1\n    if w == (256 << 1):\n        return 2\n    return 42\n"));
+}
+
 TEST(check_escape_local) {
     CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
                     "lucb.check.escape"));

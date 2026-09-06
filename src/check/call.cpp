@@ -653,6 +653,10 @@ auto Checker::check_method_call(Node* n) -> Type* {
         n->resolved = d;
         return intern_ptr(ty_void, false, false, false);
     }
+    if (obj != nullptr && obj->kind == NodeKind::Name && mem->text == "bits" &&
+        (obj->text == "f32" || obj->text == "f64")) {
+        return check_float_from_bits(n, obj);
+    }
     if (obj != nullptr && obj->kind == NodeKind::Name) {
         Binding* b = lookup(obj->text);
         if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
@@ -934,6 +938,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
         n->resolved = method;
         return check_func_call(n, method, obj);
     }
+    if (mem->text == "bits" && is_float(recv)) {
+        return check_float_bits(n, obj);
+    }
     if (mem->text == "compare" && comparable_type(recv)) {
         if (count_args(n->body) != 1) {
             fail_n(n, "lucb.check.call", "`compare` takes one argument");
@@ -1185,6 +1192,42 @@ auto Checker::imported_owner(Node* st) -> bool {
     }
     Binding* b = lookup(st->text);
     return b != nullptr && b->import_src != nullptr;
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// `value.bits()`: the IEEE bits of a float as the unsigned integer of its width (§7.5).
+auto Checker::check_float_bits(Node* n, Node* obj) -> Type* {
+    Node* mem = n->left;
+    if (count_args(n->body) != 0) {
+        fail_n(n, "lucb.check.call", "`bits` takes no argument");
+    }
+    n->resolved = nullptr;
+    mem->resolved = nullptr;
+    return named_scalar(obj->ty != nullptr && obj->ty->kind == TypeKind::F32 ? "u32" : "u64");
+}
+
+// `f64.bits(u)` and `f32.bits(u)`: a float built from its bits (§7.5).
+auto Checker::check_float_from_bits(Node* n, Node* obj) -> Type* {
+    Node* mem = n->left;
+    Type* result = named_scalar(obj->text);
+    Type* want = named_scalar(obj->text == "f32" ? "u32" : "u64");
+    obj->ty = result;
+    if (count_args(n->body) != 1) {
+        fail_n(n, "lucb.check.call", "`bits` takes the integer to reinterpret");
+        return result;
+    }
+    Type* got = check_expr(n->body->left, want);
+    if (!type_eq(got, want) && got->kind != TypeKind::UntypedInt) {
+        fail_n(n->body->left, "lucb.check.type", "`bits` takes `" + string(obj->text == "f32" ? "u32" : "u64") + "`");
+    } else if (got->kind == TypeKind::UntypedInt) {
+        n->body->left->ty = coerce(n->body->left, got, want);
+    }
+    n->resolved = nullptr;
+    mem->resolved = nullptr;
+    return result;
 }
 
 } // namespace lucb

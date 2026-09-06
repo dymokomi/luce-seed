@@ -566,6 +566,19 @@ auto Checker::is_bit(TokenKind op) -> bool {
            op == TokenKind::LtLt || op == TokenKind::GtGt;
 }
 
+// An unsuffixed float literal, which adapts to an `f32` operand (§7.5).
+static bool is_plain_float_lit(Node* n) {
+    if (n == nullptr || n->kind != NodeKind::Literal || n->op != TokenKind::FloatLit) {
+        return false;
+    }
+    return parse_float_literal(n->text).suffix.empty();
+}
+
+static bool is_checked_arith(TokenKind op) {
+    return op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+           op == TokenKind::StarQuestion;
+}
+
 static bool is_ascii_char_lit(Node* n) {
     if (n == nullptr || n->kind != NodeKind::Literal || n->op != TokenKind::CharLit) {
         return false;
@@ -603,6 +616,14 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
     // base.md §7.5: an ASCII character literal adapts to a `u8` operand, so
     // `byte == 'a'`, `byte < '0'`, and `byte - '0'` read as bytes.
     if (L != nullptr && R != nullptr) {
+        if (L->kind == TypeKind::F32 && R->kind == TypeKind::F64 && is_plain_float_lit(n->right)) {
+            n->right->ty = ty_f32;
+            R = ty_f32;
+        } else if (R->kind == TypeKind::F32 && L->kind == TypeKind::F64 &&
+                   is_plain_float_lit(n->left)) {
+            n->left->ty = ty_f32;
+            L = ty_f32;
+        }
         if (L->kind == TypeKind::U8 && R->kind == TypeKind::Char && is_ascii_char_lit(n->right)) {
             n->right->ty = ty_u8;
             R = ty_u8;
@@ -752,8 +773,10 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         return float_bits(L) >= float_bits(R) ? L : R;
     }
     if (is_arith(op) || is_bit(op)) {
-        if ((op == TokenKind::LtLt || op == TokenKind::GtGt) && L != nullptr &&
-            L->kind == TypeKind::UntypedInt && R != nullptr && R->kind == TypeKind::UntypedInt) {
+        // two untyped operands stay untyped, so `w == 256 | 7` and `(256 << 32) | 7` take the
+        // width of the operand they meet (§7.5); a checked form needs a concrete type
+        if (L != nullptr && L->kind == TypeKind::UntypedInt && R != nullptr &&
+            R->kind == TypeKind::UntypedInt && expected == nullptr && !is_checked_arith(op)) {
             return t_untyped();
         }
         Type* u = unify_int(L, R);

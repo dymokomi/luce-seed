@@ -207,6 +207,10 @@ struct Checker {
     Type* check_generic_call(Node* n, Node* fn, Node* recv);
     Type* check_generic_ctor(Node* n, Node* st);
     void mark_local(Node* n);
+    void check_naked_body(Node* fn);
+    void propagate_untyped(Node* n, Type* dest);
+    Type* check_float_bits(Node* n, Node* obj);
+    Type* check_float_from_bits(Node* n, Node* obj);
     bool is_local(Node* n);
     void fail(Span span, const char* code, const string& message);
     void fail_n(Node* n, const char* code, const string& message);

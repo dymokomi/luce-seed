@@ -20,6 +20,22 @@
 
 namespace lucb {
 
+// A `naked func` owns its frame: the body is asm blocks and nothing else (§9.8), and the
+// blocks are what returns, so the every-path rule does not apply.
+auto Checker::check_naked_body(Node* fn) -> void {
+    Node* body = fn->body;
+    Node* first = body != nullptr && body->kind == NodeKind::Block ? body->body : body;
+    if (first == nullptr) {
+        fail_n(fn, "lucb.check.naked", "a naked function's body is one asm block per architecture");
+        return;
+    }
+    for (Node* s = first; s != nullptr; s = s->next) {
+        if (s->kind != NodeKind::Asm) {
+            fail_n(s, "lucb.check.naked", "a naked function's body is asm blocks only");
+        }
+    }
+}
+
 auto Checker::mark_local(Node* n) -> void {
     if (n != nullptr) {
         n->flags |= FlagLocal;
@@ -269,7 +285,9 @@ auto Checker::check_func(Node* fn, Node* owner) -> void {
     }
     check_params(fn);
     check_stmt(fn->body);
-    if (!type_eq(result, t_unit()) && !always_returns(fn->body)) {
+    if ((fn->flags & FlagNaked) != 0) {
+        check_naked_body(fn);
+    } else if (!type_eq(result, t_unit()) && !always_returns(fn->body)) {
         fail_n(fn, "lucb.check.return", "this function must return a value on every path");
     }
     pop_scope();

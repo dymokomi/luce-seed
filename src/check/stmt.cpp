@@ -170,7 +170,7 @@ auto Checker::check_stmt(Node* n) -> void {
             }
             Type* payload =
                 is_opt(ot) ? ot->elem : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
-            loop_labels.push_back(n->text);
+            loop_labels.push_back(n->label);
             push_scope();
             if (let != nullptr) {
                 bind(let->text, payload, false, let);
@@ -183,7 +183,7 @@ auto Checker::check_stmt(Node* n) -> void {
             if (!type_eq(c, t_bool())) {
                 fail_n(n, "lucb.check.type", "a condition must be `bool`");
             }
-            loop_labels.push_back(n->text);
+            loop_labels.push_back(n->label);
             check_stmt(n->body);
             loop_labels.pop_back();
         }
@@ -269,7 +269,7 @@ auto Checker::check_stmt(Node* n) -> void {
             }
         }
         n->ty = elem;
-        loop_labels.push_back(n->text);
+        loop_labels.push_back(n->label);
         push_scope();
         bind(n->text, elem, false, n);
         check_stmt(n->body);

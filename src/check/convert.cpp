@@ -35,6 +35,21 @@ auto Checker::int_fits(uint64_t mag, bool neg, Type* dest) -> bool {
     return mag <= limit;
 }
 
+// An untyped arithmetic expression, `(256 << 32) | 7`, is typed as a whole when it meets a
+// concrete type; every untyped node under it takes that type too, so the backends see no
+// untyped operand (§7.5).
+auto Checker::propagate_untyped(Node* n, Type* dest) -> void {
+    if (n == nullptr || n->ty == nullptr || n->ty->kind != TypeKind::UntypedInt) {
+        return;
+    }
+    n->ty = dest;
+    if (n->kind == NodeKind::Binary || n->kind == NodeKind::Unary ||
+        n->kind == NodeKind::Conditional || n->kind == NodeKind::Group) {
+        propagate_untyped(n->left, dest);
+        propagate_untyped(n->right, dest);
+    }
+}
+
 auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
     if (got == nullptr) {
         return t_error();
@@ -93,6 +108,7 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
                 return t_error();
             }
         }
+        propagate_untyped(n, dest);
         return is_opt(expected) ? expected : dest;
     }
     if (got->kind == TypeKind::Never) {
