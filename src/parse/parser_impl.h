@@ -153,6 +153,11 @@ struct Parser {
     Arena* arena = nullptr;
     DiagnosticBag* diag = nullptr;
     int nest = 0;
+    ListTails tails;
+
+    void append(Node** list, Node* item) {
+        tails.append(list, item);
+    }
 
     // `catch` and `match` consume their terminating newline via the suite.
 

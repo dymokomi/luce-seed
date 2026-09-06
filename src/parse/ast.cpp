@@ -174,17 +174,19 @@ void dump(const Node* n, string& out) {
 
 } // namespace
 
-// A small cache of list tails keeps appending O(1) for the long sibling
-// lists (a module's declarations, a function's statements) that the parser
-// builds one item at a time; a miss just walks from the head as before.
-struct TailEntry {
-    Node** list = nullptr;
-    Node* head = nullptr;
-    Node* tail = nullptr;
-};
-static TailEntry tail_cache[64];
-
 void append_node(Node** list, Node* item) {
+    if (item == nullptr) {
+        return;
+    }
+    item->next = nullptr;
+    Node** slot = list;
+    while (*slot != nullptr) {
+        slot = &(*slot)->next;
+    }
+    *slot = item;
+}
+
+void ListTails::append(Node** list, Node* item) {
     if (item == nullptr) {
         return;
     }
@@ -193,8 +195,7 @@ void append_node(Node** list, Node* item) {
         *list = item;
         return;
     }
-    TailEntry& entry = tail_cache[(reinterpret_cast<uintptr_t>(list) >> 3) %
-                                  (sizeof(tail_cache) / sizeof(tail_cache[0]))];
+    Entry& entry = entries[(reinterpret_cast<uintptr_t>(list) >> 3) % (sizeof(entries) / sizeof(entries[0]))];
     Node* p = *list;
     if (entry.list == list && entry.head == p && entry.tail != nullptr) {
         p = entry.tail; // still a member of this list; walk on from it

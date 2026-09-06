@@ -19,7 +19,7 @@ auto Parser::parse_module() -> Node* {
     skip_docs();
     while (at(TokenKind::KwImport) || at(TokenKind::KwFrom)) {
         Node* imp = parse_import();
-        append_node(&mod->body, imp);
+        append(&mod->body, imp);
         skip_docs();
     }
     while (!at(TokenKind::EndOfFile)) {
@@ -35,7 +35,7 @@ auto Parser::parse_module() -> Node* {
         int here = pos;
         Node* decl = parse_top();
         if (decl != nullptr) {
-            append_node(&mod->body, decl);
+            append(&mod->body, decl);
         }
         if (pos == here) {
             take();
@@ -59,7 +59,7 @@ auto Parser::parse_import() -> Node* {
                 break;
             }
             take();
-            append_node(&names, make_tok(NodeKind::Name, id));
+            append(&names, make_tok(NodeKind::Name, id));
         } while (eat(TokenKind::Comma));
         n->body = names;
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
@@ -162,7 +162,7 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
                 fail("lucb.parse.expect", "expected a string literal");
             }
             expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
-            append_node(attrs, a);
+            append(attrs, a);
         } else {
             break;
         }
@@ -383,13 +383,13 @@ auto Parser::parse_generic_params() -> Node* {
             g->text = take().text;
             if (eat(TokenKind::Colon)) {
                 Node* bounds = nullptr;
-                append_node(&bounds, parse_type());
+                append(&bounds, parse_type());
                 while (eat(TokenKind::Amp)) {
-                    append_node(&bounds, parse_type());
+                    append(&bounds, parse_type());
                 }
                 g->type = bounds;
             }
-            append_node(&list, g);
+            append(&list, g);
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -413,7 +413,7 @@ auto Parser::parse_params(bool extern_form) -> Node* {
                 }
                 Node* p = make(NodeKind::Param, peek(-1).span);
                 p->flags = FlagVariadic;
-                append_node(&list, p);
+                append(&list, p);
                 break;
             }
             Node* p = make(NodeKind::Param, cur().span);
@@ -435,7 +435,7 @@ auto Parser::parse_params(bool extern_form) -> Node* {
             if (eat(TokenKind::Eq)) {
                 p->left = parse_expression();
             }
-            append_node(&list, p);
+            append(&list, p);
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -485,7 +485,7 @@ auto Parser::parse_struct(uint32_t flags, bool is_extern) -> Node* {
             break;
         }
         int here = pos;
-        append_node(&n->body, parse_type_member(is_extern));
+        append(&n->body, parse_type_member(is_extern));
         if (pos == here) {
             take();
         }
@@ -504,9 +504,9 @@ auto Parser::parse_conformance() -> Node* {
         return nullptr;
     }
     Node* list = nullptr;
-    append_node(&list, parse_type());
+    append(&list, parse_type());
     while (eat(TokenKind::Comma)) {
-        append_node(&list, parse_type());
+        append(&list, parse_type());
     }
     expect(TokenKind::Colon, "lucb.parse.expect", "expected `:` before the body");
     return list;
@@ -605,7 +605,7 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
         }
         if (at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
             (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name)) {
-            append_node(&n->body, parse_func(mflags));
+            append(&n->body, parse_func(mflags));
             continue;
         }
         Token t = cur();
@@ -622,7 +622,7 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
             c->left = parse_expression();
         }
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
-        append_node(&n->body, c);
+        append(&n->body, c);
     }
     expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
     n->span = span_from(start);
@@ -652,7 +652,7 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
             if (eat(TokenKind::KwPub)) {
                 mflags |= FlagPub;
             }
-            append_node(&n->body, parse_func(mflags));
+            append(&n->body, parse_func(mflags));
             continue;
         }
         Token t = cur();
@@ -666,7 +666,7 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
         expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
         m->type = parse_type();
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
-        append_node(&n->body, m);
+        append(&n->body, m);
     }
     expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
     n->span = span_from(start);
@@ -723,7 +723,7 @@ auto Parser::parse_interface(uint32_t flags) -> Node* {
             }
         }
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
-        append_node(&n->body, fn);
+        append(&n->body, fn);
         if (pos == here) {
             take();
         }
@@ -867,7 +867,7 @@ auto Parser::parse_asm() -> Node* {
                         op->left = parse_expression();
                     }
                 }
-                append_node(&ops, op);
+                append(&ops, op);
                 if (!eat(TokenKind::Comma)) {
                     break;
                 }
@@ -882,7 +882,7 @@ auto Parser::parse_asm() -> Node* {
     Node* lines = nullptr;
     while (at(TokenKind::RawLine) || at(TokenKind::Newline)) {
         if (at(TokenKind::RawLine)) {
-            append_node(&lines, make_tok(NodeKind::Literal, take()));
+            append(&lines, make_tok(NodeKind::Literal, take()));
         } else {
             take();
         }

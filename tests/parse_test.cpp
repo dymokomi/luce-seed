@@ -181,6 +181,24 @@ TEST(parse_class_belongs_to_full_luce) {
     CHECK(p.has("lucb.parse.tier"));
 }
 
+// A parse must not remember anything from an earlier one: arenas come and go at the same
+// addresses, so a list tail cached across parses would splice a dead tree into a live one.
+TEST(parse_is_independent_of_earlier_parses) {
+    const char* text = "import io\nfrom image.geometry import Point, Size\npub func main(arguments: str[]) -> i32:\n    var i: i64 = 0\n    for k in 0..<3:\n        i += k\n    return 0\n";
+    std::string first;
+    {
+        Parsed p(text);
+        first = p.dump();
+    }
+    for (int round = 0; round < 8; round++) {
+        Parsed again("struct S:\n    var x: i64\n    var y: i64\nfunc f() -> i64:\n    return 1\n");
+        Parsed p(text);
+        CHECK(p.dump() == first);
+    }
+    CHECK(first.find("..<") != std::string::npos);
+    CHECK(first.find("(from \"image.geometry\"") != std::string::npos);
+}
+
 TEST(parse_import) {
     Parsed p("import image.color\nfrom image.geometry import Point\n"
              "func f() -> i64:\n    return 1\n");

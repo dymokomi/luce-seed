@@ -209,7 +209,24 @@ struct Node {
 
 const char* node_kind_name(NodeKind kind);
 
+// Append `item` to the sibling list at `*list`, walking to its end.
 void append_node(Node** list, Node* item);
+
+// O(1) appends for the long sibling lists a builder grows one item at a time (a module's
+// declarations, a suite's statements): the tail of each list seen is remembered. Sound only
+// while every node it has seen stays alive and no other code links their `next`, so a
+// builder owns one for the lifetime of one arena and never shares it.
+struct ListTails {
+    void append(Node** list, Node* item);
+
+  private:
+    struct Entry {
+        Node** list = nullptr;
+        Node* head = nullptr;
+        Node* tail = nullptr;
+    };
+    Entry entries[64];
+};
 int node_list_count(const Node* list);
 
 // One-line s-expression. Tests pin this spelling.

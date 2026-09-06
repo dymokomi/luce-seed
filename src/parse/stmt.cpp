@@ -25,7 +25,7 @@ auto Parser::parse_suite() -> Node* {
             int here = pos;
             Node* s = parse_statement();
             if (s != nullptr) {
-                append_node(&block->body, s);
+                append(&block->body, s);
             }
             if (pos == here) {
                 take();
@@ -39,12 +39,12 @@ auto Parser::parse_suite() -> Node* {
         at(TokenKind::KwMatch) || at(TokenKind::KwWith) || at(TokenKind::KwAsm)) {
         fail("lucb.parse.suite", "a same-line suite cannot contain a compound statement");
         Node* block = make(NodeKind::Block, start.span);
-        append_node(&block->body, parse_statement());
+        append(&block->body, parse_statement());
         return block;
     }
     Node* block = make(NodeKind::Block, start.span);
     Node* s = parse_simple_stmt();
-    append_node(&block->body, s);
+    append(&block->body, s);
     return block;
 }
 
@@ -200,7 +200,7 @@ auto Parser::parse_binding() -> Node* {
                 fail("lucb.parse.expect", "expected a name");
                 break;
             }
-            append_node(&names, make_tok(NodeKind::Name, take()));
+            append(&names, make_tok(NodeKind::Name, take()));
         } while (eat(TokenKind::Comma));
         expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
         n->body = names;
@@ -344,9 +344,9 @@ auto Parser::parse_match(bool as_expr) -> Node* {
         int here = pos;
         Node* arm = make(NodeKind::MatchArm, cur().span);
         Node* pats = nullptr;
-        append_node(&pats, parse_pattern());
+        append(&pats, parse_pattern());
         while (eat(TokenKind::Comma)) {
-            append_node(&pats, parse_pattern());
+            append(&pats, parse_pattern());
         }
         arm->left = pats;
         if (eat(TokenKind::KwIf)) {
@@ -360,7 +360,7 @@ auto Parser::parse_match(bool as_expr) -> Node* {
             expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
             arm->body = parse_suite();
         }
-        append_node(&arms, arm);
+        append(&arms, arm);
         if (pos == here) {
             take();
         }
@@ -398,7 +398,7 @@ auto Parser::parse_pattern() -> Node* {
                         fail("lucb.parse.expect", "expected a payload name");
                         break;
                     }
-                    append_node(&binds, b);
+                    append(&binds, b);
                     if (!eat(TokenKind::Comma)) {
                         break;
                     }

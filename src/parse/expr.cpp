@@ -295,7 +295,7 @@ auto Parser::parse_arg_list() -> Node* {
                 take();
             }
             a->left = parse_expression();
-            append_node(&list, a);
+            append(&list, a);
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -313,7 +313,7 @@ auto Parser::parse_type_args() -> Node* {
     Node* list = nullptr;
     if (!at(TokenKind::RBracket)) {
         while (true) {
-            append_node(&list, parse_type());
+            append(&list, parse_type());
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -349,7 +349,7 @@ auto Parser::parse_type_builtin() -> Node* {
         } else {
             a->left = parse_expression();
         }
-        append_node(&list, a);
+        append(&list, a);
         if (eat(TokenKind::Comma)) {
             Node* f = make(NodeKind::Param, cur().span);
             if (at_ident()) {
@@ -357,7 +357,7 @@ auto Parser::parse_type_builtin() -> Node* {
             } else {
                 fail("lucb.parse.expect", "expected a field name");
             }
-            append_node(&list, f);
+            append(&list, f);
         }
     }
     expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
@@ -437,12 +437,12 @@ auto Parser::parse_formatted() -> Node* {
     while (!at(TokenKind::FormatEnd) && !at(TokenKind::EndOfFile)) {
         if (at(TokenKind::FormatText)) {
             Node* p = make_tok(NodeKind::FormatText, take());
-            append_node(&parts, p);
+            append(&parts, p);
         } else if (eat(TokenKind::LBrace)) {
             Node* p = make(NodeKind::FormatField, peek(-1).span);
             p->left = parse_expression();
             expect(TokenKind::RBrace, "lucb.parse.expect", "expected `}`");
-            append_node(&parts, p);
+            append(&parts, p);
         } else {
             fail("lucb.parse.expect", "expected formatted string text or a field");
             break;
@@ -470,7 +470,7 @@ auto Parser::parse_lambda() -> Node* {
             if (eat(TokenKind::Colon)) {
                 p->type = parse_type();
             }
-            append_node(&list, p);
+            append(&list, p);
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -500,12 +500,12 @@ auto Parser::parse_group_or_tuple() -> Node* {
         return g;
     }
     Node* t = make(NodeKind::Tuple, start.span);
-    append_node(&t->body, first);
+    append(&t->body, first);
     if (at(TokenKind::RParen)) {
         fail("lucb.parse.expect", "a tuple requires at least two elements");
     }
     while (true) {
-        append_node(&t->body, parse_expression());
+        append(&t->body, parse_expression());
         if (!eat(TokenKind::Comma)) {
             break;
         }
@@ -523,7 +523,7 @@ auto Parser::parse_array_lit() -> Node* {
     Node* n = make(NodeKind::ArrayLit, start.span);
     if (!at(TokenKind::RBracket)) {
         while (true) {
-            append_node(&n->body, parse_expression());
+            append(&n->body, parse_expression());
             if (!eat(TokenKind::Comma)) {
                 break;
             }
@@ -643,7 +643,7 @@ auto Parser::parse_primary_type() -> Node* {
         Node* params = nullptr;
         if (!at(TokenKind::RParen)) {
             while (true) {
-                append_node(&params, parse_type());
+                append(&params, parse_type());
                 if (!eat(TokenKind::Comma)) {
                     break;
                 }
@@ -677,9 +677,9 @@ auto Parser::parse_primary_type() -> Node* {
         }
         Node* t = make(NodeKind::Type, start.span);
         t->flags = FlagTupleType;
-        append_node(&t->body, first);
+        append(&t->body, first);
         while (true) {
-            append_node(&t->body, parse_type());
+            append(&t->body, parse_type());
             if (!eat(TokenKind::Comma)) {
                 break;
             }
