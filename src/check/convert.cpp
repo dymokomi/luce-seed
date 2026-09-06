@@ -290,6 +290,11 @@ auto Checker::check_cast(Node* n, bool checked) -> Type* {
     if (!convert_ok(n, src, dest, checked)) {
         return t_error();
     }
+    // a reinterpreting cast of a local address keeps the escape taint of §6.6
+    if (n->left != nullptr && is_local(n->left) &&
+        (is_ptr(dest) || is_span(dest) || (dest != nullptr && dest->kind == TypeKind::Str))) {
+        mark_local(n);
+    }
     return dest;
 }
 

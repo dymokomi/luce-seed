@@ -123,6 +123,10 @@ TEST(check_try_needs_fallible) {
                     "lucb.check.type"));
 }
 
+TEST(check_escape_str_of_local) {
+    CHECK(check_has("func leak() -> str:\n    var b: u8[16]\n    return (str)b[..<4]\n", "lucb.check.escape"));
+}
+
 TEST(check_escape_local) {
     CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
                     "lucb.check.escape"));
