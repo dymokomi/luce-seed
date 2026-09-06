@@ -891,7 +891,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 fail("null interface");
                 return v_unit();
             }
-            if ((view.u == 1 || view.u == 2) && callee->text == "write") {
+            if ((view.u == 1 || view.u == 2 || view.u == 3) && callee->text == "write") {
                 Value bytes = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string s;
                 if (bytes.kind == TypeKind::Str || bytes.kind == TypeKind::Fmt) {
@@ -906,8 +906,10 @@ auto Interp::eval_call(Node* n) -> Value {
                 size_t nlen = s.size();
                 if (view.u == 1) {
                     output += s;
-                } else {
+                } else if (view.u == 2) {
                     err += s;
+                } else if (!sinks.empty()) {
+                    sinks.back()->append(s);
                 }
                 Value nwritten =
                     v_int(n->ty != nullptr && is_fail(n->ty) ? n->ty->elem : n->ty, nlen);

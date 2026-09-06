@@ -34,6 +34,9 @@ struct Emitter {
     Node* current_fn = nullptr;
     string src_file = "t.lucb";
     bool wrote_writer_rt = false;
+    vector<Node*> builtin_ifaces_done; // standard interfaces whose table type is written
+    void emit_builtin_iface_typedef(Node* iface);
+    string current_sink; // the `lb_iface` a Display field writes through, while emitting it
     void emit_writer_rt();
     string emit_src_file();
     string emit_src_function();

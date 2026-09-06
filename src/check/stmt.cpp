@@ -14,6 +14,62 @@
 
 namespace lucb {
 
+// `for x in source: body` over an Iterable (§8.3) becomes, in its own block,
+// `var __iterN = source.iterator()` and `while let x = __iterN.next(): body`: the iterator
+// lives in a hidden local of its concrete type, and the interpreter and the emitter see
+// only a loop they already know.
+auto Checker::desugar_iterable_for(Node* n) -> void {
+    if (n->left != nullptr) {
+        fail_n(n, "lucb.check.type", "an Iterable yields one value per step; bind one name");
+    }
+    string_view hidden = keep("__iter" + std::to_string(++hidden_count));
+    Node* start = arena->make<Node>();
+    start->kind = NodeKind::Var;
+    start->span = n->span;
+    start->text = hidden;
+    start->left = syn_call(n->right, "iterator", n->span);
+    Node* advance = arena->make<Node>();
+    advance->kind = NodeKind::Name;
+    advance->span = n->span;
+    advance->text = hidden;
+    Node* step = arena->make<Node>();
+    step->kind = NodeKind::Let;
+    step->flags = FlagIfLet;
+    step->span = n->span;
+    step->text = n->text;
+    step->type = n->type;
+    step->left = syn_call(advance, "next", n->span);
+    Node* loop = arena->make<Node>();
+    loop->kind = NodeKind::While;
+    loop->flags = FlagIfLet;
+    loop->span = n->span;
+    loop->label = n->label;
+    loop->left = step;
+    loop->body = n->body;
+    start->next = loop;
+    n->kind = NodeKind::Block;
+    n->text = {};
+    n->label = {};
+    n->type = nullptr;
+    n->left = nullptr;
+    n->right = nullptr;
+    n->body = start;
+}
+
+// The call `receiver.method()` as a fresh tree at `span`.
+auto Checker::syn_call(Node* receiver, const char* method, Span span) -> Node* {
+    Node* member = arena->make<Node>();
+    member->kind = NodeKind::Member;
+    member->span = span;
+    member->text = keep(method);
+    member->left = receiver;
+    Node* call = arena->make<Node>();
+    call->kind = NodeKind::Call;
+    call->span = span;
+    call->left = member;
+    return call;
+}
+
 auto Checker::check_stmt(Node* n) -> void {
     if (n == nullptr) {
         return;
@@ -257,8 +313,13 @@ auto Checker::check_stmt(Node* n) -> void {
             elem = it->elem;
         } else if (it != nullptr && it->kind == TypeKind::Str) {
             elem = ty_char;
+        } else if (it != nullptr && (it->kind == TypeKind::Struct || it->kind == TypeKind::Enum) &&
+                   struct_member(it->decl, "iterator", NodeKind::Func) != nullptr) {
+            desugar_iterable_for(n);
+            check_stmt(n);
+            break;
         } else {
-            fail_n(n, "lucb.check.type", "`for` needs an array, span, or `str`");
+            fail_n(n, "lucb.check.type", "`for` iterates a span, an array, a range, text, or an Iterable");
             elem = t_error();
         }
         if (n->type != nullptr) {

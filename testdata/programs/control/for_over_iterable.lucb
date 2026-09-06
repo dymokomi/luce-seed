@@ -1,0 +1,32 @@
+# answer: 40
+## The protocols `for` consumes (§8.3, §14.4): a struct that is `Iterable` answers a value
+## iterator of its own type, and `for` calls `next()` until `none`; labels and `break`
+## work as in any loop.
+from luce import Iterable, Iterator
+
+struct Countdown: Iterator[u32]:
+    var n: u32
+
+    mutating func next() -> u32?:
+        if self.n == 0:
+            return none
+        self.n -= 1
+        return self.n
+
+struct Below: Iterable[u32, Countdown]:
+    var top: u32
+
+    func iterator() -> Countdown:
+        return Countdown(n = self.top)
+
+pub func answer() -> i64:
+    var total: u32 = 0
+    for x in Below(top = 5):
+        total += x
+    let ten = total
+    outer: for y in Below(top = 100):
+        for z in Below(top = 3):
+            if y == 97 and z == 0:
+                break outer
+            total += z
+    return (i64)(total - ten - 9 + 40)

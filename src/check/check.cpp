@@ -378,14 +378,15 @@ auto Checker::check_struct(Node* st) -> void {
     check_implements(st);
 }
 
-auto Checker::sig_matches(Node* impl, Node* req) -> bool {
+auto Checker::sig_matches(Node* impl, Node* req, Type* iface) -> bool {
     if (impl == nullptr || req == nullptr) {
         return false;
     }
     Node* ip = impl->right;
     Node* rp = req->right;
     while (ip != nullptr && rp != nullptr) {
-        if (!type_eq(ip->ty, rp->ty) && !can_widen(ip->ty, rp->ty)) {
+        Type* want = requirement_type(rp->ty, iface);
+        if (!type_eq(ip->ty, want) && !can_widen(ip->ty, want)) {
             return false;
         }
         ip = ip->next;
@@ -395,7 +396,7 @@ auto Checker::sig_matches(Node* impl, Node* req) -> bool {
         return false;
     }
     Type* ir = impl->ty != nullptr ? impl->ty : t_unit();
-    Type* rr = req->ty != nullptr ? req->ty : t_unit();
+    Type* rr = requirement_type(req->ty != nullptr ? req->ty : t_unit(), iface);
     if ((req->flags & FlagFallible) != 0) {
         if ((impl->flags & FlagFallible) != 0) {
             return type_eq(ir, rr);
@@ -430,7 +431,7 @@ auto Checker::check_implements(Node* st) -> void {
             if ((req->flags & FlagMutating) != 0 && (impl->flags & FlagMutating) == 0) {
                 fail_n(impl, "lucb.check.mut", "`" + string(req->text) + "` must be `mutating`");
             }
-            if (!sig_matches(impl, req)) {
+            if (!sig_matches(impl, req, iface)) {
                 fail_n(impl, "lucb.check.type",
                        "`" + string(impl->text) + "` does not match `" + string(iface->decl->text) +
                            "." + string(req->text) + "`");
@@ -439,10 +440,25 @@ auto Checker::check_implements(Node* st) -> void {
     }
 }
 
+// A requirement's type as the conformance sees it: the interface's parameters replaced by
+// the arguments the conformance names, `T` in `Iterator[u32]` by `u32`.
+auto Checker::requirement_type(Type* t, Type* iface) -> Type* {
+    if (t == nullptr || iface == nullptr || iface->ntargs == 0) {
+        return t;
+    }
+    vector<Type*> args(iface->args, iface->args + iface->ntargs);
+    return subst_type(t, iface->decl, args);
+}
+
 auto Checker::check_interface(Node* iface) -> void {
-    if (is_generic_decl(iface)) {
-        fail_n(iface, "lucb.check.unsupported", "generic interfaces are not in this slice");
-        return;
+    // a generic interface's requirements are resolved with its parameters as opaque types;
+    // a conformance substitutes the arguments it names (§14.4, `Iterator[T]`)
+    bool generic = is_generic_decl(iface);
+    bool saved_generic = checking_generic_template;
+    if (generic) {
+        checking_generic_template = true;
+        push_scope();
+        bind_generic_params(iface);
     }
     for (Node* m = iface->body; m != nullptr; m = m->next) {
         if (m->kind != NodeKind::Func) {
@@ -453,6 +469,10 @@ auto Checker::check_interface(Node* iface) -> void {
             fail_n(m, "lucb.check.unsupported", "generic methods are not in this slice");
         }
         resolve_sig(m);
+    }
+    if (generic) {
+        pop_scope();
+        checking_generic_template = saved_generic;
     }
 }
 
@@ -639,10 +659,19 @@ auto Checker::collect_module(Node* mod) -> void {
                 check_foreign_sig(d, true);
             }
         } else if (d->kind == NodeKind::Interface) {
+            // a generic interface's requirements mention its parameters
+            bool g = is_generic_decl(d);
+            if (g) {
+                push_scope();
+                bind_generic_params(d);
+            }
             for (Node* m = d->body; m != nullptr; m = m->next) {
                 if (m->kind == NodeKind::Func) {
                     resolve_sig(m);
                 }
+            }
+            if (g) {
+                pop_scope();
             }
         } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||
                    d->kind == NodeKind::Union) {

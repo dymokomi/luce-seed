@@ -366,6 +366,14 @@ auto Interp::eval_uncast(Node* n) -> Value {
         }
         return v_unit();
     case NodeKind::Name:
+        if (n->flags & FlagFormatSink) {
+            Value v;
+            v.kind = TypeKind::Interface;
+            v.type = n->ty;
+            v.u = 3; // the formatted string's own sink
+            v.ptr = &stdio_dummy;
+            return v;
+        }
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
             Value v;

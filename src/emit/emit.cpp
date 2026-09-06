@@ -37,6 +37,21 @@ auto Emitter::emit_writer_rt() -> void {
     line("}");
     line("static const lb_vt_Writer lb_vt_file __attribute__((unused)) = { .write = lb_file_write "
          "};");
+    // the sink a formatted string offers a `Display` value: the buffer being filled (§14.4)
+    line("static lb_r_usize lb_fmtsink_write(void* self, lb_cspan bytes) {");
+    indent++;
+    line("lb_r_usize r;");
+    line("if (lb_fmtbuf_put((lb_fmtbuf*)self, (const char*)bytes.data, bytes.length)) {");
+    indent++;
+    line("r.failed = true; r.error.code = LB_MEMORY_EXHAUSTED; "
+         "r.error.message = (lb_str){\"memory.exhausted\", 16}; return r;");
+    indent--;
+    line("}");
+    line("r.failed = false; r.value = bytes.length; return r;");
+    indent--;
+    line("}");
+    line("static const lb_vt_Writer lb_vt_fmtsink __attribute__((unused)) = { .write = "
+         "lb_fmtsink_write };");
     out += '\n';
 }
 

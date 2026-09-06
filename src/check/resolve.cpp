@@ -235,6 +235,37 @@ auto Checker::intern_iface(Node* decl, bool nullable) -> Type* {
     return t;
 }
 
+// `Iterator[u32]`: the generic interface `decl` with its arguments; one object per spelling,
+// so views and conformances of one instance agree.
+auto Checker::intern_iface_instance(Node* decl, const vector<Type*>& args) -> Type* {
+    for (size_t i = 0; i < interned.size(); i++) {
+        Type* t = interned[i];
+        if (t->kind != TypeKind::Interface || t->decl != decl || t->is_nullable ||
+            t->ntargs != static_cast<int>(args.size())) {
+            continue;
+        }
+        bool same = true;
+        for (size_t k = 0; k < args.size() && same; k++) {
+            same = type_eq(t->args[k], args[k]);
+        }
+        if (same) {
+            return t;
+        }
+    }
+    Type* t = make_type(TypeKind::Interface, decl->text);
+    t->decl = decl;
+    t->ntargs = static_cast<int>(args.size());
+    t->args = static_cast<Type**>(arena->alloc(sizeof(Type*) * args.size(), alignof(Type*)));
+    string spelled = string(decl->text) + "[";
+    for (size_t k = 0; k < args.size(); k++) {
+        t->args[k] = args[k];
+        spelled += (k == 0 ? "" : ", ") + type_name(args[k]);
+    }
+    t->name = keep(spelled + "]");
+    interned.push_back(t);
+    return t;
+}
+
 auto Checker::intern_opt(Type* elem) -> Type* {
     if (is_ptr(elem) && !elem->is_nullable) {
         return intern_ptr(elem->elem, elem->is_const, elem->is_volatile, true);
@@ -625,6 +656,8 @@ auto Checker::resolve_type(Node* n) -> Type* {
                     if (static_cast<int>(targs.size()) != count_generics(b->decl)) {
                         fail_n(n, "lucb.check.type", "wrong number of type arguments");
                         t = t_error();
+                    } else if (b->decl->kind == NodeKind::Interface) {
+                        t = intern_iface_instance(b->decl, targs);
                     } else {
                         t = instantiate_struct(b->decl, targs, n);
                     }
@@ -676,6 +709,8 @@ auto Checker::resolve_type(Node* n) -> Type* {
                         if (static_cast<int>(targs.size()) != count_generics(d)) {
                             fail_n(n, "lucb.check.type", "wrong number of type arguments");
                             t = t_error();
+                        } else if (d->kind == NodeKind::Interface) {
+                            t = intern_iface_instance(d, targs);
                         } else {
                             t = instantiate_struct(d, targs, n);
                         }

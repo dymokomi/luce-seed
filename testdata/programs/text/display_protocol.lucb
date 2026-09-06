@@ -1,0 +1,21 @@
+# answer: 40
+## A struct that is `Display` writes itself to the sink a formatted string offers (§14.4):
+## through `print`, `format`, and a nested formatted string inside its own `display`.
+from luce import Display
+from io import Writer
+
+struct Point: Display:
+    var x: i64
+    var y: i64
+
+    func display(sink: Writer) -> !:
+        discard(try sink.write(f"({self.x}, {self.y})"))
+
+pub func answer() -> i64!:
+    let p = Point(x = 3, y = 4)
+    var buffer: u8[64]
+    let text = try format(buffer, f"p = {p}!")
+    print(f"{p}")
+    if text != "p = (3, 4)!":
+        return 1
+    return (i64)text.length + 29

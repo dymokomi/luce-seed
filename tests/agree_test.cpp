@@ -526,6 +526,17 @@ TEST(agree_thread_local) {
                  "    return n\n"));
 }
 
+// A struct that is `Display` writes itself through the sink a formatted string offers
+// (§14.4): to standard output from `print`, into the caller's buffer from `format`.
+TEST(agree_display_protocol) {
+    CHECK(agrees("from luce import Display\nfrom io import Writer\n"
+                 "struct Point: Display:\n    var x: i64\n    var y: i64\n"
+                 "    func display(sink: Writer) -> !:\n        discard(try sink.write(f\"({self.x}, {self.y})\"))\n"
+                 "pub func answer() -> i64!:\n    let p = Point(x = 3, y = 4)\n    var buffer: u8[64]\n"
+                 "    let text = try format(buffer, f\"p = {p}!\")\n    print(f\"{p} and {p}\")\n"
+                 "    if text != \"p = (3, 4)!\":\n        return 1\n    return (i64)text.length + 29\n"));
+}
+
 TEST(agree_writer_view) {
     CHECK(agrees("struct Sink: Writer:\n"
                  "    var n: usize\n"

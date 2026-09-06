@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/sedov/dev/luce-seed/build-dev/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

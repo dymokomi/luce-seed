@@ -276,6 +276,10 @@ auto Checker::check_literal(Node* n, Type* expected) -> Type* {
 }
 
 auto Checker::check_name(Node* n, Type* expected) -> Type* {
+    if (n->flags & FlagFormatSink) {
+        n->ty = ty_writer; // the formatted string's own sink, a `Writer` (§14.4)
+        return ty_writer;
+    }
     Binding* b = lookup(n->text);
     if (b == nullptr) {
         fail_n(n, "lucb.check.name", "unknown name `" + string(n->text) + "`");

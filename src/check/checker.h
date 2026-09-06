@@ -14,6 +14,7 @@
 
 #include "check/type.h"
 #include "parse/ast.h"
+#include "source/source.h"
 #include "support/diagnostics.h"
 #include "support/literal.h"
 
@@ -91,6 +92,7 @@ struct Checker {
     void bind_module_names(Node* mod);
     bool checking_generic_template = false;
     int inst_depth = 0;
+    int hidden_count = 0; // `__iter1`, ...: names no source can spell
     struct Inst {
         Node* generic = nullptr;
         Node* clone = nullptr;
@@ -159,6 +161,7 @@ struct Checker {
     Type* intern_ptr(Type* elem, bool is_const, bool is_vol, bool nullable);
     Type* intern_arr(Type* elem, uint64_t n);
     Type* intern_iface(Node* decl, bool nullable);
+    Type* intern_iface_instance(Node* decl, const vector<Type*>& args);
     Type* intern_opt(Type* elem);
     Type* intern_fail(Type* elem);
     Type* intern_sp(Type* elem, bool is_const);
@@ -192,6 +195,13 @@ struct Checker {
     int index_of_param(Node* generic, Type* p);
     void apply_bounds(Node* g, Type* t);
     void bind_generic_params(Node* gen);
+    void desugar_iterable_for(Node* n);
+    Type* display_iface();
+    bool displays_itself(Type* t);
+    void display_through_sink(Node* field);
+    Node* syn_call(Node* receiver, const char* method, Span span);
+    void append_builtin_text(Node* module, const char* text);
+    void keep_texts(Node* n);
     Node* clone_chain(Node* n);
     Node* clone_node(Node* n);
     bool args_eq(const vector<Type*>& a, const vector<Type*>& b);
@@ -303,7 +313,8 @@ struct Checker {
     void check_params(Node* fn);
     void check_func(Node* fn, Node* owner);
     void check_struct(Node* st);
-    bool sig_matches(Node* impl, Node* req);
+    bool sig_matches(Node* impl, Node* req, Type* iface);
+    Type* requirement_type(Type* t, Type* iface);
     void check_implements(Node* st);
     void check_interface(Node* iface);
     void collect_type_decl(Node* d, TypeKind kind);

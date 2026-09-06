@@ -21,8 +21,14 @@
 
 namespace lucb {
 
+// A generic interface, `Iterator[T]`, is consumed statically by `for` and never viewed, so
+// neither it nor a conformance to it has a table.
+static bool is_generic_iface(Node* iface) {
+    return iface != nullptr && iface->left != nullptr && iface->left->kind == NodeKind::GenericParam;
+}
+
 auto Emitter::emit_iface_typedef(Node* iface) -> void {
-    if (iface == nullptr || iface->kind != NodeKind::Interface) {
+    if (iface == nullptr || iface->kind != NodeKind::Interface || is_generic_iface(iface)) {
         return;
     }
     line("typedef struct " + vt_type_name(iface->ty) + " {");
@@ -106,11 +112,29 @@ auto Emitter::emit_ifaces(Node* mod) -> void {
             continue;
         }
         for (Node* t = d->right; t != nullptr; t = t->next) {
-            if (t->ty != nullptr && t->ty->kind == TypeKind::Interface) {
+            if (t->ty != nullptr && t->ty->kind == TypeKind::Interface &&
+                !is_generic_iface(t->ty->decl)) {
+                emit_builtin_iface_typedef(t->ty->decl);
                 emit_vtable(d, t);
             }
         }
     }
+}
+
+// A standard module's interface a program conforms to, `Display`, gets its table type here,
+// once; `Writer` and `Allocator` have hand-written glue of their own.
+auto Emitter::emit_builtin_iface_typedef(Node* iface) -> void {
+    if (iface == nullptr || (iface->flags & FlagBuiltin) == 0 || iface->text == "Writer" ||
+        iface->text == "Allocator") {
+        return;
+    }
+    for (size_t i = 0; i < builtin_ifaces_done.size(); i++) {
+        if (builtin_ifaces_done[i] == iface) {
+            return;
+        }
+    }
+    builtin_ifaces_done.push_back(iface);
+    emit_iface_typedef(iface);
 }
 
 auto Emitter::type_attrs(Node* n) -> string {

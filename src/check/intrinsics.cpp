@@ -250,12 +250,50 @@ auto Checker::check_formatted(Node* n) -> Type* {
                 ft = coerce(p->left, ft, t_i64());
                 p->left->ty = ft;
             }
-            if (!is_display(ft)) {
-                fail_n(p, "lucb.check.type", "this value cannot be formatted");
+            if (is_display(ft)) {
+                continue;
             }
+            if (displays_itself(ft)) {
+                display_through_sink(p);
+                continue;
+            }
+            fail_n(p, "lucb.check.type", "this value cannot be formatted");
         }
     }
     return ty_fmt;
+}
+
+// The `Display` protocol of the `luce` module (§14.4).
+auto Checker::display_iface() -> Type* {
+    Binding* b = lookup("luce");
+    Node* d = b != nullptr && b->decl != nullptr ? pub_member(b->decl, "Display") : nullptr;
+    return d != nullptr ? d->ty : nullptr;
+}
+
+auto Checker::displays_itself(Type* t) -> bool {
+    return t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr &&
+           struct_implements(t->decl, display_iface());
+}
+
+// A field whose value writes itself (§14.4) becomes the call `value.display(__sink)`, where
+// `__sink` stands for the buffer the formatted string is being built in; the interpreter and
+// the emitter supply that sink where they build the string.
+auto Checker::display_through_sink(Node* field) -> void {
+    Node* sink = arena->make<Node>();
+    sink->kind = NodeKind::Name;
+    sink->span = field->span;
+    sink->text = keep("__sink");
+    sink->flags = FlagFormatSink;
+    Node* arg = arena->make<Node>();
+    arg->kind = NodeKind::Param;
+    arg->span = field->span;
+    arg->left = sink;
+    Node* call = syn_call(field->left, "display", field->span);
+    call->body = arg;
+    call->flags |= FlagFormatSink;
+    field->left = call;
+    field->flags |= FlagFormatSink;
+    check_expr(call, nullptr);
 }
 
 auto Checker::check_print(Node* n) -> Type* {

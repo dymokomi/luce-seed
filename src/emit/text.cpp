@@ -50,6 +50,15 @@ auto Emitter::emit_str_conv(Node* src, bool checked) -> string {
 }
 
 auto Emitter::emit_display_buf(const string& b, Node* v) -> string {
+    if (v != nullptr && (v->flags & FlagFormatSink) != 0) {
+        // `value.display(__sink)`: the sink is this buffer
+        string saved = current_sink;
+        current_sink = "((lb_iface){ (void*)&" + b + ", &lb_vt_fmtsink })";
+        string call = emit_expr(v);
+        current_sink = saved;
+        // an `int` like the buffer's own appends: nonzero when the value could not be written
+        return "({ lb_r_unit _lb_dr = " + call + "; _lb_dr.failed ? 1 : 0; })";
+    }
     Type* t = v != nullptr ? v->ty : nullptr;
     string e = emit_expr(v);
     if (t != nullptr && t->kind == TypeKind::Bool) {
@@ -163,6 +172,14 @@ auto Emitter::emit_print_formatted(Node* n) -> string {
             string d = unescape_format_braces(decode_lit(p->text));
             s += "fputs(" + c_escape(d) + ", stdout); ";
         } else if (p->kind == NodeKind::FormatField) {
+            if (p->flags & FlagFormatSink) {
+                // the value writes itself to standard output (§14.4); a failed write is ignored
+                string saved = current_sink;
+                current_sink = "((lb_iface){ (void*)stdout, &lb_vt_file })";
+                s += "(void)(" + emit_expr(p->left) + "); ";
+                current_sink = saved;
+                continue;
+            }
             Type* t = p->left != nullptr ? p->left->ty : nullptr;
             string e = emit_expr(p->left);
             if (t != nullptr && t->kind == TypeKind::Bool) {

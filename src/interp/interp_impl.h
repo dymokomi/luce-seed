@@ -28,6 +28,8 @@ struct Interp {
     std::unordered_map<const Node*, string> literal_text;
     string output;
     string err;
+    // The formatted strings being built, innermost last: where a `Display` field's writes go.
+    vector<string*> sinks;
     bool trapped = false;
     string trap;
     bool returning = false;

@@ -129,6 +129,8 @@ enum : uint64_t {
     FlagImportUsed = 1ull << 31,
     FlagUnused = 1ull << 32,     // a local no expression read: pruned by the checker
     FlagReferenced = 1ull << 33, // a function some name resolved to; an unreferenced private one is pruned
+    FlagFormatSink = 1ull << 34, // the sink of the formatted string being built (a name), the call that
+                                 // displays a field through it, and the field itself (§14.4)
 };
 
 struct Node {

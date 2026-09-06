@@ -378,6 +378,35 @@ TEST(check_atomic_bad_type) {
                     "lucb.check.type"));
 }
 
+// Generic interfaces (§14.4): declared with parameters, named with arguments in a
+// conformance, whose requirements are matched with the arguments substituted.
+TEST(check_generic_interface_conformance) {
+    CHECK(check_ok("interface Source[T]:\n    mutating func next() -> T?\n"
+                   "struct Ones: Source[u32]:\n    var n: u32\n    mutating func next() -> u32?:\n        if self.n == 0:\n            return none\n        self.n -= 1\n        return 1\n"
+                   "pub func answer() -> i64:\n    return 42\n"));
+    CHECK(check_has("interface Source[T]:\n    mutating func next() -> T?\n"
+                    "struct Ones: Source[u32]:\n    var n: u32\n    mutating func next() -> i64?:\n        return none\n"
+                    "pub func answer() -> i64:\n    return 42\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("from luce import Iterator\nstruct Ones: Iterator[u32]:\n    var n: u32\n    mutating func next() -> u32?:\n        return none\n"
+                   "pub func answer() -> i64:\n    return 42\n"));
+}
+
+// A formatted string shows a struct only when it is `Display` (§14.4).
+TEST(check_display_needed) {
+    CHECK(check_has("struct Plain:\n    var n: u32\npub func answer() -> i64:\n    print(f\"{Plain(n = 1)}\")\n    return 42\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("from luce import Display\nfrom io import Writer\nstruct Shown: Display:\n    var n: u32\n"
+                   "    func display(sink: Writer) -> !:\n        discard(try sink.write(f\"{self.n}\"))\n"
+                   "pub func answer() -> i64:\n    print(f\"{Shown(n = 1)}\")\n    return 42\n"));
+}
+
+// `for` over a type with `iterator()` consumes the Iterable protocol; anything else is refused.
+TEST(check_for_over_iterable) {
+    CHECK(check_has("struct Plain:\n    var n: u32\npub func answer() -> i64:\n    for x in Plain(n = 1):\n        discard(x)\n    return 42\n",
+                    "lucb.check.type"));
+}
+
 TEST(check_c_int_ok) {
     CHECK(check_ok("import c\npub func answer() -> i64:\n"
                    "    var n: c.int = 40\n"

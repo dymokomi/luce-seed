@@ -325,6 +325,9 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
     case NodeKind::Literal:
         return emit_literal(n);
     case NodeKind::Name:
+        if (n->flags & FlagFormatSink) {
+            return current_sink;
+        }
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
             return emit_enum_value(n);
         }

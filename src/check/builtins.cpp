@@ -15,6 +15,8 @@
 #include "check/checker.h"
 
 #include "support/literal.h"
+#include "lex/lexer.h"
+#include "parse/parser.h"
 
 namespace lucb {
 
@@ -41,6 +43,58 @@ auto Checker::syn_method(const char* name, Type* result, bool mutating) -> Node*
 auto Checker::bind_builtin(const char* name, Type* type, Node* decl) -> void {
     builtin_bindings.push_back(BuiltinBinding{name, type, decl});
     bind(name, type, false, decl);
+}
+
+// Every text a parsed tree views into `source` copied into the arena, so the tree stays
+// readable after the source is gone.
+auto Checker::keep_texts(Node* n) -> void {
+    for (; n != nullptr; n = n->next) {
+        n->text = keep(string(n->text));
+        n->label = keep(string(n->label));
+        keep_texts(n->left);
+        keep_texts(n->right);
+        keep_texts(n->body);
+        keep_texts(n->type);
+        keep_texts(n->attrs);
+    }
+}
+
+// Declarations a builtin module carries as Base text rather than as nodes built by hand:
+// parsed, given their types, and checked in a scope of their own, then appended to the module.
+auto Checker::append_builtin_text(Node* module, const char* text) -> void {
+    DiagnosticBag quiet;
+    Source source = Source::from_bytes(string(module->text) + ".lucb", text, quiet);
+    vector<Token> tokens = tokenize(source, quiet);
+    ParseResult parsed = parse(source, tokens, *arena, quiet);
+    if (parsed.module == nullptr) {
+        return;
+    }
+    keep_texts(parsed.module); // the source dies with this call; the tree outlives the checker
+    push_scope();
+    Node* last = module->body;
+    while (last != nullptr && last->next != nullptr) {
+        last = last->next;
+    }
+    for (Node* d = parsed.module->body; d != nullptr; d = d->next) {
+        d->flags |= FlagBuiltin | FlagPub;
+        if (d->kind == NodeKind::Interface) {
+            Type* t = make_type(TypeKind::Interface, d->text);
+            t->decl = d;
+            d->ty = t;
+            bind(d->text, t, false, d);
+        }
+    }
+    for (Node* d = parsed.module->body; d != nullptr; d = d->next) {
+        if (d->kind == NodeKind::Interface) {
+            check_interface(d);
+        }
+    }
+    pop_scope();
+    if (last != nullptr) {
+        last->next = parsed.module->body;
+    } else {
+        module->body = parsed.module->body;
+    }
 }
 
 auto Checker::bind_memory() -> void {
@@ -446,6 +500,18 @@ auto Checker::bind_memory() -> void {
     Type* st = make_type(TypeKind::Module, "sync");
     st->decl = smod;
     bind_builtin("sync", st, smod);
+    // the protocols `for` consumes and formatting calls (§8.3, §14.4), as Base text, once
+    // every name they mention is bound
+    Binding* lb = lookup("luce");
+    if (lb != nullptr && lb->decl != nullptr) {
+        append_builtin_text(lb->decl,
+                            "pub interface Iterator[T]:\n"
+                            "    mutating func next() -> T?\n"
+                            "pub interface Iterable[T, I: Iterator[T]]:\n"
+                            "    func iterator() -> I\n"
+                            "pub interface Display:\n"
+                            "    func display(sink: Writer) -> !\n");
+    }
 }
 
 } // namespace lucb

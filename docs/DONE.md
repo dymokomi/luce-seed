@@ -1,7 +1,32 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.12**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.13**, the seed `luce-base` is written against.
+
+## 0.13: `for` consumes the Iterable protocol; generic interfaces
+
+- `Iterator[T]`, `Iterable[T, I: Iterator[T]]`, and `Display` are declared
+  in the `luce` module (§14.4), as Base text the checker parses into the
+  builtin module (`append_builtin_text`), so `from luce import Iterator` and
+  `struct Countdown: Iterator[u32]:` are ordinary declarations.
+- A generic interface is checked with its parameters as opaque types, named
+  with arguments as one interned instance (`intern_iface_instance`), and a
+  conformance matches each requirement with the arguments substituted
+  (`requirement_type`).
+- `for x in source: body` over a struct with `iterator()` is rewritten by the
+  checker into a block holding `var __iterN = source.iterator()` and
+  `while let x = __iterN.next(): body` (§8.3): the iterator is a hidden local
+  of its concrete type, and the interpreter and the emitter see a loop they
+  already know. `testdata/programs/control/for_over_iterable.lucb` pins it
+  in all three executions; `tests/check_test.cpp` pins the conformance rules.
+- A struct that is `Display` shows itself in a formatted string (§14.4): the
+  checker turns the field into `value.display(__sink)`, where `__sink` stands
+  for the string's own sink (`FlagFormatSink`), the interpreter offers a sink
+  that appends to the string it is building, and the C is a `Writer` over the
+  `lb_fmtbuf` being filled (`lb_vt_fmtsink`) or over standard output from
+  `print`. `testdata/programs/text/display_protocol.lucb` and the two test
+  files pin it. Aliases in a builtin module's Base text are kept in the arena
+  (`keep_texts`), since the tree outlives the checker.
 
 ## 0.12: a conditional with a `none` branch is the optional itself
 

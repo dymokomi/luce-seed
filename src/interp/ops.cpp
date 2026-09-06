@@ -181,6 +181,16 @@ auto Interp::eval_formatted(Node* n) -> Value {
         if (p->kind == NodeKind::FormatText) {
             s += unescape_format_braces(decode_string_literal(p->text));
         } else if (p->kind == NodeKind::FormatField) {
+            if (p->flags & FlagFormatSink) {
+                // the value writes itself through the string's sink (§14.4)
+                sinks.push_back(&s);
+                eval(p->left);
+                sinks.pop_back();
+                if (trapped) {
+                    return v_unit();
+                }
+                continue;
+            }
             Value f = eval(p->left);
             if (trapped) {
                 return v_unit();
