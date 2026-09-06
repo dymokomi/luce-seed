@@ -1,0 +1,23 @@
+## An optional compares with a plain value of its element type.
+func maybe(x: usize) -> usize?:
+    if x == 7:
+        return none
+    return x
+
+pub func answer() -> i64:
+    var total: i64 = 0
+    if maybe(0) == 0:
+        total += 1
+    if maybe(3) == 3:
+        total += 10
+    if maybe(3) == 4:
+        total += 100
+    if maybe(7) == 0:
+        total += 1000
+    if maybe(7) == none:
+        total += 31
+    let z: usize? = 0
+    if z == 0:
+        total += 0
+    return total
+# answer: 42

@@ -93,6 +93,7 @@ struct Emitter {
     string emit_else(Node* n);
     string emit_catch(Node* n);
     string emit_expr(Node* n);
+    string emit_equal(Type* t, const string& a, const string& b);
     string emit_expr_inner(Node* n);
     string emit_literal(Node* n);
     string emit_unary(Node* n);

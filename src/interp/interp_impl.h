@@ -72,6 +72,7 @@ struct Interp {
     uint64_t enum_case_int(Node* en, Node* cse);
     int enum_tag_of(Node* en, Node* cse);
     Value v_enum_case(Node* cse, Type* t);
+    bool values_equal(const Value& a, const Value& b, Type* t);
     Value* lvalue(Node* n);
     string decode_string(string_view tok);
     string show(const Value& v);

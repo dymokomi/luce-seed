@@ -79,6 +79,102 @@ static uint64_t mix64(uint64_t h, uint64_t x) {
     return h;
 }
 
+// Equality component by component (§7.4): optionals by presence then payload,
+// structs, tuples, and arrays by their parts, payload enums by tag then payload.
+auto Interp::values_equal(const Value& a, const Value& b, Type* t) -> bool {
+    if (t != nullptr && is_opt(t) && !is_ptr(t)) {
+        if (a.present != b.present) {
+            return false;
+        }
+        if (!a.present) {
+            return true;
+        }
+        return values_equal(a, b, t->elem);
+    }
+    TypeKind k = t != nullptr ? t->kind : a.kind;
+    if (k == TypeKind::Bool) {
+        return a.b == b.b;
+    }
+    if (k == TypeKind::Str || k == TypeKind::CStr) {
+        return show(a) == show(b);
+    }
+    if (k == TypeKind::F32 || k == TypeKind::F64) {
+        return a.f == b.f;
+    }
+    if (k == TypeKind::Pointer || k == TypeKind::Func) {
+        return a.ptr == b.ptr && a.fn == b.fn;
+    }
+    if (k == TypeKind::Struct && t != nullptr && t->decl != nullptr) {
+        size_t i = 0;
+        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::Field) {
+                continue;
+            }
+            if (i >= a.fields.size() || i >= b.fields.size()) {
+                return false;
+            }
+            if (!values_equal(a.fields[i], b.fields[i], m->ty)) {
+                return false;
+            }
+            i++;
+        }
+        return true;
+    }
+    if (k == TypeKind::Tuple && t != nullptr) {
+        for (int i = 0; i < t->ntargs; i++) {
+            size_t j = static_cast<size_t>(i);
+            if (j >= a.fields.size() || j >= b.fields.size()) {
+                return false;
+            }
+            if (!values_equal(a.fields[j], b.fields[j], t->args[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (k == TypeKind::Array && t != nullptr) {
+        if (a.fields.size() != b.fields.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < a.fields.size(); i++) {
+            if (!values_equal(a.fields[i], b.fields[i], t->elem)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (k == TypeKind::Enum) {
+        if (a.u != b.u) {
+            return false;
+        }
+        if (t == nullptr || is_int_enum(t) || t->decl == nullptr) {
+            return true;
+        }
+        uint64_t index = 0;
+        for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+            if (c->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            if (index == a.u) {
+                size_t i = 0;
+                for (Node* param = c->body; param != nullptr; param = param->next) {
+                    if (i >= a.fields.size() || i >= b.fields.size()) {
+                        return false;
+                    }
+                    if (!values_equal(a.fields[i], b.fields[i], param->ty)) {
+                        return false;
+                    }
+                    i++;
+                }
+                return true;
+            }
+            index++;
+        }
+        return true;
+    }
+    return as_u(a, a.type) == as_u(b, b.type);
+}
+
 auto Interp::eval_formatted(Node* n) -> Value {
     string s;
     for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
@@ -504,18 +600,11 @@ auto Interp::eval_binary(Node* n) -> Value {
         }
     }
     if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
-        bool eq = false;
-        if (L.kind == TypeKind::Bool) {
-            eq = L.b == R.b;
-        } else if (L.kind == TypeKind::Str) {
-            eq = show(L) == show(R);
-        } else if (is_float(L.type)) {
-            eq = L.f == R.f;
-        } else if (L.kind == TypeKind::Enum || R.kind == TypeKind::Enum) {
-            eq = L.u == R.u;
-        } else {
-            eq = as_u(L, L.type) == as_u(R, R.type);
+        Type* et = n->left != nullptr && n->left->ty != nullptr ? n->left->ty : L.type;
+        if (et == nullptr) {
+            et = R.type;
         }
+        bool eq = values_equal(L, R, et);
         return v_bool(op == TokenKind::EqEq ? eq : !eq);
     }
     if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||

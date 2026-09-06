@@ -125,7 +125,8 @@ auto Emitter::is_never_expr(Node* n) -> bool {
 
 auto Emitter::emit_enum_value(Node* n) -> string {
     Node* cse = n->resolved;
-    Type* t = n->ty;
+    // under an optional type the value is the enum itself; the expression wraps it after
+    Type* t = is_opt(n->ty) && !is_ptr(n->ty) ? n->ty->elem : n->ty;
     if (cse == nullptr) {
         return "0";
     }
@@ -558,6 +559,67 @@ auto Emitter::emit_helper(const char* name, Type* t, const string& L, const stri
     return down_cast(t, h);
 }
 
+// `a == b` for values of type `t`, component by component (§7.4); `a` and `b`
+// are simple C lvalues, so they may appear as often as the type needs.
+auto Emitter::emit_equal(Type* t, const string& a, const string& b) -> string {
+    if (t == nullptr) {
+        return "(" + a + " == " + b + ")";
+    }
+    if (is_opt(t) && !is_ptr(t)) {
+        return "((" + a + ".present == " + b + ".present) && (!" + a + ".present || " +
+               emit_equal(t->elem, a + ".value", b + ".value") + "))";
+    }
+    if (t->kind == TypeKind::Str) {
+        return "(" + a + ".length == " + b + ".length && (" + a + ".length == 0 || memcmp(" + a +
+               ".data, " + b + ".data, " + a + ".length) == 0))";
+    }
+    if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+        string out = "(1";
+        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field) {
+                out += " && " + emit_equal(m->ty, a + "." + string(m->text), b + "." + string(m->text));
+            }
+        }
+        return out + ")";
+    }
+    if (t->kind == TypeKind::Tuple) {
+        string out = "(1";
+        for (int i = 0; i < t->ntargs; i++) {
+            string f = ".a" + std::to_string(i);
+            out += " && " + emit_equal(t->args[i], a + f, b + f);
+        }
+        return out + ")";
+    }
+    if (t->kind == TypeKind::Array) {
+        int id = tmp();
+        string i = "_lb_ei" + std::to_string(id);
+        string e = "_lb_ee" + std::to_string(id);
+        return "({ int " + e + " = 1; for (size_t " + i + " = 0; " + e + " && " + i + " < " +
+               std::to_string(t->length) + "ULL; " + i + "++) { " + e + " = " +
+               emit_equal(t->elem, a + ".d[" + i + "]", b + ".d[" + i + "]") + "; } " + e + "; })";
+    }
+    if (t->kind == TypeKind::Enum && !is_int_enum(t) && t->decl != nullptr) {
+        string out = "(" + a + ".tag == " + b + ".tag";
+        int index = 0;
+        for (Node* c = t->decl->body; c != nullptr; c = c->next) {
+            if (c->kind != NodeKind::EnumCase) {
+                continue;
+            }
+            if (c->body != nullptr) {
+                string fields = "(1";
+                for (Node* p = c->body; p != nullptr; p = p->next) {
+                    string f = ".u." + string(c->text) + "." + string(p->text);
+                    fields += " && " + emit_equal(p->ty, a + f, b + f);
+                }
+                out += " && (" + a + ".tag != " + std::to_string(index) + " || " + fields + "))";
+            }
+            index++;
+        }
+        return out + ")";
+    }
+    return "(" + a + " == " + b + ")";
+}
+
 auto Emitter::emit_binary(Node* n) -> string {
     string L = emit_expr(n->left);
     string R = emit_expr(n->right);
@@ -594,9 +656,19 @@ auto Emitter::emit_binary(Node* n) -> string {
             string a = "_lb_oa" + std::to_string(id);
             string b = "_lb_ob" + std::to_string(id);
             test = "({ " + c_type(lt) + " " + a + " = " + L + "; " + c_type(rt) + " " + b + " = " +
-                   R + "; (" + a + ".present == " + b + ".present) && (!" + a + ".present || " + a +
-                   ".value == " + b + ".value); })";
+                   R + "; (" + a + ".present == " + b + ".present) && (!" + a + ".present || " +
+                   emit_equal(lt->elem, a + ".value", b + ".value") + "); })";
         }
+        return op == TokenKind::EqEq ? "(" + test + ")" : "(!" + test + ")";
+    }
+    if ((op == TokenKind::EqEq || op == TokenKind::NotEq) && lt != nullptr &&
+        (lt->kind == TypeKind::Struct || lt->kind == TypeKind::Tuple ||
+         lt->kind == TypeKind::Array || (lt->kind == TypeKind::Enum && !is_int_enum(lt)))) {
+        int id = tmp();
+        string a = "_lb_ea" + std::to_string(id);
+        string b = "_lb_eb" + std::to_string(id);
+        string test = "({ " + c_type(lt) + " " + a + " = " + L + "; " + c_type(lt) + " " + b +
+                      " = " + R + "; " + emit_equal(lt, a, b) + "; })";
         return op == TokenKind::EqEq ? "(" + test + ")" : "(!" + test + ")";
     }
     if (is_ptr(lt) || is_ptr(rt)) {

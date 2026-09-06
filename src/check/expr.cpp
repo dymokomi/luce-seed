@@ -673,6 +673,18 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
             fail_n(n, "lucb.check.type", "interface views cannot be compared");
             return t_bool();
         }
+        // an optional against a plain value of its element type: the value converts (§5.8)
+        bool none_right = n->right->kind == NodeKind::Literal && n->right->op == TokenKind::KwNone;
+        bool none_left = n->left->kind == NodeKind::Literal && n->left->op == TokenKind::KwNone;
+        if (is_opt(L) && !is_ptr(L) && R != nullptr && !is_opt(R) && !none_right &&
+            (R->kind == TypeKind::UntypedInt || type_eq(L->elem, R) || can_widen(R, L->elem))) {
+            R = coerce(n->right, R, L);
+            n->right->ty = R;
+        } else if (is_opt(R) && !is_ptr(R) && L != nullptr && !is_opt(L) && !none_left &&
+                   (L->kind == TypeKind::UntypedInt || type_eq(R->elem, L) || can_widen(L, R->elem))) {
+            L = coerce(n->left, L, R);
+            n->left->ty = L;
+        }
         if ((L != nullptr && L->kind == TypeKind::Param &&
              (L->bounds & (BoundEquatable | BoundComparable)) == 0) ||
             (R != nullptr && R->kind == TypeKind::Param &&

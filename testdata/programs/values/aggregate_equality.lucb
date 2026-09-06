@@ -1,0 +1,35 @@
+## Equality is component-wise: optionals against plain values, payload enums, structs (§7.4).
+enum Key:
+    plain
+    character(byte: u8)
+    control(letter: u8)
+    enter
+
+struct Point:
+    var x: i32
+    var y: i32
+
+pub func answer() -> i64:
+    var total: i64 = 0
+    var keys: Key[3]
+    keys[0] = Key.character(byte = 97)
+    keys[1] = Key.control(letter = 83)
+    keys[2] = Key.enter
+    if keys[0] == Key.character(byte = 97):
+        total += 1
+    if keys[1] == Key.control(letter = 83):
+        total += 10
+    if keys[2] == Key.enter:
+        total += 100
+    if keys[0] == Key.character(byte = 98):
+        total += 1000
+    if keys[0] == keys[1]:
+        total += 1000
+    let a = Point(x = 1, y = 2)
+    let b = Point(x = 1, y = 2)
+    if a == b:
+        total += 31
+    if a == Point(x = 2, y = 2):
+        total += 1000
+    return total - 100
+# answer: 42

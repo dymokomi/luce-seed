@@ -1,0 +1,40 @@
+## An optional of a payload enum, twelve bytes, comes back in two registers without touching its neighbours.
+enum Key:
+    plain
+    character(byte: u8)
+    enter
+
+struct Source:
+    var at: usize
+
+    mutating func next() -> Key?:
+        self.at += 1
+        if self.at > 3:
+            return none
+        return Key.character(byte = 65)
+
+func make() -> Key?:
+    return Key.character(byte = 66)
+
+func plain() -> Key:
+    return Key.enter
+
+pub func answer() -> i64:
+    var m: usize = 7
+    let v = make()
+    print(f"func {m}")
+    var k: usize = 8
+    let w = plain()
+    print(f"plain {k}")
+    var s = Source(at = 0)
+    var j: usize = 9
+    let x = s.next()
+    print(f"method {j}")
+    var i: usize = 10
+    if let y = s.next():
+        print(f"iflet {i}")
+    discard(v)
+    discard(w)
+    discard(x)
+    return (i64)(m + k + j + i) + 8
+# answer: 42
