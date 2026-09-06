@@ -509,6 +509,10 @@ auto Emitter::emit_literal(Node* n) -> string {
         if (text.find_first_of(".eEn") == string::npos) {
             text += ".0";
         }
+        // `1.5f16`: the C compiler rounds the decimal to a half once
+        if (n->ty != nullptr && n->ty->kind == TypeKind::F16) {
+            return text + "f16";
+        }
         if (n->ty != nullptr && n->ty->kind == TypeKind::F32) {
             return text + "f";
         }
@@ -897,6 +901,9 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
     if (is_int(st) && is_float(dest)) {
         string w = is_signed_int(st) ? "(int64_t)(" + e + ")" : "(uint64_t)(" + e + ")";
         string call = "lb_to_f(" + w + ", " + (is_signed_int(st) ? "1" : "0") + ")";
+        if (dest->kind == TypeKind::F16) {
+            return "(_Float16)" + call;
+        }
         if (dest->kind == TypeKind::F32) {
             return "(float)" + call;
         }

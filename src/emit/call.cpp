@@ -873,19 +873,17 @@ auto Emitter::emit_ctor(Node* n, Node* st) -> string {
 
 namespace lucb {
 
-// `f64.bits(u)` and `value.bits()` are a memcpy each way (§7.5).
+// `f64.bits(u)` and `value.bits()` are a memcpy each way (§7.5), at the float's width.
 auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
-    const bool from_bits = obj->kind == NodeKind::Name && (obj->text == "f32" || obj->text == "f64");
-    if (from_bits) {
-        const bool single = obj->text == "f32";
+    const TypeKind from = obj->kind == NodeKind::Name ? float_kind_named(obj->text) : TypeKind::Error;
+    if (from != TypeKind::Error) {
         string in = emit_expr(n->body != nullptr ? n->body->left : nullptr);
-        string it = single ? "uint32_t" : "uint64_t";
-        string ft = single ? "float" : "double";
+        string it = bits_integer_c_name(n->ty);
+        string ft = c_type_name(n->ty);
         return "({ " + it + " _lb_b = (" + it + ")(" + in + "); " + ft + " _lb_f; __builtin_memcpy(&_lb_f, &_lb_b, sizeof _lb_f); _lb_f; })";
     }
-    const bool single = obj->ty != nullptr && obj->ty->kind == TypeKind::F32;
-    string it = single ? "uint32_t" : "uint64_t";
-    string ft = single ? "float" : "double";
+    string it = bits_integer_c_name(obj->ty);
+    string ft = c_type_name(obj->ty);
     return "({ " + ft + " _lb_f = (" + ft + ")(" + emit_expr(obj) + "); " + it + " _lb_b; __builtin_memcpy(&_lb_b, &_lb_f, sizeof _lb_b); _lb_b; })";
 }
 

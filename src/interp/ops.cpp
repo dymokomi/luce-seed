@@ -11,6 +11,7 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+#include "interp/punning.h"
 
 #include "support/literal.h"
 #include <cmath>
@@ -98,7 +99,7 @@ auto Interp::values_equal(const Value& a, const Value& b, Type* t) -> bool {
     if (k == TypeKind::Str || k == TypeKind::CStr) {
         return show(a) == show(b);
     }
-    if (k == TypeKind::F32 || k == TypeKind::F64) {
+    if (is_float_kind(k)) {
         return a.f == b.f;
     }
     if (k == TypeKind::Pointer || k == TypeKind::Func) {
@@ -325,7 +326,7 @@ auto Interp::eval_unary(Node* n) -> Value {
 }
 
 auto Interp::cmp_num(const Value& L, const Value& R, Type* t, TokenKind op) -> bool {
-    if (is_float(t) || L.kind == TypeKind::F32 || L.kind == TypeKind::F64) {
+    if (is_float(t) || is_float_kind(L.kind)) {
         if (op == TokenKind::Lt) {
             return L.f < R.f;
         }
@@ -864,15 +865,8 @@ auto Interp::hash_value(const Value& v, Type* t) -> uint64_t {
     if (t != nullptr && t->kind == TypeKind::Bool) {
         return mix64(h, v.b ? 1 : 0);
     }
-    if (is_float(t) || v.kind == TypeKind::F32 || v.kind == TypeKind::F64) {
-        uint64_t bits = 0;
-        if (t != nullptr && t->kind == TypeKind::F32) {
-            float f = static_cast<float>(v.f);
-            memcpy(&bits, &f, sizeof(float));
-        } else {
-            memcpy(&bits, &v.f, sizeof(double));
-        }
-        return mix64(h, bits);
+    if (is_float(t) || is_float_kind(v.kind)) {
+        return mix64(h, float_to_bits(v.f, is_float(t) ? t->kind : v.kind));
     }
     if (is_ptr(t) || (t != nullptr && t->kind == TypeKind::CStr)) {
         return mix64(h, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(v.ptr)));

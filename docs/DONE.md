@@ -1,7 +1,24 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.16**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.17**, the seed `luce-base` is written against.
+
+## 0.17: `f16`, and a parse that forgets the last one
+
+The parser's O(1) list append cached each list's tail in a process-wide table keyed
+by the list's address and head, both of which repeat once an arena is freed and
+reused, so a later parse could splice a dead tree into a live one (missing nodes,
+or a cycle that spun forever). The cache is now the parser's own (`ListTails`),
+living exactly as long as one parse; the shared `append_node` walks.
+`tests/parse_test.cpp` parses in a loop over reused arenas to pin it.
+
+
+`f16` is a real binary16 (§5.1): two bytes in memory, `_Float16` in the C,
+and every result rounded to half precision in the interpreter (`v_float`),
+so the oracle and the binary agree on `2048.0 + 1.0`. It converts to and from
+the other floats and the integers, hashes by its bits, and punned through a
+union it is two bytes. `testdata/programs/values/half_floats.lucb` and
+`tests/agree_test.cpp` pin it.
 
 ## 0.16: the manifest reaches the build
 

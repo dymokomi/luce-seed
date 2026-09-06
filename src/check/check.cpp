@@ -1064,6 +1064,7 @@ auto Checker::install_core_types() -> void {
     ty_u32 = make_type(TypeKind::U32, "u32");
     ty_u64 = make_type(TypeKind::U64, "u64");
     ty_usize = make_type(TypeKind::Usize, "usize");
+    ty_f16 = make_type(TypeKind::F16, "f16");
     ty_f32 = make_type(TypeKind::F32, "f32");
     ty_f64 = make_type(TypeKind::F64, "f64");
     ty_char = make_type(TypeKind::Char, "char");

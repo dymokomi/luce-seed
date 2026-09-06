@@ -12,6 +12,7 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+#include "interp/punning.h"
 
 #include "support/literal.h"
 #include <cerrno>
@@ -947,7 +948,7 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             int64_t cmp = 0;
             Type* lt = callee->left != nullptr ? callee->left->ty : L.type;
-            if (is_float(lt) || L.kind == TypeKind::F32 || L.kind == TypeKind::F64) {
+            if (is_float(lt) || is_float_kind(L.kind)) {
                 cmp = L.f < R.f ? -1 : L.f > R.f ? 1 : 0;
             } else if (L.kind == TypeKind::Str || (lt != nullptr && lt->kind == TypeKind::Str)) {
                 string a = decode_string(L.str);
@@ -1200,40 +1201,23 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
 
 namespace lucb {
 
-// `f64.bits(u)`, `f32.bits(u)`, and `value.bits()`: a float and its IEEE bits (§7.5).
+// `f64.bits(u)`, `f32.bits(u)`, `f16.bits(u)`, and `value.bits()`: a float and its IEEE
+// bits (§7.5), at the float's width.
 auto Interp::eval_float_bits(Node* callee, Node* n) -> Value {
     Node* obj = callee->left;
-    const bool from_bits = obj->kind == NodeKind::Name && (obj->text == "f32" || obj->text == "f64");
-    if (from_bits) {
+    if (obj->kind == NodeKind::Name && float_kind_named(obj->text) != TypeKind::Error) {
         Value bits = eval(n->body != nullptr ? n->body->left : nullptr);
         if (trapped) {
             return v_unit();
         }
-        if (obj->text == "f32") {
-            uint32_t u = static_cast<uint32_t>(bits.u);
-            float f = 0;
-            std::memcpy(&f, &u, sizeof f);
-            return v_float(n->ty, f);
-        }
-        uint64_t u = bits.u;
-        double d = 0;
-        std::memcpy(&d, &u, sizeof d);
-        return v_float(n->ty, d);
+        return v_float(n->ty, float_from_bits(bits.u, n->ty->kind));
     }
     Value v = eval(obj);
     if (trapped) {
         return v_unit();
     }
-    if (v.kind == TypeKind::F32 || (obj->ty != nullptr && obj->ty->kind == TypeKind::F32)) {
-        float f = static_cast<float>(v.f);
-        uint32_t u = 0;
-        std::memcpy(&u, &f, sizeof u);
-        return v_int(n->ty, u);
-    }
-    double d = v.f;
-    uint64_t u = 0;
-    std::memcpy(&u, &d, sizeof u);
-    return v_int(n->ty, u);
+    const TypeKind width = is_float(obj->ty) ? obj->ty->kind : v.kind;
+    return v_int(n->ty, float_to_bits(v.f, width));
 }
 
 } // namespace lucb

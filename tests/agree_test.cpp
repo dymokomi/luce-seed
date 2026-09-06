@@ -809,6 +809,21 @@ static std::string c_of(const char* text) {
 
 // `c.long`, `c.char`, and `c.wchar` compute as the integers of their width; the C is spelled
 // `long`, `char`, `wchar_t`, and `c.va_list` is `va_list`.
+// `f16` is a real binary16 (§5.1): two bytes in memory, every result rounded to half precision,
+// so `2048.0 + 1.0` is `2048.0` and `1.0 / 3.0` is the nearest half, in both executions.
+TEST(agree_half_floats) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let big: f16 = 2048.0\n"
+                 "    let next = big + 1.0\n"
+                 "    let third: f16 = 1.0 / 3.0\n"
+                 "    let widened = f64(third) * 3.0\n"
+                 "    let back = f16(0.1) + f16(0.2)\n"
+                 "    var total: i64 = i64(next) - 2048\n"
+                 "    if widened < 1.0 and widened > 0.999:\n        total += 20\n"
+                 "    if f32(back) > 0.29 and f32(back) < 0.31:\n        total += 20\n"
+                 "    return total\n"));
+}
+
 TEST(agree_c_distinct_types) {
     CHECK(agrees("import c\npub func answer() -> i64:\n"
                  "    var n: c.long = -40\n"

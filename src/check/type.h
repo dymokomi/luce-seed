@@ -31,6 +31,7 @@ enum class TypeKind : uint8_t {
     U32,
     U64,
     Usize,
+    F16,
     F32,
     F64,
     Char,
@@ -97,6 +98,14 @@ bool is_float(const Type* t);
 bool is_numeric(const Type* t);
 int int_bits(const Type* t);
 int float_bits(const Type* t);
+// Whether `k` is one of the float kinds.
+bool is_float_kind(TypeKind k);
+// The float kind `name` spells (`f16`, `f32`, `f64`), or `TypeKind::Error`.
+TypeKind float_kind_named(std::string_view name);
+// The width of the float kind `k` in bits: 16, 32, or 64.
+int float_kind_bits(TypeKind k);
+// The C unsigned integer as wide as the float `t`: the spelling of its bits.
+const char* bits_integer_c_name(const Type* t);
 uint64_t int_mask(int bits);
 int64_t int_min(const Type* t);
 int64_t int_max_signed(int bits);
@@ -151,7 +160,7 @@ struct TypeSet {
     Type boolean;
     Type i8, i16, i32, i64, isize;
     Type u8, u16, u32, u64, usize;
-    Type f32, f64;
+    Type f16, f32, f64;
     Type character;
     Type str;
     Type untyped_int;

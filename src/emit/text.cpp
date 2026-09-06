@@ -92,7 +92,7 @@ auto Emitter::emit_hash_of(Type* t, const string& e) -> string {
     if (is_float(t)) {
         int id = tmp();
         string vn = "_lb_hf" + std::to_string(id);
-        string bits = t->kind == TypeKind::F32 ? "uint32_t" : "uint64_t";
+        string bits = bits_integer_c_name(t);
         return "({ " + c_type(t) + " " + vn + " = " + e + "; " + bits + " _lb_hb" +
                std::to_string(id) + "; memcpy(&_lb_hb" + std::to_string(id) + ", &" + vn +
                ", sizeof(" + vn + ")); lb_hash_mix(lb_hash_seed(), (uint64_t)_lb_hb" +

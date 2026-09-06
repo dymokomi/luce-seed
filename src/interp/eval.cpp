@@ -261,7 +261,7 @@ auto Interp::show(const Value& v) -> string {
     if (v.kind == TypeKind::Str) {
         return decode_string(v.str);
     }
-    if (is_float(v.type) || v.kind == TypeKind::F32 || v.kind == TypeKind::F64) {
+    if (is_float(v.type) || is_float_kind(v.kind)) {
         char buf[64];
         snprintf(buf, sizeof(buf), "%g", v.f);
         return buf;

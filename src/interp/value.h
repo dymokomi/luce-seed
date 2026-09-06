@@ -79,7 +79,14 @@ inline Value v_float(Type* t, double f) {
     Value v;
     v.type = t;
     v.kind = t != nullptr ? t->kind : TypeKind::F64;
-    v.f = t != nullptr && t->kind == TypeKind::F32 ? static_cast<double>(static_cast<float>(f)) : f;
+    // every result of an `f16` or `f32` is rounded to that width: their arithmetic is IEEE
+    if (t != nullptr && t->kind == TypeKind::F16) {
+        v.f = static_cast<double>(static_cast<_Float16>(static_cast<float>(f)));
+    } else if (t != nullptr && t->kind == TypeKind::F32) {
+        v.f = static_cast<double>(static_cast<float>(f));
+    } else {
+        v.f = f;
+    }
     return v;
 }
 

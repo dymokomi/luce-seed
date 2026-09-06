@@ -54,6 +54,7 @@ struct Checker {
     Type* ty_u32 = nullptr;
     Type* ty_u64 = nullptr;
     Type* ty_usize = nullptr;
+    Type* ty_f16 = nullptr;
     Type* ty_f32 = nullptr;
     Type* ty_f64 = nullptr;
     Type* ty_char = nullptr;
@@ -154,6 +155,8 @@ struct Checker {
     }
 
     Type* named_scalar(string_view name);
+    // The float type `name` spells (`f16`, `f32`, `f64`), or nullptr.
+    Type* named_float(string_view name);
     Type* c_alias(string_view name);
     Type* resolve_alias(Node* alias);
     Type* imported_c_type(Node* at, string_view name);
@@ -234,6 +237,7 @@ struct Checker {
     void propagate_untyped(Node* n, Type* dest);
     Type* check_float_bits(Node* n, Node* obj);
     Type* check_float_from_bits(Node* n, Node* obj);
+    Type* bits_integer(Type* t);
     bool is_local(Node* n);
     void fail(Span span, const char* code, const string& message);
     void fail_n(Node* n, const char* code, const string& message);

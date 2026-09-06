@@ -483,7 +483,7 @@ auto Checker::check_variadic_arg(Node* a) -> Type* {
         a->left->ty = t;
         return t;
     }
-    if (is_float(t) && t->kind == TypeKind::F32) {
+    if (is_float(t) && t->kind != TypeKind::F64) {
         a->left->ty = ty_f64;
         return ty_f64;
     }
@@ -693,7 +693,7 @@ auto Checker::check_method_call(Node* n) -> Type* {
         return intern_ptr(ty_void, false, false, false);
     }
     if (obj != nullptr && obj->kind == NodeKind::Name && mem->text == "bits" &&
-        (obj->text == "f32" || obj->text == "f64")) {
+        named_float(obj->text) != nullptr) {
         return check_float_from_bits(n, obj);
     }
     if (obj != nullptr && obj->kind == NodeKind::Name) {
@@ -1259,14 +1259,20 @@ auto Checker::check_float_bits(Node* n, Node* obj) -> Type* {
     }
     n->resolved = nullptr;
     mem->resolved = nullptr;
-    return named_scalar(obj->ty != nullptr && obj->ty->kind == TypeKind::F32 ? "u32" : "u64");
+    return bits_integer(obj->ty);
 }
 
-// `f64.bits(u)` and `f32.bits(u)`: a float built from its bits (§7.5).
+// The unsigned integer as wide as the float `t`: the type of its bits.
+auto Checker::bits_integer(Type* t) -> Type* {
+    const int width = is_float(t) ? float_bits(t) : 64;
+    return named_scalar(width == 16 ? "u16" : width == 32 ? "u32" : "u64");
+}
+
+// `f64.bits(u)`, `f32.bits(u)`, and `f16.bits(u)`: a float built from its bits (§7.5).
 auto Checker::check_float_from_bits(Node* n, Node* obj) -> Type* {
     Node* mem = n->left;
-    Type* result = named_scalar(obj->text);
-    Type* want = named_scalar(obj->text == "f32" ? "u32" : "u64");
+    Type* result = named_float(obj->text);
+    Type* want = bits_integer(result);
     obj->ty = result;
     if (count_args(n->body) != 1) {
         fail_n(n, "lucb.check.call", "`bits` takes the integer to reinterpret");
@@ -1274,7 +1280,7 @@ auto Checker::check_float_from_bits(Node* n, Node* obj) -> Type* {
     }
     Type* got = check_expr(n->body->left, want);
     if (!type_eq(got, want) && got->kind != TypeKind::UntypedInt) {
-        fail_n(n->body->left, "lucb.check.type", "`bits` takes `" + string(obj->text == "f32" ? "u32" : "u64") + "`");
+        fail_n(n->body->left, "lucb.check.type", "`bits` takes `" + type_name(want) + "`");
     } else if (got->kind == TypeKind::UntypedInt) {
         n->body->left->ty = coerce(n->body->left, got, want);
     }

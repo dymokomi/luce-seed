@@ -85,6 +85,8 @@ string type_name(const Type* t) {
         return "u64";
     case TypeKind::Usize:
         return "usize";
+    case TypeKind::F16:
+        return "f16";
     case TypeKind::F32:
         return "f32";
     case TypeKind::F64:
@@ -239,7 +241,30 @@ bool is_unsigned_int(const Type* t) {
 }
 
 bool is_float(const Type* t) {
-    return t != nullptr && (t->kind == TypeKind::F32 || t->kind == TypeKind::F64);
+    return t != nullptr && is_float_kind(t->kind);
+}
+
+bool is_float_kind(TypeKind k) {
+    return k == TypeKind::F16 || k == TypeKind::F32 || k == TypeKind::F64;
+}
+
+TypeKind float_kind_named(std::string_view name) {
+    if (name == "f16") {
+        return TypeKind::F16;
+    }
+    if (name == "f32") {
+        return TypeKind::F32;
+    }
+    return name == "f64" ? TypeKind::F64 : TypeKind::Error;
+}
+
+int float_kind_bits(TypeKind k) {
+    return k == TypeKind::F16 ? 16 : k == TypeKind::F32 ? 32 : 64;
+}
+
+const char* bits_integer_c_name(const Type* t) {
+    const int width = float_bits(t);
+    return width == 16 ? "uint16_t" : width == 32 ? "uint32_t" : "uint64_t";
 }
 
 bool is_numeric(const Type* t) {
@@ -332,16 +357,7 @@ int int_bits(const Type* t) {
 }
 
 int float_bits(const Type* t) {
-    if (t == nullptr) {
-        return 0;
-    }
-    if (t->kind == TypeKind::F32) {
-        return 32;
-    }
-    if (t->kind == TypeKind::F64) {
-        return 64;
-    }
-    return 0;
+    return is_float(t) ? float_kind_bits(t->kind) : 0;
 }
 
 uint64_t int_mask(int bits) {
@@ -538,6 +554,7 @@ int type_size(const Type* t) {
         return 1;
     case TypeKind::I16:
     case TypeKind::U16:
+    case TypeKind::F16:
         return 2;
     case TypeKind::I32:
     case TypeKind::U32:
@@ -697,6 +714,8 @@ const char* c_type_name(const Type* t) {
         return "uint64_t";
     case TypeKind::Usize:
         return "size_t";
+    case TypeKind::F16:
+        return "_Float16";
     case TypeKind::F32:
         return "float";
     case TypeKind::F64:
@@ -843,6 +862,8 @@ TypeSet::TypeSet() {
     u64.name = "u64";
     usize.kind = TypeKind::Usize;
     usize.name = "usize";
+    f16.kind = TypeKind::F16;
+    f16.name = "f16";
     f32.kind = TypeKind::F32;
     f32.name = "f32";
     f64.kind = TypeKind::F64;

@@ -22,4 +22,8 @@ namespace lucb {
 // reached through this function.
 Value* union_member(Value& u, int index);
 
+// The IEEE bits of `f` at the width of the float type `t`, and the float those bits spell.
+uint64_t float_to_bits(double f, TypeKind k);
+double float_from_bits(uint64_t bits, TypeKind k);
+
 } // namespace lucb

@@ -18,6 +18,10 @@
 
 namespace lucb {
 
+auto Checker::named_float(string_view name) -> Type* {
+    return float_kind_named(name) == TypeKind::Error ? nullptr : named_scalar(name);
+}
+
 auto Checker::named_scalar(string_view name) -> Type* {
     if (name == "i8") {
         return ty_i8;
@@ -48,6 +52,9 @@ auto Checker::named_scalar(string_view name) -> Type* {
     }
     if (name == "usize") {
         return ty_usize;
+    }
+    if (name == "f16") {
+        return ty_f16;
     }
     if (name == "f32") {
         return ty_f32;
@@ -612,11 +619,6 @@ auto Checker::resolve_type(Node* n) -> Type* {
     }
     if (n->left != nullptr && n->text.empty() && n->flags == 0) {
         n->ty = resolve_type(n->left);
-        return n->ty;
-    }
-    if (n->text == "f16") {
-        fail_n(n, "lucb.check.unsupported", "`f16` is not in this slice");
-        n->ty = t_error();
         return n->ty;
     }
     Type* named = named_scalar(n->text);
