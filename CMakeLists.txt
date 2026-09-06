@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(luce-seed VERSION 0.10 LANGUAGES C CXX)
+# VERSION is the one place the seed's version lives; a release bumps it and tags luce-seed-N.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" LUCB_VERSION)
+string(STRIP "${LUCB_VERSION}" LUCB_VERSION)
+project(luce-seed VERSION ${LUCB_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +86,7 @@ target_include_directories(lucb_core PUBLIC src)
 lucb_warnings(lucb_core)
 
 add_executable(lucb src/main.cpp)
+target_compile_definitions(lucb PRIVATE LUCB_VERSION="${LUCB_VERSION}")
 target_link_libraries(lucb PRIVATE lucb_core)
 lucb_warnings(lucb)
 
