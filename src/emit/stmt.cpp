@@ -399,24 +399,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
         }
         break;
     case NodeKind::Asm: {
-        string body;
-        for (Node* ln = n->body; ln != nullptr; ln = ln->next) {
-            if (ln->kind == NodeKind::Literal) {
-                string t = string(ln->text);
-                body += t;
-                if (t.empty() || t.back() != '\n') {
-                    body += '\n';
-                }
-            }
-        }
-        string arch = string(n->text);
-        if (arch == "arm64") {
-            line("#if defined(__aarch64__)");
-        } else if (arch == "x86_64") {
-            line("#if defined(__x86_64__)");
-        } else {
-            line("#if 0");
-        }
+        string body = asm_body(n);
+        line(asm_arch_guard(n));
         line("{");
         indent++;
         string outs;
@@ -597,7 +581,7 @@ auto Emitter::emit_jump(Node* n) -> void {
 auto Emitter::emit_while(Node* n) -> void {
     Scope sc;
     sc.loop = true;
-    sc.label = n->text;
+    sc.label = n->label;
     scopes.push_back(sc);
     if (n->flags & FlagIfLet) {
         Node* let = n->left;
@@ -619,9 +603,7 @@ auto Emitter::emit_while(Node* n) -> void {
             }
         }
         emit_stmt(n->body);
-        if (!n->text.empty()) {
-            line("__attribute__((unused)) lb_cont_" + string(n->text) + ": ;");
-        }
+        emit_loop_label("lb_cont_", n);
         indent--;
         line("}");
     } else {
@@ -629,9 +611,7 @@ auto Emitter::emit_while(Node* n) -> void {
         out += "while (!!(" + emit_expr(n->left) + ")) {\n";
         indent++;
         emit_stmt(n->body);
-        if (!n->text.empty()) {
-            line("__attribute__((unused)) lb_cont_" + string(n->text) + ": ;");
-        }
+        emit_loop_label("lb_cont_", n);
         indent--;
         line("}");
     }
@@ -639,14 +619,13 @@ auto Emitter::emit_while(Node* n) -> void {
         unwind_scope(scopes.back());
         scopes.pop_back();
     }
-    if (!n->text.empty()) {
-        line("__attribute__((unused)) lb_brk_" + string(n->text) + ": ;");
-    }
+    emit_loop_label("lb_brk_", n);
 }
 
 auto Emitter::emit_for_range(Node* n) -> void {
     Scope sc;
     sc.loop = true;
+    sc.label = n->label;
     scopes.push_back(sc);
     string ty = c_type(n->ty);
     string name = ident("lb_", n->text);
@@ -657,11 +636,20 @@ auto Emitter::emit_for_range(Node* n) -> void {
          cmp + "(" + ty + ")(" + b + "); " + name + "++) {");
     indent++;
     emit_stmt(n->body);
+    emit_loop_label("lb_cont_", n);
     indent--;
     line("}");
     if (!scopes.empty()) {
         unwind_scope(scopes.back());
         scopes.pop_back();
+    }
+    emit_loop_label("lb_brk_", n);
+}
+
+// The `continue` or `break` target of a labeled loop, `outer: for ...` (§8.5).
+auto Emitter::emit_loop_label(const char* prefix, Node* loop) -> void {
+    if (!loop->label.empty()) {
+        line("__attribute__((unused)) " + string(prefix) + string(loop->label) + ": ;");
     }
 }
 
@@ -978,6 +966,51 @@ auto Emitter::emit_if(Node* n) -> void {
         emit_stmt(n->right);
         indent--;
         line("}");
+    }
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// The raw lines of an `asm` block as one C string body, each line newline-terminated.
+auto Emitter::asm_body(Node* n) -> string {
+    string body;
+    for (Node* ln = n->body; ln != nullptr; ln = ln->next) {
+        if (ln->kind == NodeKind::Literal) {
+            string t = string(ln->text);
+            body += t;
+            if (t.empty() || t.back() != '\n') {
+                body += '\n';
+            }
+        }
+    }
+    return body;
+}
+
+// The preprocessor guard that selects an `asm ARCH` block for the compiling target.
+auto Emitter::asm_arch_guard(Node* n) -> string {
+    string arch = string(n->text);
+    if (arch == "arm64") {
+        return "#if defined(__aarch64__)";
+    }
+    if (arch == "x86_64") {
+        return "#if defined(__x86_64__)";
+    }
+    return "#if 0";
+}
+
+// A `naked func` body: its asm blocks and nothing else, since C admits no other statement
+// in a naked function (§9.8).
+auto Emitter::emit_naked_body(Node* fn) -> void {
+    Node* first = fn->body != nullptr && fn->body->kind == NodeKind::Block ? fn->body->body : fn->body;
+    for (Node* s = first; s != nullptr; s = s->next) {
+        if (s->kind != NodeKind::Asm) {
+            continue;
+        }
+        line(asm_arch_guard(s));
+        line("__asm__ volatile(" + c_escape(asm_body(s)) + ");");
+        line("#endif");
     }
 }
 

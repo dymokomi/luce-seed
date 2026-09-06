@@ -40,10 +40,50 @@ auto Emitter::emit_writer_rt() -> void {
     out += '\n';
 }
 
+// The attributes of §9.8 as one `__attribute__` prefix; `inline` is advice this backend
+// leaves to the C compiler, and a section name is passed as written.
+auto Emitter::declaration_attributes(Node* d, bool is_func) -> string {
+    vector<string> parts;
+    if (is_func) {
+        if ((d->flags & FlagNoinline) != 0) {
+            parts.push_back("noinline");
+        }
+        if ((d->flags & FlagCold) != 0) {
+            parts.push_back("cold");
+        }
+        if ((d->flags & FlagNaked) != 0) {
+            parts.push_back("naked");
+        }
+    }
+    if ((d->flags & FlagUsed) != 0) {
+        parts.push_back("used");
+    }
+    if ((d->flags & FlagWeakAttr) != 0) {
+        parts.push_back("weak");
+    }
+    for (Node* a = d->attrs; a != nullptr; a = a->next) {
+        if (a->text == "section" && a->left != nullptr) {
+            string name = string(a->left->text);
+            if (name.empty() || name[0] != '"') {
+                name = "\"" + name + "\"";
+            }
+            parts.push_back("section(" + name + ")");
+        }
+    }
+    if (parts.empty()) {
+        return "";
+    }
+    string out = "__attribute__((";
+    for (size_t i = 0; i < parts.size(); i++) {
+        out += (i > 0 ? ", " : "") + parts[i];
+    }
+    return out + ")) ";
+}
+
 auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
     string ret = fn_c_ret(fn);
     string name = func_ident(fn, owner);
-    string sig = ret + " " + name + "(";
+    string sig = declaration_attributes(fn, true) + ret + " " + name + "(";
     bool first = true;
     if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
         if ((fn->flags & FlagMutating) != 0 || fn->text == "init") {
@@ -97,6 +137,13 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
             }
         }
     }
+    if ((fn->flags & FlagNaked) != 0) {
+        emit_naked_body(fn);
+        indent--;
+        line("}");
+        out += '\n';
+        return;
+    }
     Node* saved_fn = current_fn;
     current_fn = fn;
     scopes.reserve(64);
@@ -124,7 +171,8 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
 }
 
 auto Emitter::emit_global(Node* g) -> void {
-    string tl = (g->flags & FlagThreadLocal) != 0 ? "_Thread_local " : "";
+    string tl = declaration_attributes(g, false) +
+                ((g->flags & FlagThreadLocal) != 0 ? "_Thread_local " : "");
     string ty = c_type(g->ty);
     string name = ident("lb_", g->text);
     if (g->flags & FlagUninit) {

@@ -124,6 +124,30 @@ static bool agrees(const char* text) {
     return true;
 }
 
+TEST(agree_labeled_loop_variable) {
+    CHECK(agrees("pub func answer() -> i64:\n    var total: i64 = 0\n    outer: for i in 0..<10:\n        for j in 0..<10:\n            if j == 5:\n                continue outer\n            if i == 7:\n                break outer\n            total += 1\n    return total - 35 + 42\n"));
+}
+
+TEST(agree_float_bits) {
+    CHECK(agrees("pub func answer() -> i64:\n    let x: f64 = 1.5\n    let b = x.bits()\n    let y = f64.bits(b)\n    let s: f32 = 2.0\n    let sb = s.bits()\n    let back = f32.bits(sb)\n    var t: i64 = 0\n    if y == 1.5:\n        t += 20\n    if b == 4609434218613702656:\n        t += 20\n    if back == 2.0 and sb == 1073741824:\n        t += 2\n    return t\n"));
+}
+
+TEST(agree_union_scalar_punning) {
+    CHECK(agrees("union Bits:\n    real: f64\n    integer: i64\npub func answer() -> i64:\n    var b: Bits\n    b.real = 1.5\n    var total: i64 = 0\n    if b.integer == 4609434218613702656:\n        total += 42\n    return total\n"));
+}
+
+TEST(agree_union_byte_punning) {
+    CHECK(agrees("struct Header:\n    var kind: u32\n    var length: u32\nunion Packet:\n    header: Header\n    raw: u8[8]\n    word: u64\npub func answer() -> i64:\n    var p: Packet\n    p.header = Header(kind = 7, length = 256)\n    var total: i64 = 0\n    if p.raw[0] == 7 and p.raw[4] == 0 and p.raw[5] == 1:\n        total += 20\n    if p.word == (256 << 32) | 7:\n        total += 22\n    p.word = 0\n    p.raw[0] = 9\n    if p.header.kind == 9:\n        total += 0\n    return total\n"));
+}
+
+TEST(agree_declaration_attributes) {
+    CHECK(agrees("weak func f(x: i64) -> i64:\n    return x + 41\nused section(\"__DATA,__custom\") var table: i64[4]\ncold noinline func g() -> i64:\n    return 1\npub func answer() -> i64:\n    return f(g()) + table[0]\n"));
+}
+
+TEST(agree_untyped_right_operand) {
+    CHECK(agrees("pub func answer() -> i64:\n    let w: u64 = 1099511627783\n    if w == (256 << 32) | 7:\n        return 42\n    return 0\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

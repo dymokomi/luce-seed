@@ -483,10 +483,15 @@ auto Emitter::emit_literal(Node* n) -> string {
         ParsedFloat p = parse_float_literal(n->text);
         char buf[64];
         snprintf(buf, sizeof(buf), "%.17g", p.value);
-        if (n->ty != nullptr && n->ty->kind == TypeKind::F32) {
-            return string(buf) + "f";
+        string text = buf;
+        // `%g` prints `2` for 2.0; C needs a point or an exponent for a floating literal
+        if (text.find_first_of(".eEn") == string::npos) {
+            text += ".0";
         }
-        return buf;
+        if (n->ty != nullptr && n->ty->kind == TypeKind::F32) {
+            return text + "f";
+        }
+        return text;
     }
     ParsedInt p = parse_int_literal(n->text);
     Type* t = n->ty;

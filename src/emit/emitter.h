@@ -142,6 +142,12 @@ struct Emitter {
     string emit_match_expr(Node* n);
     void emit_if(Node* n);
     void emit_sig(Node* fn, Node* owner, bool define);
+    string declaration_attributes(Node* d, bool is_func);
+    string asm_body(Node* n);
+    string asm_arch_guard(Node* n);
+    void emit_naked_body(Node* fn);
+    void emit_loop_label(const char* prefix, Node* loop);
+    string emit_float_bits(Node* obj, Node* n);
     string type_attrs(Node* n);
     void emit_struct(Node* st);
     void emit_union(Node* un);
