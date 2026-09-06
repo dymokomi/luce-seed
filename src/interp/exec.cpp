@@ -236,13 +236,13 @@ auto Interp::exec(Node* n) -> void {
                 exec(n->body);
             }
             if (breaking) {
-                if (jump_label.empty() || jump_label == n->text) {
+                if (jump_label.empty() || jump_label == n->label) {
                     breaking = false;
                 }
                 break;
             }
             if (continuing) {
-                if (jump_label.empty() || jump_label == n->text) {
+                if (jump_label.empty() || jump_label == n->label) {
                     continuing = false;
                     continue;
                 }
@@ -308,13 +308,13 @@ auto Interp::exec(Node* n) -> void {
                 exec(n->body);
                 frames.back().slots.pop_back();
                 if (breaking) {
-                    if (jump_label.empty() || jump_label == n->text) {
+                    if (jump_label.empty() || jump_label == n->label) {
                         breaking = false;
                     }
                     break;
                 }
                 if (continuing) {
-                    if (jump_label.empty() || jump_label == n->text) {
+                    if (jump_label.empty() || jump_label == n->label) {
                         continuing = false;
                         continue;
                     }

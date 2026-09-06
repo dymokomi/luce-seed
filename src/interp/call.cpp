@@ -936,6 +936,9 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             return call_func(impl, obj, n->body);
         }
+        if (callee->text == "bits" && method == nullptr && callee->left != nullptr) {
+            return eval_float_bits(callee, n);
+        }
         if (callee->text == "compare" && (method == nullptr || method->kind != NodeKind::Func)) {
             Value L = eval(callee->left);
             Value R = eval(n->body != nullptr ? n->body->left : nullptr);
@@ -1184,6 +1187,46 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
         i++;
     }
     return v;
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// `f64.bits(u)`, `f32.bits(u)`, and `value.bits()`: a float and its IEEE bits (§7.5).
+auto Interp::eval_float_bits(Node* callee, Node* n) -> Value {
+    Node* obj = callee->left;
+    const bool from_bits = obj->kind == NodeKind::Name && (obj->text == "f32" || obj->text == "f64");
+    if (from_bits) {
+        Value bits = eval(n->body != nullptr ? n->body->left : nullptr);
+        if (trapped) {
+            return v_unit();
+        }
+        if (obj->text == "f32") {
+            uint32_t u = static_cast<uint32_t>(bits.u);
+            float f = 0;
+            std::memcpy(&f, &u, sizeof f);
+            return v_float(n->ty, f);
+        }
+        uint64_t u = bits.u;
+        double d = 0;
+        std::memcpy(&d, &u, sizeof d);
+        return v_float(n->ty, d);
+    }
+    Value v = eval(obj);
+    if (trapped) {
+        return v_unit();
+    }
+    if (v.kind == TypeKind::F32 || (obj->ty != nullptr && obj->ty->kind == TypeKind::F32)) {
+        float f = static_cast<float>(v.f);
+        uint32_t u = 0;
+        std::memcpy(&u, &f, sizeof u);
+        return v_int(n->ty, u);
+    }
+    double d = v.f;
+    uint64_t u = 0;
+    std::memcpy(&u, &d, sizeof u);
+    return v_int(n->ty, u);
 }
 
 } // namespace lucb

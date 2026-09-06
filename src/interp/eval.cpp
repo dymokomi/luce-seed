@@ -10,6 +10,7 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+#include "interp/punning.h"
 
 #include "support/literal.h"
 #include <cerrno>
@@ -81,7 +82,8 @@ auto Interp::zero_of(Type* t) -> Value {
         }
         return make_array(t, std::move(elems));
     }
-    if (t != nullptr && t->kind == TypeKind::Struct && t->decl != nullptr) {
+    if (t != nullptr && (t->kind == TypeKind::Struct || t->kind == TypeKind::Union) &&
+        t->decl != nullptr) {
         v.fields.clear();
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
@@ -189,6 +191,9 @@ auto Interp::lvalue(Node* n) -> Value* {
         if (i < 0 || i >= static_cast<int>(obj->fields.size())) {
             fail("no such field");
             return nullptr;
+        }
+        if (obj->type->kind == TypeKind::Union) {
+            return union_member(*obj, i);
         }
         return &obj->fields[static_cast<size_t>(i)];
     }

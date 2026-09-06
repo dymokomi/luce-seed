@@ -60,6 +60,7 @@ set(LUCB_CORE_SOURCES
     src/check/generic.cpp
     src/interp/interp.cpp
     src/interp/eval.cpp
+    src/interp/punning.cpp
     src/interp/call.cpp
     src/interp/memory.cpp
     src/interp/ops.cpp

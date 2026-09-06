@@ -66,6 +66,7 @@ struct Interp {
     }
 
     Value make_array(Type* t, vector<Value> elems);
+    Value eval_float_bits(Node* callee, Node* n);
     Value copy_value(const Value& v);
     Value zero_of(Type* t);
     Slot* find_slot(string_view name, Node* decl = nullptr);

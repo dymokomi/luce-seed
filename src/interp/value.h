@@ -39,6 +39,9 @@ struct Value {
     // memory as typed values, not bytes, so arithmetic or access through such
     // a pointer is refused rather than mis-modelled; the C backend is exact.
     bool punned = false;
+    // For a union: the member last reached through a member place, the source of truth
+    // when another member is read (interp/punning).
+    int active = -1;
 };
 
 inline Value v_unit() {
