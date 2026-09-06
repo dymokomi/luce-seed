@@ -364,6 +364,13 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
     if (dest->kind == TypeKind::CStr && src->kind == TypeKind::Str) {
         return true;
     }
+    // `cstr` is a pointer to C text: it converts to and from object pointers as one
+    if (src->kind == TypeKind::CStr && is_ptr(dest)) {
+        return true;
+    }
+    if (is_ptr(src) && dest->kind == TypeKind::CStr) {
+        return true;
+    }
     fail_n(n, "lucb.check.type",
            "cannot convert `" + type_name(src) + "` to `" + type_name(dest) + "`");
     return false;

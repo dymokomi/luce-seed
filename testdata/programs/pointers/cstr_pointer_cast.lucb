@@ -1,0 +1,18 @@
+# `cstr` is a pointer to C text; the C cast moves it to and from object pointers,
+# which is how an argument vector for `execvp` is built.
+extern func strlen(text: cstr) -> usize
+
+pub func answer() -> i64:
+    let text: cstr = "hello"
+    let raw = (void*)text
+    let back = (cstr)raw
+    var slots: void*?[2]
+    slots[0] = (void*)text
+    slots[1] = none
+    var total: i64 = (i64)strlen(back)
+    if slots[1] == none:
+        total += 10
+    if let first = slots[0]:
+        total += (i64)strlen((cstr)first)
+    return total
+# answer: 20

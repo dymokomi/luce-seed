@@ -117,7 +117,8 @@ auto Emitter::emit_extern_args(Node* n) -> string {
         if (v != nullptr && v->kind == NodeKind::Literal && v->op == TokenKind::StringLit &&
             (pt == nullptr || (pt != nullptr && pt->kind == TypeKind::CStr))) {
             s += c_escape(decode_lit(v->text));
-        } else if (pt != nullptr && pt->kind == TypeKind::CStr) {
+        } else if (pt != nullptr && pt->kind == TypeKind::CStr && v != nullptr && v->ty != nullptr &&
+                   v->ty->kind == TypeKind::Str) {
             s += "(" + emit_expr(v) + ").data";
         } else {
             s += emit_expr(v);
