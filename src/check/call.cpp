@@ -770,6 +770,14 @@ auto Checker::check_method_call(Node* n) -> Type* {
         Binding* mb = lookup(obj->left->text);
         if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
             Node* d = pub_member(mb->type->decl, obj->text);
+            if (d == nullptr && (mb->type->decl->flags & FlagBuiltin) != 0) {
+                // `memory.FixedBuffer.over(...)`: a standard module's type this compiler binds
+                // as a builtin, spelled through its module
+                Binding* bb = lookup(obj->text);
+                if (bb != nullptr && bb->decl != nullptr && bb->decl->kind == NodeKind::Struct) {
+                    d = bb->decl;
+                }
+            }
             if (d != nullptr && (d->kind == NodeKind::Enum || d->kind == NodeKind::Struct)) {
                 mark_import(mb);
                 obj->left->resolved = mb->decl;

@@ -1,7 +1,19 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.7**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.8**, the seed `luce-base` is written against.
+
+## 0.8: the seed builds luce-base again
+
+`LUCB=../luce-seed/build/lucb ./build.sh` in luce-base starts from this
+seed, and luce-base's gate proves the compiler it builds agrees with the
+snapshot-built one. What that took: `weak` is a contextual word (§3.6), not
+a reserved one; a standard module's builtin type or struct resolves by its
+qualified spelling, `memory.Allocator`, `io.Writer`, `memory.FixedBuffer.over`;
+an element of an array of optionals, a call through a function value, and a
+conditional of optionals produce the optional itself in the C rather than a
+second wrapping; and the interpreter's zero value of `T?` is `none`, so an
+untouched `(i64?)[4]` element takes its `else`.
 
 ## 0.7: warnings, and what the checker removes
 

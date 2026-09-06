@@ -106,7 +106,7 @@ auto Parser::weak_is_attribute() -> bool {
     int i = 1;
     while (true) {
         const Token& t = peek(i);
-        if (t.kind == TokenKind::KwWeak) {
+        if (t.kind == TokenKind::Name && t.text == "weak") {
             i += 1;
         } else if (t.kind == TokenKind::Name && t.text == "section") {
             i += 4; // section ( "name" )
@@ -148,7 +148,7 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
         } else if (at_name("used")) {
             take();
             flags |= FlagUsed;
-        } else if (at(TokenKind::KwWeak)) {
+        } else if (at_name("weak")) {
             take();
             flags |= FlagWeakAttr;
         } else if (at_name("section")) {
@@ -172,7 +172,7 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
 
 auto Parser::parse_top() -> Node* {
     if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn) ||
-        (at(TokenKind::KwWeak) && !weak_is_attribute())) {
+        (at_name("weak") && !weak_is_attribute())) {
         fail("lucb.parse.tier", "this construct belongs to full Luce");
         take();
         sync_line();
@@ -520,7 +520,7 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
     if (eat(TokenKind::KwExport)) {
         flags |= FlagExport;
     }
-    if (at(TokenKind::KwWeak) &&
+    if (at_name("weak") &&
         (peek(1).kind == TokenKind::KwVar || peek(1).kind == TokenKind::KwLet)) {
         // `weak` on a field is full Luce's reference-counting; Base has none (§3.6)
         fail("lucb.parse.tier", "this construct belongs to full Luce");

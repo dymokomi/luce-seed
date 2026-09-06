@@ -58,6 +58,21 @@ auto Emitter::produces_opt(Node* n) -> bool {
         n->resolved != nullptr && is_opt(n->resolved->ty)) {
         return true;
     }
+    if (n->kind == NodeKind::Index) {
+        // an element of an array or span of optionals is the optional itself
+        Type* bt = n->left != nullptr ? n->left->ty : nullptr;
+        if (is_ptr(bt)) {
+            bt = bt->elem;
+        }
+        return bt != nullptr && (is_array(bt) || is_span(bt)) && is_opt(bt->elem);
+    }
+    if (n->kind == NodeKind::Call && n->left != nullptr && is_func(n->left->ty) &&
+        n->left->ty->elem != nullptr && is_opt(n->left->ty->elem)) {
+        return true; // a call through a function value returning `T?`
+    }
+    if (n->kind == NodeKind::Conditional) {
+        return produces_opt(n->left) && produces_opt(n->right);
+    }
     return false;
 }
 

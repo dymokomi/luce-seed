@@ -82,7 +82,6 @@ enum class TokenKind : uint16_t {
     KwUnion,
     KwVar,
     KwVolatile,
-    KwWeak,
     KwWhile,
     KwWith,
 

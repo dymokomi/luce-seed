@@ -625,6 +625,23 @@ auto Checker::resolve_type(Node* n) -> Type* {
         if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
             mark_import(mb);
             Node* d = pub_member(mb->type->decl, n->text.substr(dot + 1));
+            if (d == nullptr && (mb->type->decl->flags & FlagBuiltin) != 0) {
+                // `memory.Allocator`, `io.Writer`: a standard module's type that this compiler
+                // knows as a builtin bound by name, spelled through its module
+                string_view member = n->text.substr(dot + 1);
+                Type* builtin = named_scalar(member);
+                if (builtin == nullptr) {
+                    Binding* bb = lookup(member);
+                    if (bb != nullptr && bb->type != nullptr &&
+                        (bb->decl == nullptr || (bb->decl->flags & FlagBuiltin) != 0)) {
+                        builtin = bb->type;
+                    }
+                }
+                if (builtin != nullptr) {
+                    n->ty = builtin;
+                    return builtin;
+                }
+            }
             if (d != nullptr) {
                 Type* t = decl_type(d);
                 if (n->body != nullptr) {

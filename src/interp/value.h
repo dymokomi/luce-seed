@@ -108,6 +108,9 @@ inline Value v_zero(Type* t) {
         v.u = 0;
         v.present = true;
     }
+    if (t->kind == TypeKind::Optional) {
+        v.present = false; // the zero value of `T?` is `none` (base.md §6.1)
+    }
     if (t->kind == TypeKind::Span) {
         v.length = 0;
         v.ptr = nullptr;

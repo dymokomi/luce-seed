@@ -70,7 +70,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"union", TokenKind::KwUnion},
     {"var", TokenKind::KwVar},
     {"volatile", TokenKind::KwVolatile},
-    {"weak", TokenKind::KwWeak},
     {"while", TokenKind::KwWhile},
     {"with", TokenKind::KwWith},
 };
@@ -229,8 +228,6 @@ const char* token_kind_name(TokenKind kind) {
         return "var";
     case TokenKind::KwVolatile:
         return "volatile";
-    case TokenKind::KwWeak:
-        return "weak";
     case TokenKind::KwWhile:
         return "while";
     case TokenKind::KwWith:

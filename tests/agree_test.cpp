@@ -152,6 +152,10 @@ TEST(agree_enum_method_on_value_and_case) {
     CHECK(agrees("enum Flags as u8:\n    a = 1\n    b = 2\n    func name() -> i64:\n        return 20 + (i64)self\npub func answer() -> i64:\n    let f = Flags.b\n    return f.name() + Flags.a.name() - 1\n"));
 }
 
+TEST(agree_array_of_optionals) {
+    CHECK(agrees("var xs: (i64?)[4]\nvar names: (cstr?)[2]\nfunc at(list: (cstr?)[], k: usize) -> cstr:\n    return list[k] else (cstr)\"\"\npub func answer() -> i64:\n    xs[1] = 40\n    names[0] = (cstr)\"xy\"\n    let v = xs[1] else return 0\n    let w = xs[2] else return v + (i64)((str)at(names, 0)).length\n    return w\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

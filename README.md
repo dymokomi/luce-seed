@@ -75,7 +75,7 @@ interpreter and the binary must agree. A file says what it proves with
 
 ## Status
 
-**luce-seed-0.7.** The oracle audited against the specification (`docs/DONE.md`); M0–M14 landed and three earlier audits closed: every one of
+**luce-seed-0.8.** The oracle audited against the specification (`docs/DONE.md`); M0–M14 landed and three earlier audits closed: every one of
 the fifteen `base.md` §24 programs checks, emits C that compiles under
 `-Wall -Werror`, and runs; the interpreter and the binary agree on the
 audit's sixty-two programs, including a three-module mini compiler
