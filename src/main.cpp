@@ -129,6 +129,18 @@ vector<lucb::Node*> program_modules(lucb::Program& program) {
     return mods;
 }
 
+// The manifest's `[native]` section as the C compiler's inputs (§17.4).
+static lucb::NativeInputs native_inputs_of(const lucb::Manifest& manifest) {
+    lucb::NativeInputs native;
+    native.root = manifest.root.empty() ? "." : manifest.root;
+    native.sources = manifest.sources;
+    native.libraries = manifest.libraries;
+    native.link_search = manifest.link_search;
+    native.frameworks = manifest.frameworks;
+    native.pkg_config = manifest.pkg_config;
+    return native;
+}
+
 int cmd_check(const string& path) {
     lucb::DiagnosticBag diagnostics;
     lucb::Arena arena;
@@ -136,7 +148,7 @@ int cmd_check(const string& path) {
     if (!lucb::load_program(path, program, arena, diagnostics)) {
         return print_diagnostics(diagnostics);
     }
-    lucb::check_program(program_modules(program), arena, diagnostics, path);
+    lucb::check_program(program_modules(program), arena, diagnostics, path, program.manifest.name);
     return print_diagnostics(diagnostics);
 }
 
@@ -148,7 +160,7 @@ int cmd_eval(const string& path, const vector<string>& args) {
         return print_diagnostics(diagnostics);
     }
     vector<lucb::Node*> mods = program_modules(program);
-    if (!lucb::check_program(mods, arena, diagnostics, path)) {
+    if (!lucb::check_program(mods, arena, diagnostics, path, program.manifest.name)) {
         return print_diagnostics(diagnostics);
     }
     lucb::Node* entry = program.entry();
@@ -219,10 +231,11 @@ int cmd_build(int argc, char** argv) {
         return print_diagnostics(diagnostics);
     }
     vector<lucb::Node*> mods = program_modules(program);
-    if (!lucb::check_program(mods, arena, diagnostics, in_path)) {
+    if (!lucb::check_program(mods, arena, diagnostics, in_path, program.manifest.name)) {
         return print_diagnostics(diagnostics);
     }
     lucb::Node* entry = program.entry();
+    lucb::set_export_prefix(program.manifest.symbol_prefix);
     string c = mods.size() > 1 ? lucb::emit_program(mods, entry) : lucb::emit_c(entry);
     bool link_answer = !has_func(entry, "main");
     if (emit_c_only) {
@@ -235,7 +248,8 @@ int cmd_build(int argc, char** argv) {
         return 0;
     }
     string error;
-    if (!lucb::compile_c(c, out_path, &error, link_answer, release)) {
+    lucb::NativeInputs native = native_inputs_of(program.manifest);
+    if (!lucb::compile_c(c, out_path, &error, link_answer, release, &native)) {
         cerr << error;
         if (error.empty() || error.back() != '\n') {
             cerr << '\n';
@@ -275,10 +289,11 @@ int cmd_header(int argc, char** argv) {
         return print_diagnostics(diagnostics);
     }
     vector<lucb::Node*> mods = program_modules(program);
-    if (!lucb::check_program(mods, arena, diagnostics, in_path)) {
+    if (!lucb::check_program(mods, arena, diagnostics, in_path, program.manifest.name)) {
         return print_diagnostics(diagnostics);
     }
     lucb::Node* entry = program.entry();
+    lucb::set_export_prefix(program.manifest.symbol_prefix);
     string h = lucb::emit_header(entry);
     if (out_path.empty()) {
         cout << h;
@@ -301,7 +316,7 @@ int cmd_test(const string& path) {
         return print_diagnostics(diagnostics);
     }
     vector<lucb::Node*> mods = program_modules(program);
-    if (!lucb::check_program(mods, arena, diagnostics, path)) {
+    if (!lucb::check_program(mods, arena, diagnostics, path, program.manifest.name)) {
         return print_diagnostics(diagnostics);
     }
     lucb::TestRun run = lucb::eval_tests(mods);

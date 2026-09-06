@@ -34,8 +34,20 @@ struct RunResult {
     string err;
 };
 
+// A package's `[native]` inputs (base.md §17.4): C sources compiled into the artifact, and what
+// the link step is told; paths are relative to `root`.
+struct NativeInputs {
+    string root;
+    vector<string> sources;
+    vector<string> libraries;
+    vector<string> link_search;
+    vector<string> frameworks;
+    vector<string> pkg_config;
+};
+
 bool compile_c(const string& c_source, const string& exe_path, string* error,
-               bool link_answer_start = true, bool release = false);
+               bool link_answer_start = true, bool release = false,
+               const NativeInputs* native = nullptr);
 
 // Typecheck generated C with -Wall -Werror without linking.
 bool compile_c_object(const string& c_source, string* error);

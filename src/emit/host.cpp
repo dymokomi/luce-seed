@@ -84,7 +84,7 @@ ScratchDir::~ScratchDir() {
 }
 
 bool compile_c(const string& c_source, const string& exe_path, string* error,
-               bool link_answer_start, bool release) {
+               bool link_answer_start, bool release, const NativeInputs* native) {
     ScratchDir scratch;
     if (!scratch.ok()) {
         if (error != nullptr) {
@@ -112,6 +112,23 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
                  " " + shell_quote(src_path) + " " + shell_quote(dir_path + "/lucb_rt.c");
     if (link_answer_start) {
         cmd += " " + shell_quote(dir_path + "/start.c");
+    }
+    if (native != nullptr) {
+        for (size_t i = 0; i < native->sources.size(); i++) {
+            cmd += " " + shell_quote(native->root + "/" + native->sources[i]);
+        }
+        for (size_t i = 0; i < native->link_search.size(); i++) {
+            cmd += " -L" + shell_quote(native->link_search[i]);
+        }
+        for (size_t i = 0; i < native->libraries.size(); i++) {
+            cmd += " -l" + native->libraries[i];
+        }
+        for (size_t i = 0; i < native->frameworks.size(); i++) {
+            cmd += " -framework " + native->frameworks[i];
+        }
+        for (size_t i = 0; i < native->pkg_config.size(); i++) {
+            cmd += " $(pkg-config --cflags --libs " + native->pkg_config[i] + ")";
+        }
     }
     cmd += " -lm -pthread -o " + shell_quote(exe_path) + " 2> " + shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());

@@ -85,6 +85,28 @@ string unquote(const string& s) {
     return s;
 }
 
+// `["a", "b"]` as its strings; a bare string is a list of one.
+static vector<string> string_list(const string& raw) {
+    vector<string> out;
+    string body = raw;
+    if (body.size() >= 2 && body.front() == '[' && body.back() == ']') {
+        body = body.substr(1, body.size() - 2);
+    }
+    size_t start = 0;
+    while (start <= body.size()) {
+        size_t comma = body.find(',', start);
+        string item = trim(body.substr(start, comma == string::npos ? string::npos : comma - start));
+        if (!item.empty()) {
+            out.push_back(unquote(item));
+        }
+        if (comma == string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
 string find_manifest(const string& start) {
     string dir = is_dir(start) ? start : dirname_of(start);
     for (int i = 0; i < 16; i++) {
@@ -248,7 +270,7 @@ bool parse_manifest_text(const string& text, const string& root, Manifest* out, 
     }
     out->root = root;
     out->name = "app";
-    bool in_package = false;
+    string section;
     std::istringstream in(text);
     string line;
     while (std::getline(in, line)) {
@@ -257,10 +279,7 @@ bool parse_manifest_text(const string& text, const string& root, Manifest* out, 
             continue;
         }
         if (t[0] == '[') {
-            in_package = t == "[package]";
-            continue;
-        }
-        if (!in_package) {
+            section = t;
             continue;
         }
         size_t eq = t.find('=');
@@ -268,9 +287,24 @@ bool parse_manifest_text(const string& text, const string& root, Manifest* out, 
             continue;
         }
         string key = trim(t.substr(0, eq));
-        string val = unquote(trim(t.substr(eq + 1)));
-        if (key == "name") {
-            out->name = val;
+        string raw = trim(t.substr(eq + 1));
+        string val = unquote(raw);
+        if (section == "[package]") {
+            if (key == "name") {
+                out->name = val;
+            } else if (key == "symbol_prefix") {
+                out->symbol_prefix = val;
+            }
+        } else if (section == "[native]") {
+            vector<string>* list = key == "sources"       ? &out->sources
+                                   : key == "libraries"   ? &out->libraries
+                                   : key == "link_search" ? &out->link_search
+                                   : key == "frameworks"  ? &out->frameworks
+                                   : key == "pkg_config"  ? &out->pkg_config
+                                                          : nullptr;
+            if (list != nullptr) {
+                *list = string_list(raw);
+            }
         }
     }
     return true;

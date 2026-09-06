@@ -1,7 +1,6 @@
 CMakeFiles/lucb_core.dir/src/check/intrinsics.cpp.o: \
   /Users/sedov/dev/luce-seed/src/check/intrinsics.cpp \
-  /Users/sedov/dev/luce-seed/src/check/checker.h \
-  /Users/sedov/dev/luce-seed/src/check/type.h \
+  /Users/sedov/dev/luce-seed/src/check/check.h \
   /Users/sedov/dev/luce-seed/src/parse/ast.h \
   /Users/sedov/dev/luce-seed/src/lex/token.h \
   /Users/sedov/dev/luce-seed/src/source/source.h \
@@ -877,6 +876,8 @@ CMakeFiles/lucb_core.dir/src/check/intrinsics.cpp.o: \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/cstdarg \
   /Users/sedov/dev/luce-seed/src/support/arena.h \
   /Users/sedov/dev/luce-seed/src/support/diagnostics.h \
+  /Users/sedov/dev/luce-seed/src/check/checker.h \
+  /Users/sedov/dev/luce-seed/src/check/type.h \
   /Users/sedov/dev/luce-seed/src/support/literal.h \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/unordered_map \
   /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__functional/is_transparent.h \

@@ -1,7 +1,20 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.15**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.16**, the seed `luce-base` is written against.
+
+## 0.16: the manifest reaches the build
+
+- `[package] symbol_prefix` starts every exported symbol (§17.6), and
+  `[native] sources`, `libraries`, `link_search`, `frameworks`, and
+  `pkg_config` (§17.4) reach the C compiler and the link step (`NativeInputs`
+  in `emit/host`); `lucb header` spells the prefix too.
+- Every `ErrorCode.package(n)` carries its package's identity in its high
+  half (§11.3): sixteen bits of the manifest's name (`package_identity`),
+  computed once by the checker and read by the interpreter and the emitter,
+  so two packages' codes never collide.
+  `testdata/programs/modules/c_inputs/` pins a C source and a prefixed export;
+  `tests/pkg_test.cpp` pins the manifest fields and the identity.
 
 ## 0.15: `reg` operands and `{name}` in assembly text
 

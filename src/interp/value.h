@@ -33,7 +33,7 @@ struct Value {
     size_t length = 0;
     bool present = true;
     bool failed = false;
-    int32_t err_code = 0;
+    uint32_t err_code = 0; // an `ErrorCode`: the package's identity above the code (§11.3)
     string_view err_msg;
     // A pointer reinterpreted to another pointee type. The interpreter models
     // memory as typed values, not bytes, so arithmetic or access through such

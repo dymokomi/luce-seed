@@ -1,0 +1,11 @@
+# answer: 40
+# oracle: none
+## The manifest's `[native] sources` are compiled in (§17.4), and an `export` carries the
+## manifest's `symbol_prefix` (§17.6): `helper.c` calls `ci_twice`.
+extern func helper_twice_plus(x: i32, y: i32) -> i32
+
+export func twice(x: i32) -> i32:
+    return x * 2
+
+pub func answer() -> i64:
+    return i64(helper_twice_plus(19, 2))

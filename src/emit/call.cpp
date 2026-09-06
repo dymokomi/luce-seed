@@ -195,6 +195,9 @@ auto Emitter::emit_call(Node* n) -> string {
     if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
         callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
         callee->text == "package") {
+        if (n->flags & FlagPackageCode) {
+            return "((uint32_t)" + std::to_string(n->cached) + "u)";
+        }
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         return "(uint32_t)(" + (arg != nullptr ? emit_expr(arg) : string("0")) + ")";
     }

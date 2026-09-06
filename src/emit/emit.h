@@ -16,6 +16,8 @@ namespace lucb {
 
 string emit_c(Node* module);
 string emit_program(const vector<Node*>& modules, Node* entry);
+// The manifest's `symbol_prefix`, put before every exported symbol (§17.6); set once per build.
+void set_export_prefix(string_view prefix);
 string emit_header(Node* module);
 
 } // namespace lucb

@@ -21,6 +21,14 @@ namespace lucb {
 struct Manifest {
     string name = "app";
     string root;
+    // `[package] symbol_prefix`: what every exported symbol starts with (§17.6)
+    string symbol_prefix;
+    // `[native]`: C sources compiled into the artifact, and what the link step is told (§17.4)
+    vector<string> sources;
+    vector<string> libraries;
+    vector<string> link_search;
+    vector<string> frameworks;
+    vector<string> pkg_config;
 };
 
 struct LoadedModule {

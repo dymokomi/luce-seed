@@ -131,6 +131,7 @@ enum : uint64_t {
     FlagReferenced = 1ull << 33, // a function some name resolved to; an unreferenced private one is pruned
     FlagFormatSink = 1ull << 34, // the sink of the formatted string being built (a name), the call that
                                  // displays a field through it, and the field itself (§14.4)
+    FlagPackageCode = 1ull << 35, // `cached` holds an `ErrorCode.package` value with its package identity
 };
 
 struct Node {

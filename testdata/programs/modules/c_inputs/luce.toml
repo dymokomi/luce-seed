@@ -1,0 +1,6 @@
+[package]
+name = "c_inputs"
+symbol_prefix = "ci_"
+
+[native]
+sources = ["helper.c"]

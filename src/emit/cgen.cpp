@@ -69,6 +69,16 @@ string struct_ident(Node* st, string_view prefix) {
     return ident("lb_", st->text);
 }
 
+static string g_export_prefix;
+
+void set_export_prefix(string_view prefix) {
+    g_export_prefix = string(prefix);
+}
+
+string_view export_prefix() {
+    return g_export_prefix;
+}
+
 string c_symbol(Node* fn) {
     if (fn == nullptr) {
         return "lb_unknown";
@@ -85,7 +95,7 @@ string c_symbol(Node* fn) {
         return string(fn->text);
     }
     if ((fn->flags & FlagExport) != 0) {
-        return string(fn->text);
+        return g_export_prefix + string(fn->text);
     }
     return {};
 }
@@ -96,7 +106,7 @@ string func_ident(Node* fn, Node* owner, string_view prefix) {
         return ext;
     }
     if ((fn != nullptr && (fn->flags & FlagExport) != 0) && owner != nullptr) {
-        return string(owner->text) + "_" + string(fn->text);
+        return g_export_prefix + string(owner->text) + "_" + string(fn->text);
     }
     string tag = prefix.empty() ? module_tag(owner != nullptr ? owner : fn) : string(prefix);
     string p = tag.empty() ? string("lb_") : ident("lb_", tag) + "_";

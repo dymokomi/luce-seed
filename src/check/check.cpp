@@ -1114,8 +1114,16 @@ static void qualify_declarations(Node* mod) {
     }
 }
 
+uint32_t package_identity(string_view name) {
+    uint32_t h = 2166136261u; // FNV-1a over the name, folded to sixteen bits
+    for (size_t i = 0; i < name.size(); i++) {
+        h = (h ^ static_cast<unsigned char>(name[i])) * 16777619u;
+    }
+    return (h ^ (h >> 16)) & 0xffffu;
+}
+
 bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& diagnostics,
-                   string_view path) {
+                   string_view path, string_view package_name) {
     if (modules.empty()) {
         return false;
     }
@@ -1123,6 +1131,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.arena = &arena;
     c.diag = &diagnostics;
     c.path = string(path);
+    c.package_name = string(package_name);
     c.install_core_types();
     c.program_modules = modules;
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {

@@ -93,6 +93,7 @@ struct Checker {
     bool checking_generic_template = false;
     int inst_depth = 0;
     int hidden_count = 0; // `__iter1`, ...: names no source can spell
+    string package_name = "app"; // the manifest's name: the identity of the package's error codes
     struct Inst {
         Node* generic = nullptr;
         Node* clone = nullptr;

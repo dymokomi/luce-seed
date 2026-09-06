@@ -10,6 +10,7 @@
 //
 //==============================================================================================
 
+#include "check/check.h"
 #include "check/checker.h"
 
 #include "support/literal.h"
@@ -387,6 +388,9 @@ auto Checker::check_error_code_package(Node* n) -> Type* {
         }
     }
     package_codes.push_back(code);
+    // the value carries the package's identity in its high half (§11.3)
+    n->cached = (static_cast<uint64_t>(package_identity(package_name)) << 16) | code;
+    n->flags |= FlagPackageCode;
     if (n->left != nullptr) {
         n->left->ty = intern_func(&ty_u32, 1, ty_errcode, false);
         n->left->resolved = nullptr;

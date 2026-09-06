@@ -48,6 +48,28 @@ TEST(manifest_name) {
     CHECK(man.name == "widgets");
 }
 
+// The manifest's `symbol_prefix` and `[native]` inputs (§16.4, §17.4).
+TEST(manifest_native_and_prefix) {
+    lucb::Manifest man;
+    std::string err;
+    CHECK(parse_manifest_text("[package]\nname = \"widgets\"\nsymbol_prefix = \"wg_\"\n"
+                              "[native]\nsources = [\"vendor/a.c\", \"shims.c\"]\nlibraries = [\"m\"]\n"
+                              "link_search = [\"/opt/lib\"]\nframeworks = [\"Metal\"]\npkg_config = [\"sdl2\"]\n",
+                              ".", &man, &err));
+    CHECK(man.name == "widgets");
+    CHECK(man.symbol_prefix == "wg_");
+    CHECK(man.sources.size() == 2 && man.sources[1] == "shims.c");
+    CHECK(man.libraries.size() == 1 && man.libraries[0] == "m");
+    CHECK(man.link_search.size() == 1 && man.frameworks.size() == 1 && man.pkg_config.size() == 1);
+}
+
+// Every `ErrorCode.package(n)` carries its package's identity in its high half (§11.3).
+TEST(package_identity_in_error_codes) {
+    CHECK(lucb::package_identity("widgets") != lucb::package_identity("gadgets"));
+    CHECK(lucb::package_identity("widgets") == lucb::package_identity("widgets"));
+    CHECK(lucb::package_identity("widgets") <= 0xffffu);
+}
+
 TEST(load_and_check_import) {
     DiagnosticBag diagnostics;
     Arena arena;

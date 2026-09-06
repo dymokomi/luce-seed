@@ -148,7 +148,7 @@ bool prove(const fs::path& entry) {
         return print_diagnostics(diagnostics);
     }
     std::vector<lucb::Node*> mods = mods_of(program);
-    if (!lucb::check_program(mods, arena, diagnostics, entry.string())) {
+    if (!lucb::check_program(mods, arena, diagnostics, entry.string(), program.manifest.name)) {
         std::fprintf(stderr, "    check failed\n");
         return print_diagnostics(diagnostics);
     }
@@ -156,6 +156,7 @@ bool prove(const fs::path& entry) {
         std::fprintf(stderr, "    check produced warnings\n");
         return print_diagnostics(diagnostics);
     }
+    lucb::set_export_prefix(program.manifest.symbol_prefix);
     std::string c = lucb::emit_program(mods, program.entry());
     std::string err;
     if (!lucb::compile_c_object(c, &err)) {
@@ -185,7 +186,14 @@ bool prove(const fs::path& entry) {
         return false;
     }
     std::string exe = scratch.path + "/prog";
-    if (!lucb::compile_c(c, exe, &err, has_answer)) {
+    lucb::NativeInputs inputs;
+    inputs.root = program.manifest.root.empty() ? "." : program.manifest.root;
+    inputs.sources = program.manifest.sources;
+    inputs.libraries = program.manifest.libraries;
+    inputs.link_search = program.manifest.link_search;
+    inputs.frameworks = program.manifest.frameworks;
+    inputs.pkg_config = program.manifest.pkg_config;
+    if (!lucb::compile_c(c, exe, &err, has_answer, false, &inputs)) {
         std::fprintf(stderr, "    link failed:\n%s\n", err.c_str());
         return false;
     }

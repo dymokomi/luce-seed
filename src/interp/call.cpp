@@ -156,6 +156,9 @@ auto Interp::eval_call(Node* n) -> Value {
     if (callee != nullptr && callee->kind == NodeKind::Member && !is_field_call(callee) && callee->left != nullptr &&
         callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
         callee->text == "package") {
+        if (n->flags & FlagPackageCode) {
+            return v_int(n->ty, n->cached);
+        }
         Value a = n->body != nullptr ? eval(n->body->left) : v_unit();
         return v_int(n->ty, a.u);
     }
@@ -190,7 +193,7 @@ auto Interp::eval_call(Node* n) -> Value {
             eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
         ret.failed = true;
         ret.kind = TypeKind::Fallible;
-        ret.err_code = static_cast<int32_t>(as_s(code, code.type));
+        ret.err_code = static_cast<uint32_t>(code.u);
         err_storage = msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg);
         ret.err_msg = err_storage;
         returning = true;

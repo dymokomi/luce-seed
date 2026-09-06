@@ -6221,6 +6221,7 @@ CMakeFiles/lucb_core.dir/src/check/intrinsics.cpp.o
  /Library/Developer/CommandLineTools/usr/lib/clang/17/include/stdarg.h
  /Library/Developer/CommandLineTools/usr/lib/clang/17/include/stddef.h
  /Library/Developer/CommandLineTools/usr/lib/clang/17/include/stdint.h
+ /Users/sedov/dev/luce-seed/src/check/check.h
  /Users/sedov/dev/luce-seed/src/check/checker.h
  /Users/sedov/dev/luce-seed/src/check/type.h
  /Users/sedov/dev/luce-seed/src/lex/token.h
