@@ -338,6 +338,9 @@ auto Checker::check_struct(Node* st) -> void {
         }
     }
     for (Node* m = st->body; m != nullptr; m = m->next) {
+        if (m->kind == NodeKind::Func) {
+            check_declared_name(m, m->text);
+        }
         if (m->kind == NodeKind::Field) {
             check_declared_name(m, m->text);
             if (struct_member(st, m->text, NodeKind::Func) != nullptr) {
@@ -773,6 +776,22 @@ auto Checker::bind_module_names(Node* mod) -> void {
     }
 }
 
+// Import `d` makes module `other` visible as `alias`. When the name is already bound to
+// that module, a `from` import takes the binding over: `import io` beside
+// `from io import Writer` is the redundant one, and gets reported as unused.
+auto Checker::bind_module_alias(Node* d, Node* other, const string& alias) -> void {
+    Binding* existing = lookup(keep(alias));
+    if (existing != nullptr && existing->decl == other) {
+        if (d->kind == NodeKind::FromImport) {
+            existing->import_src = d;
+        }
+        return;
+    }
+    Type* mt = make_type(TypeKind::Module, d->text);
+    mt->decl = other;
+    bind(keep(alias), mt, false, other, d);
+}
+
 auto Checker::bind_imports(Node* mod) -> void {
     vector<string_view> seen;
     for (Node* d = mod->body; d != nullptr; d = d->next) {
@@ -812,15 +831,10 @@ auto Checker::bind_imports(Node* mod) -> void {
         if (d->kind == NodeKind::Import) {
             string alias = d->left != nullptr && !d->left->text.empty() ? string(d->left->text)
                                                                         : last_component(d->text);
-            Binding* existing = lookup(keep(alias));
-            if (existing != nullptr && existing->decl == other) {
-                existing->import_src = d;
-                continue;
-            }
-            Type* mt = make_type(TypeKind::Module, d->text);
-            mt->decl = other;
-            bind(keep(alias), mt, false, other, d);
+            bind_module_alias(d, other, alias);
         } else {
+            // `from io import Writer` also makes `io` visible (§16.3)
+            bind_module_alias(d, other, last_component(d->text));
             for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
                 Node* p = pub_member(other, nm->text);
                 if (p == nullptr && is_std_module(d->text)) {
@@ -867,7 +881,7 @@ auto Checker::prune_unused_imports(Node* mod) -> void {
                     name_link = &(*name_link)->next;
                 }
             }
-            drop = d->body == nullptr;
+            drop = d->body == nullptr && (d->flags & FlagImportUsed) == 0;
         }
         if (drop) {
             *link = d->next;
@@ -1036,6 +1050,14 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     return diagnostics.empty();
 }
 
+// The top-level declarations of an imported module carry the module's name, so that the
+// emitter keeps their C symbols apart from the entry module's and from each other's.
+static void qualify_declarations(Node* mod) {
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        d->module = mod->text;
+    }
+}
+
 bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& diagnostics,
                    string_view path) {
     if (modules.empty()) {
@@ -1072,9 +1094,14 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
     c.program_modules = modules;
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
-        if (modules[static_cast<size_t>(i)] != nullptr) {
-            c.check_module(modules[static_cast<size_t>(i)]);
+        Node* mod = modules[static_cast<size_t>(i)];
+        if (mod == nullptr) {
+            continue;
         }
+        if (i > 0) {
+            qualify_declarations(mod);
+        }
+        c.check_module(mod);
     }
     return diagnostics.empty();
 }

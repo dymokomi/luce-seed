@@ -43,13 +43,28 @@ string ident(string_view prefix, string_view name) {
     return s;
 }
 
+// The module part of a declaration's C symbol: `front_token` for a declaration of the
+// imported module `front.token`, empty for the entry module.
+static string module_tag(const Node* decl) {
+    string tag;
+    if (decl == nullptr) {
+        return tag;
+    }
+    for (size_t i = 0; i < decl->module.size(); i++) {
+        char c = decl->module[i];
+        tag += c == '.' ? '_' : c;
+    }
+    return tag;
+}
+
 string struct_ident(Node* st, string_view prefix) {
     if (st != nullptr &&
         (st->kind == NodeKind::ExternStruct || st->kind == NodeKind::ExternUnion)) {
         return string(st->text);
     }
-    if (!prefix.empty()) {
-        return ident("lb_", prefix) + "_" + string(st->text);
+    string tag = prefix.empty() ? module_tag(st) : string(prefix);
+    if (!tag.empty()) {
+        return ident("lb_", tag) + "_" + string(st->text);
     }
     return ident("lb_", st->text);
 }
@@ -83,10 +98,8 @@ string func_ident(Node* fn, Node* owner, string_view prefix) {
     if ((fn != nullptr && (fn->flags & FlagExport) != 0) && owner != nullptr) {
         return string(owner->text) + "_" + string(fn->text);
     }
-    string p = prefix.empty() ? string() : ident("lb_", prefix) + "_";
-    if (p.empty()) {
-        p = "lb_";
-    }
+    string tag = prefix.empty() ? module_tag(owner != nullptr ? owner : fn) : string(prefix);
+    string p = tag.empty() ? string("lb_") : ident("lb_", tag) + "_";
     if (owner != nullptr) {
         return p + string(owner->text) + "_" + string(fn->text);
     }
@@ -109,13 +122,53 @@ string sanitize_type_name(const string& s) {
     return o;
 }
 
+// The spelling of a type inside a generated typedef name: `type_name` with every nominal
+// type qualified by its module, so that `a.Box?` and `b.Box?` get distinct typedefs.
+static string mangled(const Type* t) {
+    if (t == nullptr) {
+        return type_name(t);
+    }
+    if (t->decl != nullptr && !t->decl->module.empty()) {
+        return module_tag(t->decl) + "_" + type_name(t);
+    }
+    switch (t->kind) {
+    case TypeKind::Pointer:
+        return string(t->is_const ? "const " : "") + (t->is_volatile ? "volatile " : "") +
+               mangled(t->elem) + "*" + (t->is_nullable ? "?" : "");
+    case TypeKind::Array:
+        return mangled(t->elem) + "[" + std::to_string(t->length) + "]";
+    case TypeKind::Span:
+        return string(t->is_const ? "const " : "") + mangled(t->elem) + "[]";
+    case TypeKind::Optional:
+        return mangled(t->elem) + "?";
+    case TypeKind::Fallible:
+        return mangled(t->elem) + "!";
+    case TypeKind::Atomic:
+        return "@" + mangled(t->elem);
+    case TypeKind::Tuple:
+    case TypeKind::Func: {
+        string s = t->kind == TypeKind::Func ? "func(" : "(";
+        for (int i = 0; i < t->ntargs; i++) {
+            s += (i != 0 ? ", " : "") + mangled(t->args[i]);
+        }
+        s += ")";
+        if (t->kind == TypeKind::Func) {
+            s += " -> " + mangled(t->elem);
+        }
+        return s;
+    }
+    default:
+        return type_name(t);
+    }
+}
+
 string array_c_name(Type* t) {
-    return "lb_a_" + sanitize_type_name(type_name(t));
+    return "lb_a_" + sanitize_type_name(mangled(t));
 }
 
 string opt_c_name(Type* t) {
     Type* e = t != nullptr && is_opt(t) ? t->elem : t;
-    return "lb_o_" + sanitize_type_name(type_name(e));
+    return "lb_o_" + sanitize_type_name(mangled(e));
 }
 
 string fail_c_name(Type* t) {
@@ -125,7 +178,7 @@ string fail_c_name(Type* t) {
     if (t == nullptr || t->kind == TypeKind::Unit || t->kind == TypeKind::Never) {
         return "lb_r_unit";
     }
-    return "lb_r_" + sanitize_type_name(type_name(t));
+    return "lb_r_" + sanitize_type_name(mangled(t));
 }
 
 string tup_c_name(Type* t) {
@@ -135,7 +188,7 @@ string tup_c_name(Type* t) {
     }
     for (int i = 0; i < t->ntargs; i++) {
         s += "_";
-        s += sanitize_type_name(type_name(t->args[i]));
+        s += sanitize_type_name(mangled(t->args[i]));
     }
     return s;
 }
@@ -147,14 +200,14 @@ string fn_c_name(Type* t) {
     }
     for (int i = 0; i < t->ntargs; i++) {
         s += "_";
-        s += sanitize_type_name(type_name(t->args[i]));
+        s += sanitize_type_name(mangled(t->args[i]));
     }
     s += "_to_";
     Type* r = t->elem;
     if (r == nullptr || r->kind == TypeKind::Unit || r->kind == TypeKind::Never) {
         s += "unit";
     } else {
-        s += sanitize_type_name(type_name(r));
+        s += sanitize_type_name(mangled(r));
     }
     return s;
 }

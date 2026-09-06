@@ -1,0 +1,11 @@
+struct Box:
+    var v: i64
+    var w: i64
+
+func helper() -> i64:
+    return 15
+
+pub func total() -> i64:
+    let box: Box? = Box(v = helper(), w = 2)
+    let b = box else return 0
+    return b.v + b.w

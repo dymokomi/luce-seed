@@ -1,0 +1,15 @@
+## Two modules may each keep a private `helper` and a private `Box`: their C symbols
+## are qualified by module, so nothing collides (§16.3).
+import a
+import b
+
+struct Box:
+    var v: i64
+
+func helper() -> i64:
+    return 1
+
+pub func answer() -> i64!:
+    let mine: Box? = Box(v = helper())
+    let m = mine else return 0
+    return m.v + a.total() + b.total()

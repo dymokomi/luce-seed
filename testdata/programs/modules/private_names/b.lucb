@@ -1,0 +1,10 @@
+struct Box:
+    var name: str
+
+func helper() -> i64:
+    return 20
+
+pub func total() -> i64:
+    let boxes = [Box(name = "x"), Box(name = "yz")]
+    let view: const Box[] = boxes
+    return helper() + (i64)view[1].name.length

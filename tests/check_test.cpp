@@ -177,6 +177,17 @@ TEST(warn_unused_import) {
     CHECK(check_warns("import memory\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
 }
 
+// `from io import Writer` makes `io` visible too (§16.3); an `import io` beside it is the
+// unused one whichever comes first.
+TEST(warn_redundant_import_beside_from_import) {
+    CHECK(!check_warns("from io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
+                       "lucb.warn.unused"));
+    CHECK(check_warns("import io\nfrom io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
+                      "lucb.warn.unused"));
+    CHECK(check_warns("from io import Writer\nimport io\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
+                      "lucb.warn.unused"));
+}
+
 TEST(warn_unused_private_function) {
     CHECK(check_warns("func spare() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
     CHECK(!check_warns("func used() -> i64:\n    return 1\npub func answer() -> i64:\n    return 41 + used()\n", "lucb.warn.unused"));
@@ -230,6 +241,7 @@ TEST(check_core_names_are_not_declared) {
     CHECK(check_has("pub func answer() -> i64:\n    let error = 1\n    return 42\n", "lucb.check.shadow"));
     CHECK(check_has("func f(format: i64) -> i64:\n    return format\npub func answer() -> i64:\n    return f(42)\n", "lucb.check.shadow"));
     CHECK(check_has("func trap() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("struct S:\n    var n: i64\n    func pad() -> i64:\n        return self.n\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
     CHECK(check_ok("enum Kind as u8:\n    i8_ = 1\n    unit_ = 2\nstruct P:\n    var text: i64\npub func answer() -> i64:\n    let c = 1\n    return 41 + c\n"));
 }
 

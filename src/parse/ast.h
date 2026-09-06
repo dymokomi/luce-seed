@@ -147,6 +147,8 @@ struct Node {
     // Filled by check:
     struct Type* ty = nullptr; // resolved type of this node
     Node* resolved = nullptr;  // declaration a name/call refers to
+    string_view module;        // for a top-level declaration of an imported module: the
+                               // module's name, which qualifies its C symbols (§16.3)
     // Filled by the oracle the first time a literal is evaluated:
     uint64_t cached = 0;
 };
