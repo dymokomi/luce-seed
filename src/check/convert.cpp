@@ -10,6 +10,7 @@
 //
 //==============================================================================================
 
+#include <vector>
 #include "check/checker.h"
 
 #include "support/literal.h"
@@ -56,6 +57,29 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
             fail_n(n, "lucb.check.type",
                    "expected `" + type_name(expected) + "`, got an integer literal");
             return t_error();
+        }
+        if (n != nullptr && n->kind == NodeKind::Unary && n->op == TokenKind::Minus &&
+            n->left != nullptr && n->left->kind == NodeKind::Literal &&
+            n->left->op == TokenKind::IntLit) {
+            // `-literal` that stayed untyped: the negative value must fit, so the most
+            // negative value of a signed type is accepted although its magnitude alone is not
+            ParsedInt p = parse_int_literal(n->left->text);
+            if (!p.ok) {
+                fail_n(n, "lucb.check.number", "invalid integer literal");
+                return t_error();
+            }
+            if (is_unsigned_int(dest)) {
+                fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
+                return t_error();
+            }
+            if (p.value > static_cast<uint64_t>(int_max_signed(int_bits(dest))) + 1) {
+                fail_n(n, "lucb.check.number",
+                       "integer literal does not fit in `" + type_name(dest) + "`");
+                return t_error();
+            }
+            n->left->ty = dest;
+            n->ty = dest;
+            return is_opt(expected) ? expected : dest;
         }
         if (n != nullptr && n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
             ParsedInt p = parse_int_literal(n->text);
@@ -277,17 +301,28 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
         src = src->elem;
     }
     Node* srcn = n->kind == NodeKind::Cast ? n->left : (n->body != nullptr ? n->body->left : n);
+    std::vector<Node*> groups;
+    while (srcn != nullptr && srcn->kind == NodeKind::Group && srcn->left != nullptr) {
+        // `(i8)(-100)`: the parentheses are not the operand, but they carry its type
+        groups.push_back(srcn);
+        srcn = srcn->left;
+    }
     if (src->kind == TypeKind::UntypedInt) {
+        bool negated = srcn != nullptr && srcn->kind == NodeKind::Unary && srcn->op == TokenKind::Minus;
         if (checked && is_int(dest)) {
             src = coerce(srcn, src, dest);
-        } else if (is_int(dest)) {
+        } else if (is_int(dest) && !negated) {
             src = dest;
         } else {
+            // `(i8)(-300)` truncates as C does: the negated literal is an `i64` first
             src = coerce(srcn, src, t_i64());
         }
         if (srcn != nullptr) {
             srcn->ty = src;
         }
+    }
+    for (Node* g : groups) {
+        g->ty = src;
     }
     if (type_eq(src, dest) || can_widen(src, dest)) {
         return true;

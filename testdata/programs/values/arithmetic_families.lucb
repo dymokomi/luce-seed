@@ -1,0 +1,53 @@
+## The arithmetic families the backends must agree on: division, shifts, saturation, `?`.
+func one(flag: bool) -> i64:
+    return 1 if flag else 0
+
+pub func answer() -> i64:
+    var total: i64 = 0
+    let a: i32 = -7
+    let b: i32 = 2
+    total += (i64)(a // b) + (i64)(a % b)
+    let u: u8 = 200
+    total += (i64)(u // 3) + (i64)(u % 7)
+    let s: i8 = -128
+    total += (i64)(s // 3)
+    total += (i64)(s >> 2) + (i64)((u8)255 >> 3)
+    let sh: i16 = -3
+    total += (i64)(sh << 4)
+    total += (i64)((u16)65535 +| 5) - 65535
+    total += (i64)((i8)100 +| 100) - 127
+    total += (i64)((i8)(-100) -| 100) + 128
+    total += (i64)((u32)1 -| 5)
+    total += (i64)((i64)9223372036854775807 +| 1) - 9223372036854775807
+    let umax: u64 = 18446744073709551615
+    total += one(umax *| 2 == umax)
+    let lowest: i32 = -2147483647 - 1
+    total += (i64)(lowest *| -1) - 2147483647
+    if let x = (i8)100 +? 27:
+        total += (i64)x - 127
+    if let x = (i8)100 +? 28:
+        total += 1000
+    if let x = umax *? 1:
+        total += 1
+    if let x = (umax // 2 + 1) *? 2:
+        total += 1000
+    let low64: i64 = -9223372036854775807
+    if let x = low64 -? 2:
+        total += 1000
+    if let x = lowest -? 1:
+        total += 1000
+    if let x = (u16)3 -? 4:
+        total += 1000
+    let f: f64 = -3.9
+    total += (i64)f + i64(2.5) + (i64)(f32)7.75
+    let big: f64 = 1e30
+    total += one((i32)big == 2147483647) + one((u8)big == 255) + one((u8)(-5.0) == 0)
+    total += (i64)u8(200) + (i64)i16(-3)
+    var bytes: u8[64] = ---
+    let text = format(bytes, f"{a} {u} {f} {true} {1.5e10} {hex(255)} {bin(5)} {pad("ab", 5)}") catch:
+        return -1
+    total += (i64)text.length
+    total += one("abc" < "abd") + one("b" > "abc") + one("" < "a")
+    total += one(hash("abc") == hash("abc")) + one(hash(7) != hash(8))
+    return total
+# answer: 225

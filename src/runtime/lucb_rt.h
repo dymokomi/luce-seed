@@ -211,6 +211,7 @@ void lb_print_i64(int64_t value);
 void lb_print_u64(uint64_t value);
 void lb_print_bool(bool value);
 void lb_print_str(lb_str value);
+int lb_str_compare(lb_str a, lb_str b);
 void lb_print_f64(double value);
 static inline void lb_check_index(uint64_t i, uint64_t n) {
     if (i >= n) {

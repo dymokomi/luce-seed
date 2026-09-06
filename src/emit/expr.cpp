@@ -636,6 +636,14 @@ auto Emitter::emit_binary(Node* n) -> string {
             }
             return eq;
         }
+        if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
+            op == TokenKind::GtEq) {
+            const char* cop = op == TokenKind::Lt     ? "<"
+                              : op == TokenKind::LtEq ? "<="
+                              : op == TokenKind::Gt   ? ">"
+                                                      : ">=";
+            return "(lb_str_compare(" + L + ", " + R + ") " + cop + " 0)";
+        }
     }
     if (op == TokenKind::EqEq) {
         return "(" + L + " == " + R + ")";

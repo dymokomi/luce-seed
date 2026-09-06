@@ -374,6 +374,11 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
             dest = t_i64();
         }
         Type* inner = check_expr(n->left, nullptr);
+        if (expected == nullptr && inner != nullptr && inner->kind == TypeKind::UntypedInt &&
+            n->left != nullptr && n->left->kind == NodeKind::Literal) {
+            // `-literal` with no context stays untyped, so `-2147483647 - 1` can still be an `i32`
+            return inner;
+        }
         if (inner->kind == TypeKind::UntypedInt && n->left != nullptr &&
             n->left->kind == NodeKind::Literal) {
             ParsedInt p = parse_int_literal(n->left->text);
@@ -707,12 +712,16 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
     }
     if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
         op == TokenKind::GtEq) {
+        if (L != nullptr && R != nullptr && L->kind == TypeKind::Str && R->kind == TypeKind::Str) {
+            // text orders by bytes, then by length (§5.5)
+            return t_bool();
+        }
         Type* u = unify_int(L, R);
         if (u == nullptr || (!is_int(u) && !is_float(u))) {
             if (is_float(L) && is_float(R)) {
                 return t_bool();
             }
-            fail_n(n, "lucb.check.type", "ordered comparison requires a number");
+            fail_n(n, "lucb.check.type", "ordered comparison requires a number or text");
             return t_bool();
         }
         if (L->kind == TypeKind::UntypedInt) {

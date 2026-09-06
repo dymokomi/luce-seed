@@ -520,6 +520,13 @@ auto Interp::eval_binary(Node* n) -> Value {
     }
     if (op == TokenKind::Lt || op == TokenKind::LtEq || op == TokenKind::Gt ||
         op == TokenKind::GtEq) {
+        if (L.kind == TypeKind::Str) {
+            string a = show(L);
+            string b = show(R);
+            int c = a.compare(b);
+            bool r = op == TokenKind::Lt ? c < 0 : op == TokenKind::LtEq ? c <= 0 : op == TokenKind::Gt ? c > 0 : c >= 0;
+            return v_bool(r);
+        }
         Type* ct = L.type != nullptr ? L.type : R.type;
         return v_bool(cmp_num(L, R, ct, op));
     }

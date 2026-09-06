@@ -1,0 +1,12 @@
+## Pointer arithmetic and unchecked indexing (§6.5): `p + n`, `p - n`, `p - q`, `p[i]`.
+pub func answer() -> i64:
+    var bytes: u8[8] = ---
+    let span: u8[] = bytes
+    let p = span.data + 3
+    *p = 40
+    let q = p - 1
+    *q = 2
+    p[1] = 7
+    let sum = (i64)bytes[3] + (i64)bytes[2] + (i64)(p - q) + (i64)bytes[4]
+    return sum - 8
+# answer: 42

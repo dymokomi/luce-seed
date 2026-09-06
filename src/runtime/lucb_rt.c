@@ -447,6 +447,18 @@ int64_t* lb_null_probe(void) {
     return NULL;
 }
 
+int lb_str_compare(lb_str a, lb_str b) {
+    size_t n = a.length < b.length ? a.length : b.length;
+    int c = n == 0 ? 0 : memcmp(a.data, b.data, n);
+    if (c != 0) {
+        return c < 0 ? -1 : 1;
+    }
+    if (a.length < b.length) {
+        return -1;
+    }
+    return a.length > b.length ? 1 : 0;
+}
+
 int lb_utf8_ok(const char* s, size_t n) {
     size_t i = 0;
     if (s == NULL) {

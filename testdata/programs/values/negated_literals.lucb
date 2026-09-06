@@ -1,0 +1,9 @@
+## Negated literals take their type from context: `let b: i32 = -7 * 2` and `-d` on an `i16`.
+pub func answer() -> i64:
+    let a = -5
+    let b: i32 = -7 * 2
+    let c: i8 = -128
+    var d: i16 = 3
+    d = -d
+    return a + (i64)b + (i64)c + (i64)d + 200
+# answer: 50

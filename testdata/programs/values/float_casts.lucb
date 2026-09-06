@@ -1,0 +1,8 @@
+## Float to integer casts saturate, NaN becomes 0, and a negated float literal is a float first (§7.5); NaN here is 0.0 / 0.0.
+pub func answer() -> i64:
+    let big: f64 = 1e30
+    let neg: f64 = -5.0
+    let zero: f64 = 0.0
+    let nan: f64 = zero / zero
+    return (i64)(i32)big - 2147483647 + (i64)(u8)big - 255 + (i64)(u8)neg + (i64)(i8)(-1e30) + 128 + (i64)(i16)nan + (i64)(u64)neg + 42
+# answer: 42
