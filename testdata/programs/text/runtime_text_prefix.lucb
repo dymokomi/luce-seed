@@ -1,0 +1,19 @@
+# Text produced at run time that starts with `r` or `b` is not a raw or byte
+# literal: slicing, casting, and formatting keep every byte.
+pub func answer() -> i64:
+    let text: str = "func f():\n    return bytes\n"
+    let b = text.bytes
+    let word = (str)b[14..<20]
+    let rest = (str)b[21..]
+    var score: i64 = 0
+    if word == "return":
+        score += 1
+    if rest == "bytes\n":
+        score += 10
+    var buffer: u8[64]
+    let joined = format(buffer, f"{word}-{rest.length}") catch e:
+        recover ""
+    if joined == "return-6":
+        score += 100
+    return score
+# answer: 111

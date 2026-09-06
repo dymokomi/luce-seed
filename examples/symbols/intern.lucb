@@ -6,7 +6,7 @@ pub struct Interner:
     var arena: Allocator
     var names: str[]
     var slots: u32[]
-    var count: usize
+    pub var count: usize
 
     pub static func create(arena: Allocator, capacity: usize) -> Interner!:
         var interner = Interner(arena = arena, names = try alloc str[capacity] in arena, slots = try alloc u32[capacity * 2] in arena, count = 0)

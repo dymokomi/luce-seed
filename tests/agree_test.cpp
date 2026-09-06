@@ -557,10 +557,15 @@ TEST(agree_io_stderr) {
 }
 
 TEST(agree_files_roundtrip) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    try files.write(\"/tmp/lucb_rt.txt\", \"hi\".bytes)\n"
-                 "    let b = try files.read(\"/tmp/lucb_rt.txt\")\n"
-                 "    return i64(b.length)\n"));
+    // The file lives in a scratch directory that goes away with the test.
+    lucb::ScratchDir dir;
+    CHECK(dir.ok());
+    std::string path = dir.path + "/roundtrip.txt";
+    std::string program = "pub func answer() -> i64!:\n"
+                          "    try files.write(\"" + path + "\", \"hi\".bytes)\n"
+                          "    let b = try files.read(\"" + path + "\")\n"
+                          "    return i64(b.length)\n";
+    CHECK(agrees(program.c_str()));
 }
 
 TEST(agree_generic_id) {

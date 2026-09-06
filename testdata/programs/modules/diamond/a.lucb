@@ -1,2 +1,2 @@
 pub struct Node:
-    var v: i64
+    pub var v: i64

@@ -155,6 +155,10 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
                 fail_n(a, "lucb.check.name", "no field `" + string(a->text) + "`");
                 continue;
             }
+            if (field != nullptr && imported_owner(st) && (field->flags & FlagPub) == 0) {
+                fail_n(a, "lucb.check.name", "field `" + string(a->text) + "` is not public");
+                return t_error();
+            }
         } else {
             fail_n(a, "lucb.check.unsupported",
                    "positional struct construction is not in the scalar core; use names");
@@ -1161,9 +1165,15 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
     return field->ty;
 }
 
+// A type declared in another module: its non-`pub` members are out of reach,
+// whether it was imported by name or reached as `module.Type`.
 auto Checker::imported_owner(Node* st) -> bool {
     if (st == nullptr) {
         return false;
+    }
+    Node* home = module_of(st);
+    if (home != nullptr && current_module != nullptr) {
+        return home != current_module;
     }
     Binding* b = lookup(st->text);
     return b != nullptr && b->import_src != nullptr;

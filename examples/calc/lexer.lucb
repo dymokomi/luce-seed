@@ -8,9 +8,9 @@ pub enum Kind as u8:
     eof = 7
 
 pub struct Token:
-    var kind: Kind
-    var start: usize
-    var end: usize
+    pub var kind: Kind
+    pub var start: usize
+    pub var end: usize
 
 pub struct Lexer:
     var source: const u8[]

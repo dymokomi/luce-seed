@@ -83,7 +83,7 @@ auto Interp::eval_formatted(Node* n) -> Value {
     string s;
     for (Node* p = n != nullptr ? n->body : nullptr; p != nullptr; p = p->next) {
         if (p->kind == NodeKind::FormatText) {
-            s += unescape_format_braces(decode_string(p->text));
+            s += unescape_format_braces(decode_string_literal(p->text));
         } else if (p->kind == NodeKind::FormatField) {
             Value f = eval(p->left);
             if (trapped) {

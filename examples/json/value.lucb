@@ -11,9 +11,9 @@ pub enum Value:
     object(first: Member*?, count: usize)
 
 pub struct Member:
-    var key: str
-    var value: Value*
-    var next: Member*?
+    pub var key: str
+    pub var value: Value*
+    pub var next: Member*?
 
 ## Write `value` back out as compact JSON.
 pub func write(out: Writer, value: Value*) -> !:

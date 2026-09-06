@@ -1,0 +1,19 @@
+# `elif let` following a plain `if` gets its own block in the C, like an
+# `elif let` following an `if let`.
+struct N:
+    var next: N*?
+    var value: i64
+
+func pick(n: N, flag: bool) -> i64:
+    if flag:
+        return 1
+    elif let next = n.next:
+        return next.value
+    else:
+        return -1
+
+pub func answer() -> i64:
+    var tail = N(next = none, value = 40)
+    let head = N(next = &tail, value = 2)
+    return pick(head, false) + pick(head, true) + pick(tail, false) + 1
+# answer: 41

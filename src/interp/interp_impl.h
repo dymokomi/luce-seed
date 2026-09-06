@@ -15,6 +15,7 @@
 #include "interp/value.h"
 
 #include <deque>
+#include <unordered_map>
 
 namespace lucb {
 
@@ -23,6 +24,8 @@ struct Interp {
     vector<Node*> all_modules;
     vector<Frame> frames;
     std::deque<vector<Value>> storage;
+    // String literals decoded once; every `Value.str` holds decoded text.
+    std::unordered_map<const Node*, string> literal_text;
     string output;
     string err;
     bool trapped = false;

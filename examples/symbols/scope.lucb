@@ -8,17 +8,17 @@ pub enum Kind as u8:
     type = 3
 
 pub struct Symbol:
-    var name: u32
-    var kind: Kind
-    var depth: u32
+    pub var name: u32
+    pub var kind: Kind
+    pub var depth: u32
 
 pub let duplicate: ErrorCode = ErrorCode.package(1)
 
 pub struct Table:
     var symbols: Symbol[]
-    var count: usize
+    pub var count: usize
     var marks: usize[16]
-    var depth: u32
+    pub var depth: u32
 
     pub static func create(capacity: usize) -> Table!:
         return Table(symbols = try alloc Symbol[capacity], count = 0, depth = 0)

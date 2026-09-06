@@ -12,10 +12,10 @@ pub enum Kind as u8:
     eof = 9
 
 pub struct Token:
-    var kind: Kind
-    var start: usize
-    var end: usize
-    var line: u32
+    pub var kind: Kind
+    pub var start: usize
+    pub var end: usize
+    pub var line: u32
 
     ## The kind as it prints in a token dump.
     pub func label() -> str:

@@ -243,8 +243,10 @@ auto Interp::lvalue(Node* n) -> Value* {
     return nullptr;
 }
 
-auto Interp::decode_string(string_view tok) -> string {
-    return decode_string_literal(tok);
+// Runtime text is already decoded; the name survives from when literals were
+// carried as spelled.
+auto Interp::decode_string(string_view text) -> string {
+    return string(text);
 }
 
 auto Interp::show(const Value& v) -> string {
@@ -306,8 +308,12 @@ auto Interp::eval_uncast(Node* n) -> Value {
             return v;
         }
         if (n->op == TokenKind::StringLit) {
-            Value v = v_str(n->text);
-            v.length = decode_string(n->text).size();
+            auto it = literal_text.find(n);
+            if (it == literal_text.end()) {
+                it = literal_text.emplace(n, decode_string_literal(n->text)).first;
+            }
+            Value v = v_str(it->second);
+            v.length = it->second.size();
             v.type = n->ty;
             if (n->ty != nullptr && n->ty->kind == TypeKind::CStr) {
                 v.kind = TypeKind::CStr;
@@ -690,6 +696,11 @@ auto Interp::eval_index(Node* n) -> Value {
 
 auto Interp::eval_slice(Node* n) -> Value {
     Value base = eval(n->left);
+    // Text-backed bytes are materialised so the slice keeps its start offset.
+    if (base.kind == TypeKind::Str || base.kind == TypeKind::Fmt ||
+        (base.ptr == nullptr && base.fields.empty() && !base.str.empty())) {
+        base = as_u8_span(base);
+    }
     size_t len = base.length != 0 ? base.length : base.fields.size();
     if (base.kind == TypeKind::Array && base.type != nullptr) {
         len = static_cast<size_t>(base.type->length);

@@ -318,10 +318,12 @@ static auto strip_triple(string_view body) -> string {
 string decode_string_literal(string_view token) {
     bool raw = false;
     bool bytes = false;
-    if (!token.empty() && token[0] == 'r') {
+    // Only a literal spelling has a prefix; runtime text that happens to start
+    // with `r` or `b` passes through here too and must be left alone.
+    if (token.size() >= 2 && token[0] == 'r' && token[1] == '"') {
         raw = true;
         token.remove_prefix(1);
-    } else if (!token.empty() && token[0] == 'b') {
+    } else if (token.size() >= 2 && token[0] == 'b' && token[1] == '"') {
         bytes = true;
         token.remove_prefix(1);
     }

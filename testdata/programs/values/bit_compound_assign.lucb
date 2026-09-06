@@ -1,0 +1,24 @@
+# `|=`, `&=`, `^=`, `<<=`, and `>>=` are the bit operations, not arithmetic:
+# setting a flag that is already set changes nothing.
+struct Flags:
+    var bits: u32
+
+func set(f: Flags*, flag: u32):
+    f.bits |= flag
+
+pub func answer() -> i64:
+    var f = Flags(bits = 0)
+    set(&f, 4)
+    set(&f, 4)
+    set(&f, 1)
+    var total: i64 = (i64)f.bits          # 5
+    f.bits &= 4
+    total += (i64)f.bits * 10             # 45
+    f.bits ^= 5
+    total += (i64)f.bits * 100            # 145
+    var shifted: u64 = 3
+    shifted <<= 4
+    shifted >>= 2
+    total += (i64)shifted                 # 157
+    return total
+# answer: 157

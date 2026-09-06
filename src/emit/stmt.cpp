@@ -218,6 +218,19 @@ auto Emitter::emit_stmt(Node* n) -> void {
             line(dst + " = " + src + ";");
             break;
         }
+        // The bit operators cannot overflow and need no helper; shifts share the
+        // checked helpers of the binary operators.
+        if (n->op == TokenKind::AmpEq || n->op == TokenKind::PipeEq ||
+            n->op == TokenKind::CaretEq) {
+            const char* sym = n->op == TokenKind::AmpEq ? "&" : n->op == TokenKind::PipeEq ? "|" : "^";
+            line(dst + " = " + dst + " " + sym + " (" + src + ");");
+            break;
+        }
+        if (n->op == TokenKind::LtLtEq || n->op == TokenKind::GtGtEq) {
+            Type* st = n->left != nullptr ? n->left->ty : nullptr;
+            line(dst + " = " + emit_helper(n->op == TokenKind::LtLtEq ? "shl" : "shr", st, dst, src) + ";");
+            break;
+        }
         TokenKind op = TokenKind::Plus;
         if (n->op == TokenKind::MinusEq) {
             op = TokenKind::Minus;
@@ -940,13 +953,18 @@ auto Emitter::emit_if(Node* n) -> void {
     if (n->right->kind == NodeKind::If) {
         pad();
         out += "else ";
-        // continue on same conceptual chain; emit_if writes "if"
-        // so we need "else if". Rewrite first line: call emit_if after else.
-        // emit_if always starts with pad+if. So write "else " without newline
-        // then emit_if which pads again — that puts else and if on two lines
-        // which is valid C: `else\n if`.
-        out += '\n';
+        // `elif` continues the chain as `else` followed by the nested `if` on its
+        // own line. An `elif let` declares a temporary, so it gets its own block.
+        bool braces = (n->right->flags & FlagIfLet) != 0;
+        out += braces ? "{\n" : "\n";
+        if (braces) {
+            indent++;
+        }
         emit_if(n->right);
+        if (braces) {
+            indent--;
+            line("}");
+        }
         return;
     }
     pad();
