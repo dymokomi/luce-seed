@@ -1,0 +1,6 @@
+## `from shapes import Point` also makes `shapes` visible by name (§16.3).
+from shapes import Point
+
+pub func answer() -> i64!:
+    let p = Point(x = 39, y = 1)
+    return shapes.sum(p)

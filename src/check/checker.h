@@ -303,6 +303,7 @@ struct Checker {
     void check_union(Node* un);
     void resolve_sig(Node* fn);
     void bind_imports(Node* mod);
+    void bind_module_alias(Node* d, Node* other, const string& alias);
     void prune_unused_imports(Node* mod);
     // Warnings and the pruning that follows them (base.md §19.6).
     void warn_n(Node* n, const char* code, const string& message);
