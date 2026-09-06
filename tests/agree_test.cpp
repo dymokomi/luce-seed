@@ -148,6 +148,10 @@ TEST(agree_untyped_right_operand) {
     CHECK(agrees("pub func answer() -> i64:\n    let w: u64 = 1099511627783\n    if w == (256 << 32) | 7:\n        return 42\n    return 0\n"));
 }
 
+TEST(agree_enum_method_on_value_and_case) {
+    CHECK(agrees("enum Flags as u8:\n    a = 1\n    b = 2\n    func name() -> i64:\n        return 20 + (i64)self\npub func answer() -> i64:\n    let f = Flags.b\n    return f.name() + Flags.a.name() - 1\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

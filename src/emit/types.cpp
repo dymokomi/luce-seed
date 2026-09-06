@@ -359,6 +359,10 @@ auto Emitter::emit_type_forwards(Node* mod) -> void {
         } else if (d->kind == NodeKind::Enum && d->ty != nullptr && !is_int_enum(d->ty)) {
             string n = struct_ident(d);
             line("typedef struct " + n + " " + n + ";");
+        } else if (d->kind == NodeKind::Enum && d->ty != nullptr && is_int_enum(d->ty)) {
+            // an integer-backed enum is its backing integer; the name exists so that a
+            // method's `self` can be typed before the enum's definition
+            line("typedef " + c_type(d->ty->elem) + " " + struct_ident(d) + ";");
         }
     }
 }

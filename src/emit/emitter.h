@@ -147,6 +147,7 @@ struct Emitter {
     string asm_arch_guard(Node* n);
     void emit_naked_body(Node* fn);
     void emit_loop_label(const char* prefix, Node* loop);
+    bool is_place_expression(Node* e);
     string emit_float_bits(Node* obj, Node* n);
     string type_attrs(Node* n);
     void emit_struct(Node* st);

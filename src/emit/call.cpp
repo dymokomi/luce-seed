@@ -729,7 +729,13 @@ auto Emitter::emit_call(Node* n) -> string {
             }
             return name + "(" + args + ")";
         }
-        // A pointer-typed receiver already is the address the method takes.
+        // A pointer-typed receiver already is the address the method takes; a place is
+        // addressed; a value, `Flags.a.name()` or a call's result, is held in a temporary.
+        if (obj != nullptr && !is_ptr(obj->ty) && !is_place_expression(obj)) {
+            string tn = "_lb_rc" + std::to_string(tmp());
+            string call = name + "(&" + tn + (args.empty() ? "" : ", " + args) + ")";
+            return "({ " + c_type(obj->ty) + " " + tn + " = " + emit_expr(obj) + "; " + call + "; })";
+        }
         string recv = is_ptr(obj != nullptr ? obj->ty : nullptr) ? emit_expr(obj) : emit_addr(obj);
         if (args.empty()) {
             return name + "(" + recv + ")";
@@ -818,6 +824,34 @@ auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
     string it = single ? "uint32_t" : "uint64_t";
     string ft = single ? "float" : "double";
     return "({ " + ft + " _lb_f = (" + ft + ")(" + emit_expr(obj) + "); " + it + " _lb_b; __builtin_memcpy(&_lb_b, &_lb_f, sizeof _lb_b); _lb_b; })";
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// Whether an expression names storage whose address a method may take: a binding, `self`,
+// an element, a dereference, or a member of one of those. An enum case, a literal, and a
+// call's result are values.
+auto Emitter::is_place_expression(Node* e) -> bool {
+    if (e == nullptr) {
+        return false;
+    }
+    switch (e->kind) {
+    case NodeKind::Name:
+    case NodeKind::Self:
+    case NodeKind::Index:
+        return true;
+    case NodeKind::Unary:
+        return e->op == TokenKind::Star;
+    case NodeKind::Member:
+        if (e->resolved != nullptr && e->resolved->kind == NodeKind::EnumCase) {
+            return false;
+        }
+        return is_place_expression(e->left) || (e->left != nullptr && is_ptr(e->left->ty));
+    default:
+        return false;
+    }
 }
 
 } // namespace lucb
