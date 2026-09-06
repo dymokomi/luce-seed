@@ -139,7 +139,7 @@ A compiler intern table can be generic. Evidence: `agree_hashable_intern`,
 
 `Allocator` is the interface of §12.4. `new` / `alloc` / `free` / `with` /
 `in` call `allocate` / `resize` / `release`. Heap and `FixedBuffer` remain
-the builtin implementations. A user `Arena implements Allocator` can be
+the builtin implementations. A user `Arena: Allocator` can be
 made current. Evidence: `agree_user_arena`, `testdata/programs/arena.lucb`.
 
 ## Memory, text, listing, spawn, hash
@@ -205,7 +205,7 @@ so it can agree with the C backend. `out` parameters, `luce bind`, and
 
 ## M12 — Interfaces, `fmt`, `Writer`
 
-Nominal `implements`, two-word interface views with a vtable, builtin
+Nominal conformance, two-word interface views with a vtable, builtin
 `Writer` and `Location`, `print(f"...")`, `format(buffer, fmt) -> str!`,
 `fmt`, and `luce.location`. Compiler Display covers scalars and `str`.
 Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.

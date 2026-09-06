@@ -2,7 +2,7 @@ import files
 import memory
 from memory import Allocator
 
-pub struct Arena implements Allocator:
+pub struct Arena: Allocator:
     var parent: Allocator
     var block: u8[]
     var used: usize

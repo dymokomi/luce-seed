@@ -382,7 +382,7 @@ auto Checker::check_implements(Node* st) -> void {
     for (Node* t = st->right; t != nullptr; t = t->next) {
         Type* iface = resolve_type(t);
         if (iface == nullptr || iface->kind != TypeKind::Interface || iface->decl == nullptr) {
-            fail_n(t, "lucb.check.type", "`implements` needs an interface");
+            fail_n(t, "lucb.check.type", "a conformance names an interface");
             continue;
         }
         t->ty = iface;

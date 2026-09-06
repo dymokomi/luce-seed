@@ -1,9 +1,9 @@
 interface Shape:
     func area() -> i64
-struct Sq implements Shape:
+struct Sq: Shape:
     var s: i64
     func area() -> i64: return self.s * self.s
-struct Rect implements Shape:
+struct Rect: Shape:
     var w: i64
     var h: i64
     func area() -> i64: return self.w * self.h

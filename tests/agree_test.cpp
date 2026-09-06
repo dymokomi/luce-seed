@@ -504,7 +504,7 @@ TEST(agree_thread_local) {
 }
 
 TEST(agree_writer_view) {
-    CHECK(agrees("struct Sink implements Writer:\n"
+    CHECK(agrees("struct Sink: Writer:\n"
                  "    var n: usize\n"
                  "    mutating func write(bytes: const u8[]) -> usize!:\n"
                  "        self.n += bytes.length\n"
@@ -517,7 +517,7 @@ TEST(agree_writer_view) {
 }
 
 TEST(agree_writer_fmt) {
-    CHECK(agrees("struct Sink implements Writer:\n"
+    CHECK(agrees("struct Sink: Writer:\n"
                  "    var n: usize\n"
                  "    mutating func write(bytes: const u8[]) -> usize!:\n"
                  "        self.n += bytes.length\n"
@@ -532,7 +532,7 @@ TEST(agree_writer_fmt) {
 TEST(agree_interface_view) {
     CHECK(agrees("interface Counter:\n"
                  "    mutating func bump() -> i64\n"
-                 "struct Box implements Counter:\n"
+                 "struct Box: Counter:\n"
                  "    var n: i64\n"
                  "    mutating func bump() -> i64:\n"
                  "        self.n += 1\n"
@@ -941,7 +941,7 @@ TEST(agree_generic_span) {
 }
 
 TEST(agree_user_arena) {
-    CHECK(agrees("pub struct Arena implements Allocator:\n"
+    CHECK(agrees("pub struct Arena: Allocator:\n"
                  "    var parent: Allocator\n"
                  "    var block: u8[]\n"
                  "    var used: usize\n"

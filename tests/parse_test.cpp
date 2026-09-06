@@ -67,6 +67,17 @@ TEST(parse_top_level_binding_ends_with_suite) {
     CHECK(p.dump().find("(match") != std::string::npos);
 }
 
+TEST(parse_conformance_list) {
+    Parsed p("interface A:\n    func a() -> i64\ninterface B:\n    func b() -> i64\nstruct S: A, B:\n    var x: i64\n    func a() -> i64:\n        return 1\n    func b() -> i64:\n        return 2\nstruct Plain:\n    var y: i64\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(struct \"S\"") != std::string::npos);
+}
+
+TEST(parse_implements_is_no_longer_a_keyword) {
+    Parsed p("struct S implements A:\n    var x: i64\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
 TEST(parse_hello_function) {
     Parsed p("pub func answer() -> i64:\n    var counter = 40\n    return counter\n");
     CHECK(p.diagnostics.empty());

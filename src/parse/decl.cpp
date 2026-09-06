@@ -4,7 +4,7 @@
 //
 //   DESCRIPTION:
 //       Modules, imports, functions with attributes, structs, enums, unions, interfaces and
-//       `implements`, type aliases, globals, `extern`/`export`, and `test` declarations
+//       conformance, type aliases, globals, `extern`/`export`, and `test` declarations
 //       (base.md §9, §10, §14, §16, §17, §21).
 //
 //==============================================================================================
@@ -473,9 +473,10 @@ auto Parser::parse_struct(uint32_t flags, bool is_extern) -> Node* {
         n->left = parse_generic_params();
     }
     if (!is_extern) {
-        n->right = parse_implements();
+        n->right = parse_conformance();
+    } else {
+        expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
     }
-    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
     expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
     expect(TokenKind::Indent, "lucb.parse.expect", "expected an indented body");
     while (!at(TokenKind::Dedent) && !at(TokenKind::EndOfFile)) {
@@ -494,8 +495,12 @@ auto Parser::parse_struct(uint32_t flags, bool is_extern) -> Node* {
     return n;
 }
 
-auto Parser::parse_implements() -> Node* {
-    if (!eat(TokenKind::KwImplements)) {
+// `struct Name: A, B:` declares that the type implements `A` and `B` (§14.1). The first
+// colon opens either the interface list or, when a newline follows it, the body; a list
+// ends with the body's own colon. Both colons are consumed here.
+auto Parser::parse_conformance() -> Node* {
+    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
+    if (at(TokenKind::Newline)) {
         return nullptr;
     }
     Node* list = nullptr;
@@ -503,6 +508,7 @@ auto Parser::parse_implements() -> Node* {
     while (eat(TokenKind::Comma)) {
         append_node(&list, parse_type());
     }
+    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:` before the body");
     return list;
 }
 
@@ -577,16 +583,15 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
     if (eat(TokenKind::KwAs)) {
         n->right = parse_type();
     }
-    Node* impl = parse_implements();
+    Node* impl = parse_conformance();
     if (impl != nullptr) {
-        // Store implements as sibling of as-type via extra chain on right.
+        // the interfaces follow the backing type on the same chain
         if (n->right != nullptr) {
             n->right->next = impl;
         } else {
             n->right = impl;
         }
     }
-    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
     expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
     expect(TokenKind::Indent, "lucb.parse.expect", "expected an indented body");
     while (!at(TokenKind::Dedent) && !at(TokenKind::EndOfFile)) {

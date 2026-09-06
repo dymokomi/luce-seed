@@ -45,7 +45,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"func", TokenKind::KwFunc},
     {"goto", TokenKind::KwGoto},
     {"if", TokenKind::KwIf},
-    {"implements", TokenKind::KwImplements},
     {"import", TokenKind::KwImport},
     {"in", TokenKind::KwIn},
     {"interface", TokenKind::KwInterface},
@@ -180,8 +179,6 @@ const char* token_kind_name(TokenKind kind) {
         return "goto";
     case TokenKind::KwIf:
         return "if";
-    case TokenKind::KwImplements:
-        return "implements";
     case TokenKind::KwImport:
         return "import";
     case TokenKind::KwIn:

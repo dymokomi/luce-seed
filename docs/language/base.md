@@ -180,7 +180,7 @@ The compiler-known core namespace cannot be redeclared: `assert`, `discard`, `er
 
 ```text
 alloc and as asm break catch const continue defer elif else enum errdefer
-export extern false for free from func goto if implements import in interface
+export extern false for free from func goto if import in interface
 let match mutating new none not or pub recover return self static struct test
 thread_local true try type union var volatile while with
 ```
@@ -1150,14 +1150,14 @@ from io import Writer
 pub interface Writer:
     mutating func write(bytes: const u8[]) -> usize!
 
-pub struct FileWriter implements Writer:
+pub struct FileWriter: Writer:
     var descriptor: i32
 
     pub mutating func write(bytes: const u8[]) -> usize!:
         ...
 ```
 
-An interface is a nominal set of method requirements. Conformance is declared with `implements` on the type, never retroactively. Every requirement is supplied with the exact signature; an implementation may be non-fallible where the requirement is fallible. Interfaces do not inherit, have no default bodies, no fields, no constructors, and no generic methods.
+An interface is a nominal set of method requirements. Conformance is declared on the type, `struct Name: Interface:`, with several interfaces separated by commas, never retroactively. Every requirement is supplied with the exact signature; an implementation may be non-fallible where the requirement is fallible. Interfaces do not inherit, have no default bodies, no fields, no constructors, and no generic methods.
 
 ### 14.2 Static use
 
@@ -1651,17 +1651,16 @@ parameter_list  = "(", [ parameter, { ",", parameter }, [ "," ] ], ")" ;
 parameter       = IDENT, ":", [ "noalias" ], type, [ "=", constant_expression ] ;
 result_clause   = [ "->", ( type | "!" ) ] ;
 
-implements_clause
-                = [ "implements", interface_type, { ",", interface_type } ] ;
+conformance     = [ ":", interface_type, { ",", interface_type } ] ;
 struct_decl     = [ "packed" | "align", "(", constant_expression, ")" ],
-                  "struct", TYPE_IDENT, [ generic_params ], implements_clause, ":",
+                  "struct", TYPE_IDENT, [ generic_params ], conformance, ":",
                   NEWLINE, INDENT, type_member, { type_member }, DEDENT ;
 type_member     = [ "pub" ], ( field_decl | [ "export" ], function_decl ) ;
 field_decl      = [ "align", "(", constant_expression, ")" ], ( "let" | "var" ), IDENT, ":", type,
                   [ "=", constant_expression ], NEWLINE ;
 
 enum_decl       = "enum", TYPE_IDENT, [ generic_params ], [ "as", integer_type ],
-                  implements_clause, ":", NEWLINE, INDENT,
+                  conformance, ":", NEWLINE, INDENT,
                   enum_case, { enum_case }, { [ "pub" ], function_decl }, DEDENT ;
 enum_case       = IDENT, [ payload_list | "=", constant_expression ], NEWLINE ;
 payload_list    = "(", payload, { ",", payload }, [ "," ], ")" ;
@@ -1993,7 +1992,7 @@ import files
 import memory
 from memory import Allocator
 
-pub struct Arena implements Allocator:
+pub struct Arena: Allocator:
     var parent: Allocator
     var block: u8[]
     var used: usize
@@ -2285,7 +2284,7 @@ import memory
 from io import Writer
 from memory import Allocator
 
-pub struct Builder implements Writer:
+pub struct Builder: Writer:
     var bytes: u8[]
     var length: usize
     var allocator: Allocator

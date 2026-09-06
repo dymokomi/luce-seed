@@ -4,7 +4,7 @@ import memory
 from io import Writer
 from memory import Allocator
 
-pub struct Builder implements Writer:
+pub struct Builder: Writer:
     var bytes: u8[]
     var length: usize
     var allocator: Allocator

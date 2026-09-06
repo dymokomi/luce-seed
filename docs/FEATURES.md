@@ -81,11 +81,11 @@ not land in this tree).
 | 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
-| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user `implements` works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |
+| 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user conformance works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
 | 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer`, `agree_generic_span` |
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
-| 14.1 | Interface declaration, `implements` | done | `agree_interface_view`, `check_interface_missing_method` |
+| 14.1 | Interface declaration, conformance | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
 | 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`, `agree_writer_fmt`, `agree_hex_bin_pad`; user `Display` out of seed |
 | 5.5 / 9.1 | `fmt`, `format`, `luce.location` | done | `agree_format`, `agree_location` |

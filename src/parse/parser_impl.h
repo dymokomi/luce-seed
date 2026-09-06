@@ -286,7 +286,7 @@ struct Parser {
     Node* parse_generic_params();
     Node* parse_params(bool extern_form);
     Node* parse_struct(uint32_t flags, bool is_extern);
-    Node* parse_implements();
+    Node* parse_conformance();
     Node* parse_type_member(bool is_extern);
     Node* parse_enum(uint32_t flags);
     Node* parse_union(uint32_t flags);

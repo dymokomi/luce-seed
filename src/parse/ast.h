@@ -156,7 +156,7 @@ struct Node {
 //   Func:              text = name, left = generics, right = params,
 //                      type = result, body = suite
 //   Struct/Enum/Union/Interface: text = name, left = generics,
-//                      right = implements / enum-as-type, body = members
+//                      right = conformance list / enum-as-type, body = members
 //   Field/Param:       text = name, type = type, left = default
 //   EnumCase:          text = name, body = payload params, left = value
 //   TypeAlias/Const/Global: text = name, type = type, left = value

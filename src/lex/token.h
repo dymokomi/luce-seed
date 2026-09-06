@@ -57,7 +57,6 @@ enum class TokenKind : uint16_t {
     KwFunc,
     KwGoto,
     KwIf,
-    KwImplements,
     KwImport,
     KwIn,
     KwInterface,

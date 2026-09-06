@@ -518,7 +518,7 @@ TEST(eval_enum_checked_conv_traps) {
 TEST(eval_interface_view) {
     EvalResult r = run("interface Counter:\n"
                        "    mutating func bump() -> i64\n"
-                       "struct Box implements Counter:\n"
+                       "struct Box: Counter:\n"
                        "    var n: i64\n"
                        "    mutating func bump() -> i64:\n"
                        "        self.n += 1\n"

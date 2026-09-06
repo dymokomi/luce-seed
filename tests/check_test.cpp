@@ -249,7 +249,7 @@ TEST(check_new_zeroable) {
 TEST(check_interface_missing_method) {
     CHECK(check_has("interface Counter:\n"
                     "    mutating func bump() -> i64\n"
-                    "struct Box implements Counter:\n"
+                    "struct Box: Counter:\n"
                     "    var n: i64\n"
                     "pub func answer() -> i64:\n"
                     "    return 0\n",
@@ -658,7 +658,7 @@ TEST(check_luce_location_ok) {
 }
 
 TEST(check_arena_implements_ok) {
-    CHECK(check_ok("pub struct Arena implements Allocator:\n"
+    CHECK(check_ok("pub struct Arena: Allocator:\n"
                    "    var parent: Allocator\n"
                    "    var block: u8[]\n"
                    "    var used: usize\n"
@@ -730,7 +730,7 @@ TEST(check_char_u8_eq_ok) {
 }
 
 TEST(check_writer_fmt_ok) {
-    CHECK(check_ok("struct Sink implements Writer:\n"
+    CHECK(check_ok("struct Sink: Writer:\n"
                    "    var n: usize\n"
                    "    mutating func write(bytes: const u8[]) -> usize!:\n"
                    "        self.n += bytes.length\n"
