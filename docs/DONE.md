@@ -1,7 +1,28 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.8**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.9**, the seed `luce-base` is written against.
+
+## 0.9: names the language keeps, names modules keep apart
+
+- No declaration of any kind takes a core name (§3.5): a binding, a
+  parameter, a function, a method, a type, a field, an enum case, or an
+  alias spelled `i8`, `unit`, `error`, `pad`, and the rest of the
+  dictionary is an error, so an enum with a case `i8` no longer parses as a
+  program that happens to work. `tests/check_test.cpp` pins each position.
+- A private `helper` or a private `Box` in two modules used to become the
+  same C symbol, `lb_helper`, and the C compiler refused the program. The
+  top-level declarations of an imported module now carry the module's name
+  (`Node::module`), and every C spelling of a function, a type, and a
+  typedef of an optional, array, result, or tuple over such a type is
+  qualified by it: `lb_a_helper`, `lb_b_Box`, `lb_o_a_Box`. The entry
+  module's names stay bare. `testdata/programs/modules/private_names/`
+  pins it.
+- `from io import Writer` also makes `io` visible by its last component
+  (§16.3), so a program that writes `io.stdout()` needs no second import;
+  an `import io` beside it is the unused one, whichever comes first, and
+  is reported and pruned. `testdata/programs/modules/from_import_qualifies/`
+  and `tests/check_test.cpp` pin it.
 
 ## 0.8: the seed builds luce-base again
 
