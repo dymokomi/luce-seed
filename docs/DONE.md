@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.11**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.12**, the seed `luce-base` is written against.
+
+## 0.12: a conditional with a `none` branch is the optional itself
+
+`return x if c else none` in a function answering `T?` was wrapped twice in
+the C: the conditional's branches are each typed as the optional and emitted
+as one, so the conditional yields it (`produces_opt`). `tests/agree_test.cpp`
+pins the returned, bound, and nested forms.
 
 ## 0.11: a module's aliases and extern declarations reach other modules
 

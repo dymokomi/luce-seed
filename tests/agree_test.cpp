@@ -345,6 +345,21 @@ TEST(agree_assign_through_pointer) {
                  "    return n\n"));
 }
 
+// A conditional with a `none` branch, returned or bound where an optional is expected, is
+// the optional itself, not an optional of one.
+TEST(agree_optional_conditional) {
+    CHECK(agrees("func pick(c: bool) -> usize?:\n    return 40 if c else none\n"
+                 "func other(c: bool) -> usize?:\n    return none if c else 2\n"
+                 "func both(c: bool) -> usize?:\n    return pick(c) if c else other(c)\n"
+                 "pub func answer() -> i64:\n"
+                 "    let a = pick(true) else return 0\n"
+                 "    let b = other(false) else return 0\n"
+                 "    let d: usize? = 7 if b == 2 else none\n"
+                 "    let e = both(true) else return 0\n"
+                 "    let f = d else return 0\n"
+                 "    return (i64)a + (i64)b + (i64)e + (i64)f - 49\n"));
+}
+
 TEST(agree_optional_else) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    let x: i64? = none\n"

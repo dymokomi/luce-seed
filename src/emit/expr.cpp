@@ -71,7 +71,10 @@ auto Emitter::produces_opt(Node* n) -> bool {
         return true; // a call through a function value returning `T?`
     }
     if (n->kind == NodeKind::Conditional) {
-        return produces_opt(n->left) && produces_opt(n->right);
+        // each branch typed as the optional is emitted as one, so the conditional yields it:
+        // `x if c else none`, `none if c else x`, two optionals
+        return n->left != nullptr && is_opt(n->left->ty) && n->right != nullptr &&
+               is_opt(n->right->ty);
     }
     return false;
 }
