@@ -55,6 +55,18 @@ struct Parsed {
     }
 };
 
+TEST(parse_asm_header_spans_lines) {
+    Parsed p("func w(fd: i32) -> i64:\n    var result: i64 = 0\n    asm arm64 (in(\"x0\") fd,\n               out(\"x0\") result):\n        mov x0, x0\n    return result\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(asm") != std::string::npos);
+}
+
+TEST(parse_top_level_binding_ends_with_suite) {
+    Parsed p("let c: i64 = 5\nlet kind = match c:\n    1 => 1\n    _ => 42\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(match") != std::string::npos);
+}
+
 TEST(parse_hello_function) {
     Parsed p("pub func answer() -> i64:\n    var counter = 40\n    return counter\n");
     CHECK(p.diagnostics.empty());
@@ -263,7 +275,7 @@ TEST(parse_labeled_loop) {
              "        break rows\n"
              "    return 0\n");
     CHECK(p.diagnostics.empty());
-    CHECK(p.dump().find("(for \"rows\"") != std::string::npos);
+    CHECK(p.dump().find("(for \"y\" label=\"rows\"") != std::string::npos);
     CHECK(p.dump().find("(break \"rows\")") != std::string::npos);
 }
 
@@ -416,9 +428,14 @@ TEST(parse_let_needs_init) {
     CHECK(p.has("lucb.parse.expect"));
 }
 
-TEST(parse_weak_belongs_to_full_luce) {
-    Parsed p("weak var n: i64 = 0\nfunc f() -> i64:\n    return 0\n");
+TEST(parse_weak_field_marker_belongs_to_full_luce) {
+    Parsed p("struct S:\n    weak var n: i64\nfunc f() -> i64:\n    return 0\n");
     CHECK(p.has("lucb.parse.tier"));
+}
+
+TEST(parse_weak_attribute_is_base) {
+    Parsed p("weak var n: i64 = 0\nweak func f() -> i64:\n    return 0\n");
+    CHECK(p.diagnostics.empty());
 }
 
 TEST(parse_spawn_belongs_to_full_luce) {

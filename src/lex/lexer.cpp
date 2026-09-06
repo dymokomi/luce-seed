@@ -414,8 +414,8 @@ class Tokenizer {
             if (layout_active()) {
                 emit(TokenKind::Newline, pos_, pos_);
                 pending_layout_ = true;
+                saw_asm_ = false; // a line break inside `asm (...)` is still the header
             }
-            saw_asm_ = false;
             advance_line();
             return;
         }

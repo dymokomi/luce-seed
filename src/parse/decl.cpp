@@ -100,6 +100,36 @@ auto Parser::parse_module_path() -> string_view {
     return source->bytes().substr(start, end - start);
 }
 
+// `weak` before a function or a variable is the attribute of §9.8; elsewhere it is full
+// Luce's field marker. Look past the other attribute words to the declaration.
+auto Parser::weak_is_attribute() -> bool {
+    int i = 1;
+    while (true) {
+        const Token& t = peek(i);
+        if (t.kind == TokenKind::KwWeak) {
+            i += 1;
+        } else if (t.kind == TokenKind::Name && t.text == "section") {
+            i += 4; // section ( "name" )
+        } else if (t.kind == TokenKind::Name &&
+                   (t.text == "inline" || t.text == "noinline" || t.text == "cold" ||
+                    t.text == "naked" || t.text == "used")) {
+            i += 1;
+        } else {
+            return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwStatic ||
+                   t.kind == TokenKind::KwMutating || t.kind == TokenKind::KwVar ||
+                   t.kind == TokenKind::KwThreadLocal;
+        }
+    }
+}
+
+// Attach the attribute list parsed ahead of a declaration to the declaration.
+static auto with_attrs(Node* n, Node* attrs) -> Node* {
+    if (n != nullptr && n->attrs == nullptr) {
+        n->attrs = attrs;
+    }
+    return n;
+}
+
 auto Parser::parse_attributes(Node** attrs) -> uint32_t {
     uint32_t flags = 0;
     while (true) {
@@ -141,7 +171,8 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
 }
 
 auto Parser::parse_top() -> Node* {
-    if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn) || at(TokenKind::KwWeak)) {
+    if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn) ||
+        (at(TokenKind::KwWeak) && !weak_is_attribute())) {
         fail("lucb.parse.tier", "this construct belongs to full Luce");
         take();
         sync_line();
@@ -190,7 +221,7 @@ auto Parser::parse_top() -> Node* {
     flags |= parse_attributes(&attrs);
 
     if (at(TokenKind::KwThreadLocal) || at(TokenKind::KwVar)) {
-        return parse_global(flags);
+        return with_attrs(parse_global(flags), attrs);
     }
     if (at(TokenKind::KwLet)) {
         return parse_const(flags);
@@ -203,7 +234,7 @@ auto Parser::parse_top() -> Node* {
         if (at(TokenKind::KwExtern)) {
             return parse_extern(flags);
         }
-        return parse_func(flags);
+        return with_attrs(parse_func(flags), attrs);
     }
     if (at(TokenKind::KwStruct) || at_name("packed") || at_name("align")) {
         return parse_struct(flags, false);
@@ -240,7 +271,7 @@ auto Parser::parse_const(uint32_t flags) -> Node* {
     }
     expect(TokenKind::Eq, "lucb.parse.expect", "expected `=`");
     n->left = parse_expression();
-    expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    expect_stmt_newline(n->left);
     n->span = span_from(start);
     return n;
 }
@@ -253,6 +284,7 @@ auto Parser::parse_global(uint32_t flags) -> Node* {
     }
     Node* attrs = nullptr;
     flags |= parse_attributes(&attrs);
+    n->attrs = attrs;
     expect(TokenKind::KwVar, "lucb.parse.expect", "expected `var`");
     n->flags = flags;
     if (!at(TokenKind::Name)) {
@@ -269,7 +301,11 @@ auto Parser::parse_global(uint32_t flags) -> Node* {
             n->left = parse_expression();
         }
     }
-    expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    if (n->left != nullptr) {
+        expect_stmt_newline(n->left);
+    } else {
+        expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    }
     n->span = span_from(start);
     return n;
 }
@@ -306,6 +342,7 @@ auto Parser::parse_func(uint32_t flags) -> Node* {
     }
     expect(TokenKind::KwFunc, "lucb.parse.expect", "expected `func`");
     Node* n = make(NodeKind::Func, start.span);
+    n->attrs = attrs;
     n->flags = flags;
     if (!at(TokenKind::Name)) {
         fail("lucb.parse.expect", "expected a function name");
@@ -476,6 +513,12 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
     }
     if (eat(TokenKind::KwExport)) {
         flags |= FlagExport;
+    }
+    if (at(TokenKind::KwWeak) &&
+        (peek(1).kind == TokenKind::KwVar || peek(1).kind == TokenKind::KwLet)) {
+        // `weak` on a field is full Luce's reference-counting; Base has none (§3.6)
+        fail("lucb.parse.tier", "this construct belongs to full Luce");
+        take();
     }
     Node* align_e = nullptr;
     if (at_name("align")) {

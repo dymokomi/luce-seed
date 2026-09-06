@@ -78,7 +78,7 @@ auto Parser::parse_statement() -> Node* {
             loop = parse_for();
         }
         if (loop != nullptr) {
-            loop->text = label.text;
+            loop->label = label.text;
         }
         return loop;
     }

@@ -277,6 +277,7 @@ struct Parser {
     Node* parse_import();
     string_view parse_module_path();
     uint32_t parse_attributes(Node** attrs);
+    bool weak_is_attribute();
     Node* parse_top();
     Node* parse_const(uint32_t flags);
     Node* parse_global(uint32_t flags);

@@ -76,6 +76,10 @@ void dump(const Node* n, string& out) {
         out += ' ';
         quote(n->text, out);
     }
+    if (!n->label.empty()) {
+        out += " label=";
+        quote(n->label, out);
+    }
     if (n->op != TokenKind::EndOfFile && n->kind != NodeKind::Literal) {
         out += ' ';
         out += token_kind_name(n->op);

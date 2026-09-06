@@ -140,6 +140,8 @@ struct Node {
     Node* body = nullptr;
     Node* type = nullptr;
     Node* next = nullptr;
+    string_view label;      // a loop's label: `outer: for ...` (§8.5)
+    Node* attrs = nullptr;  // declaration attributes with an argument, `section("...")` (§9.8)
     // Filled by check:
     struct Type* ty = nullptr; // resolved type of this node
     Node* resolved = nullptr;  // declaration a name/call refers to
