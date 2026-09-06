@@ -1,7 +1,22 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.6**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.7**, the seed `luce-base` is written against.
+
+## 0.7: warnings, and what the checker removes
+
+The checker has two outputs besides the checked tree: errors, which fail the
+check, and warnings, which `-W` on any command prints and which are otherwise
+silent (`DiagnosticBag::warnings`). Every warning names something the program
+does not use, and the checker removes it from the tree before the interpreter
+or the C emitter runs: an unused local (a name beginning with `_` is exempt),
+an unused import, a private function nothing references, a statement no path
+reaches, and a branch or loop whose literal condition rules it out. A removal
+keeps the program's meaning: an unused binding whose initialiser may have an
+effect stays as that expression, and a generic template's body is left alone,
+since each instance checks it again. `testdata/programs/values/pruned_by_the_checker.lucb`
+pins the answers; `tests/check_test.cpp` pins each warning, and the positive
+and negative forms of `let` and `var` bindings.
 
 ## 0.6: two decisions and a value receiver
 
