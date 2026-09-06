@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.10**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.11**, the seed `luce-base` is written against.
+
+## 0.11: a module's aliases and extern declarations reach other modules
+
+A `pub type Ints = Box[i64]` used to be invisible as `boxes.Ints` from another
+module, as were a module's `pub extern` declarations: `pub_member` skipped
+those kinds. Aliases are now resolved when their own module is checked, in
+its scope, so another module's `mod.Alias` finds the type ready; the
+recursion guard moved with it (`resolve_alias`).
+`testdata/programs/modules/alias_across_modules/` pins it. `VERSION` is the
+one place the version lives: CMake reads it and `lucb --version` reports it.
 
 ## 0.10: the `c` module as the specification has it
 

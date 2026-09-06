@@ -95,6 +95,23 @@ auto Checker::imported_c_type(Node* at, string_view name) -> Type* {
     return t;
 }
 
+// The type an alias stands for, resolved once, in the scope where the alias is declared;
+// an alias that reaches itself is an error.
+auto Checker::resolve_alias(Node* alias) -> Type* {
+    if (alias->ty != nullptr && alias->ty->kind != TypeKind::Error) {
+        return alias->ty;
+    }
+    if (alias->flags & FlagUsed) {
+        fail_n(alias, "lucb.check.type", "this alias is recursive");
+        return t_error();
+    }
+    alias->flags |= FlagUsed;
+    Type* t = resolve_type(alias->type);
+    alias->flags &= ~FlagUsed;
+    alias->ty = t;
+    return t;
+}
+
 auto Checker::c_alias(string_view name) -> Type* {
     if (name == "c.int") {
         return ty_i32;
@@ -584,18 +601,7 @@ auto Checker::resolve_type(Node* n) -> Type* {
     Binding* b = lookup(n->text);
     if (b != nullptr && b->type != nullptr) {
         if (b->decl != nullptr && b->decl->kind == NodeKind::TypeAlias) {
-            if (b->decl->ty == nullptr || b->decl->ty->kind == TypeKind::Error) {
-                if (b->decl->flags & FlagUsed) {
-                    fail_n(n, "lucb.check.type", "this alias is recursive");
-                    n->ty = t_error();
-                    return n->ty;
-                }
-                b->decl->flags |= FlagUsed;
-                Type* t = resolve_type(b->decl->type);
-                b->decl->flags &= ~FlagUsed;
-                b->decl->ty = t;
-                b->type = t;
-            }
+            b->type = resolve_alias(b->decl);
         }
         bool type_bind =
             b->decl == nullptr || b->decl->kind == NodeKind::Struct ||
@@ -656,7 +662,7 @@ auto Checker::resolve_type(Node* n) -> Type* {
                 }
             }
             if (d != nullptr) {
-                Type* t = decl_type(d);
+                Type* t = d->kind == NodeKind::TypeAlias ? resolve_alias(d) : decl_type(d);
                 if (n->body != nullptr) {
                     // `module.List[i64]`: instantiate the imported generic here.
                     if (!is_generic_decl(d)) {

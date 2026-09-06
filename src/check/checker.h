@@ -152,6 +152,7 @@ struct Checker {
 
     Type* named_scalar(string_view name);
     Type* c_alias(string_view name);
+    Type* resolve_alias(Node* alias);
     Type* imported_c_type(Node* at, string_view name);
     Type* make_type(TypeKind kind, string_view name);
     string_view keep(const string& s);

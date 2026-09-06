@@ -1,0 +1,13 @@
+pub let full: ErrorCode = ErrorCode.package(1)
+
+pub struct Box[T]:
+    pub var items: T[]
+    pub var count: usize
+
+    pub mutating func push(item: T) -> !:
+        if self.count >= self.items.length:
+            return error(full, "full")
+        self.items[self.count] = item
+        self.count += 1
+
+pub type Ints = Box[i64]

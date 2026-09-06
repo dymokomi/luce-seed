@@ -1,0 +1,16 @@
+## A public alias of a generic instance, `boxes.Ints`, used through its module for a
+## field, a receiver, and a value.
+import boxes
+
+struct Sink:
+    var xs: boxes.Ints
+
+    mutating func add(v: i64) -> !:
+        try self.xs.push(v)
+
+pub func answer() -> i64!:
+    var backing: i64[4]
+    var s = Sink(xs = boxes.Box[i64](items = backing, count = 0))
+    try s.add(40)
+    let copy: boxes.Ints = s.xs
+    return copy.items[0]

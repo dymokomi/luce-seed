@@ -133,8 +133,11 @@ auto Checker::pub_member(Node* mod, string_view name) -> Node* {
         if (d->text == name && (d->flags & FlagPub) != 0 &&
             (d->kind == NodeKind::Func || d->kind == NodeKind::Struct ||
              d->kind == NodeKind::Enum || d->kind == NodeKind::Union ||
-             d->kind == NodeKind::Interface || d->kind == NodeKind::Const ||
-             d->kind == NodeKind::Global)) {
+             d->kind == NodeKind::Interface || d->kind == NodeKind::TypeAlias ||
+             d->kind == NodeKind::Const || d->kind == NodeKind::Global ||
+             d->kind == NodeKind::ExternFunc || d->kind == NodeKind::ExternType ||
+             d->kind == NodeKind::ExternStruct || d->kind == NodeKind::ExternUnion ||
+             d->kind == NodeKind::ExternVar)) {
             return d;
         }
     }
@@ -950,6 +953,13 @@ auto Checker::check_module(Node* mod) -> void {
             check_enum(d);
         } else if (d->kind == NodeKind::Union) {
             check_union(d);
+        }
+    }
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind == NodeKind::TypeAlias) {
+            // resolved here, in the module's own scope, so another module's `mod.Alias`
+            // finds the type ready
+            resolve_alias(d);
         }
     }
     for (Node* d = mod->body; d != nullptr; d = d->next) {
