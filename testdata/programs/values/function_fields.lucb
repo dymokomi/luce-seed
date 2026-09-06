@@ -1,0 +1,34 @@
+## Function values: a bare function name, a field of function type called through its value (§5.6).
+struct Small:
+    var id: i32
+
+struct Pair:
+    var a: i64
+    var b: i64
+
+struct Big:
+    var a: i64
+    var b: i64
+    var c: i64
+
+struct Holder:
+    var on_small: func(Small) -> i64
+    var on_pair: func(Pair) -> i64
+    var on_big: func(Big) -> i64
+
+func take_small(s: Small) -> i64:
+    return (i64)s.id
+
+func take_pair(p: Pair) -> i64:
+    return p.a + p.b
+
+func take_big(b: Big) -> i64:
+    return b.a + b.b + b.c
+
+pub func answer() -> i64:
+    var h = Holder(on_small = take_small, on_pair = take_pair, on_big = take_big)
+    let direct = take_small(Small(id = 7)) + take_pair(Pair(a = 1, b = 2)) + take_big(Big(a = 1, b = 2, c = 3))
+    let indirect = h.on_small(Small(id = 7)) + h.on_pair(Pair(a = 1, b = 2)) + h.on_big(Big(a = 1, b = 2, c = 3))
+    let f = take_small
+    return direct + indirect + f(Small(id = 4))
+# answer: 36

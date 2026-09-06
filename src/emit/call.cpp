@@ -132,6 +132,11 @@ auto Emitter::emit_extern_args(Node* n) -> string {
 
 auto Emitter::emit_call(Node* n) -> string {
     Node* callee = n->left;
+    if (callee != nullptr && callee->kind == NodeKind::Member && callee->resolved != nullptr &&
+        callee->resolved->kind == NodeKind::Field && is_func(callee->ty)) {
+        // `holder.callback(args)`: a field of function type, called through its value
+        return "(" + emit_expr(callee) + ")(" + emit_args(n->body) + ")";
+    }
     if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
         callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
         callee->text == "package") {

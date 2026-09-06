@@ -956,6 +956,14 @@ auto Checker::check_method_call(Node* n) -> Type* {
     }
     Node* method = struct_member(recv->decl, mem->text, NodeKind::Func);
     if (method == nullptr) {
+        // `holder.callback(args)`: a field of function type is called through its value
+        Node* field = struct_member(recv->decl, mem->text, NodeKind::Field);
+        if (field != nullptr && is_func(field->ty)) {
+            Type* ft = check_expr(mem, nullptr);
+            mem->resolved = field;
+            n->resolved = nullptr;
+            return check_fnptr_call(n, ft);
+        }
         fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");
         return t_error();
     }

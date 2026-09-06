@@ -53,6 +53,12 @@ static bool read_pipe_chunk(int fd, string* buf, bool* open) {
     return true;
 }
 
+// `holder.callback(args)`: a field of function type is a call through its value, not a method.
+static bool is_field_call(Node* callee) {
+    return callee != nullptr && callee->resolved != nullptr &&
+           callee->resolved->kind == NodeKind::Field && is_func(callee->ty);
+}
+
 auto Interp::invoke_method(Value* self, Node* st, string_view name, const vector<Value>& args)
     -> Value {
     Node* method = nullptr;
@@ -147,7 +153,7 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         return v_unit();
     }
-    if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
+    if (callee != nullptr && callee->kind == NodeKind::Member && !is_field_call(callee) && callee->left != nullptr &&
         callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
         callee->text == "package") {
         Value a = n->body != nullptr ? eval(n->body->left) : v_unit();
@@ -251,7 +257,7 @@ auto Interp::eval_call(Node* n) -> Value {
         v.failed = false;
         return v;
     }
-    if (callee != nullptr && callee->kind == NodeKind::Member) {
+    if (callee != nullptr && callee->kind == NodeKind::Member && !is_field_call(callee)) {
         Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
         if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
             n->resolved->kind == NodeKind::Func) {

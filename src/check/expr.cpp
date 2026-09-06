@@ -297,8 +297,8 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
         if (is_opt(want) && want->elem != nullptr) {
             want = want->elem;
         }
-        if (is_func(want) || is_void_ptr(want) ||
-            (want != nullptr && is_func(want) && want->is_nullable)) {
+        if (want == nullptr || is_func(want) || is_void_ptr(want)) {
+            // a named function is a function pointer (§5.6): `let f = take_small`
             return ft;
         }
         fail_n(n, "lucb.check.type", "a function must be called");
