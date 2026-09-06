@@ -1,0 +1,2 @@
+pub struct Node:
+    pub var value: i64

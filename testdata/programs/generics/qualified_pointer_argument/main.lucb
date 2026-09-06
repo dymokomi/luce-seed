@@ -1,0 +1,13 @@
+# A type argument may be a pointer to a type of another module: `Box[node.Node*]`
+# is a generic use, not an index.
+import node
+
+struct Box[T]:
+    var item: T
+
+pub func answer() -> i64:
+    var n = node.Node(value = 40)
+    let b = Box[node.Node*](item = &n)
+    let c: Box[node.Node*] = b
+    return c.item.value + 2
+# answer: 42

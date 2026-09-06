@@ -68,6 +68,13 @@ auto Parser::is_array_suffix_ahead() const -> bool {
         if (is_type_path_ident(t)) {
             return false;
         }
+        // `module.Type` inside the brackets names a type argument
+        if (peek_kind(pos + 2) == TokenKind::Dot && peek_kind(pos + 3) == TokenKind::Name) {
+            string_view q = tok[pos + 3].text;
+            if (!q.empty() && q[0] >= 'A' && q[0] <= 'Z') {
+                return false;
+            }
+        }
         return true;
     }
     return false;
@@ -97,6 +104,13 @@ auto Parser::is_generic_call_ahead() const -> bool {
     }
     if (!first.text.empty() && first.text[0] >= 'A' && first.text[0] <= 'Z') {
         return true;
+    }
+    // `module.Type`: a lowercase module name, a dot, then a type name.
+    if (peek_kind(pos + 2) == TokenKind::Dot && peek_kind(pos + 3) == TokenKind::Name) {
+        Token qualified = tok[pos + 3];
+        if (!qualified.text.empty() && qualified.text[0] >= 'A' && qualified.text[0] <= 'Z') {
+            return true;
+        }
     }
     return false;
 }
