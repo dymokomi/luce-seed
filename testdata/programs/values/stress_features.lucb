@@ -1,0 +1,111 @@
+## A stress program across generics, payload enums, interfaces, function values, recursion,
+## and nested pointers: the interpreter, the C backend, and the native backend must agree.
+import memory
+from memory import Allocator
+
+pub let bad: ErrorCode = ErrorCode.package(1)
+
+## A generic growable stack.
+struct Stack[T]:
+    var data: T[]
+    var count: usize
+    var allocator: Allocator
+
+    static func create() -> Stack[T]!:
+        return Stack[T](data = try new T[4], count = 0, allocator = memory.allocator)
+
+    mutating func push(value: T) -> !:
+        if self.count == self.data.length:
+            let grown = try new T[self.data.length * 2]
+            memory.copy(grown, self.data, self.count)
+            free(self.data)
+            self.data = grown
+        self.data[self.count] = value
+        self.count += 1
+
+    mutating func pop() -> T?:
+        if self.count == 0:
+            return none
+        self.count -= 1
+        return self.data[self.count]
+
+    mutating func destroy():
+        free(self.data)
+
+## A payload enum walked recursively.
+enum Tree:
+    leaf(value: i64)
+    branch(left: Tree*, right: Tree*)
+
+func sum_tree(t: Tree*) -> i64:
+    match *t:
+        .leaf(value):
+            return value
+        .branch(left, right):
+            return sum_tree(left) + sum_tree(right)
+
+## An interface with two implementations.
+interface Shape:
+    func area() -> i64
+
+struct Square implements Shape:
+    var side: i64
+    func area() -> i64:
+        return self.side * self.side
+
+struct Rect implements Shape:
+    var w: i64
+    var h: i64
+    func area() -> i64:
+        return self.w * self.h
+
+func area_of(shape: Shape) -> i64:
+    return shape.area()
+
+## A function value applied over a range.
+func apply(f: func(i64) -> i64, start: i64, stop: i64) -> i64:
+    var acc: i64 = 0
+    var i = start
+    while i <= stop:
+        acc += f(i)
+        i += 1
+    return acc
+
+func cube(x: i64) -> i64:
+    return x * x * x
+
+func fibonacci(n: i64) -> i64:
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+pub func answer() -> i64:
+    # generic stack
+    var stack = Stack[i64].create() catch: return -1
+    for k: i64 in 1..=20:
+        stack.push(k) catch: return -1
+    var stack_sum: i64 = 0
+    while let v = stack.pop():
+        stack_sum += v
+    stack.destroy()
+    # a small tree: (1 + 2) + (3 + 4)
+    var l1 = Tree.leaf(value = 1)
+    var l2 = Tree.leaf(value = 2)
+    var l3 = Tree.leaf(value = 3)
+    var l4 = Tree.leaf(value = 4)
+    var b1 = Tree.branch(left = &l1, right = &l2)
+    var b2 = Tree.branch(left = &l3, right = &l4)
+    var root = Tree.branch(left = &b1, right = &b2)
+    let tree_sum = sum_tree(&root)
+    # interfaces
+    var sq = Square(side = 3)
+    var rc = Rect(w = 2, h = 5)
+    let sqv: Shape = &sq
+    let rcv: Shape = &rc
+    let area = area_of(sqv) + area_of(rcv)
+    # function value over a range
+    let cubes = apply(cube, 1, 3)
+    let fib = fibonacci(12)
+    # stack_sum=210, tree_sum=10, area=19, cubes=36, fib=144
+    return stack_sum + tree_sum + area + cubes + fib - 419
+# answer: 0
