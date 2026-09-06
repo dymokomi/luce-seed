@@ -1,12 +1,13 @@
 # args: examples/lexer/sample.lucb
 ## Tokenize a file and print one line per token, then a count per kind.
 
+import c
 import files
 import io
 import lexer
 import token
 
-pub func main(arguments: cstr[]) -> i32!:
+pub func main(arguments: c.str[]) -> i32!:
     let out = io.stdout()
     if arguments.length < 2:
         try io.stderr().write("usage: lexer FILE\n")

@@ -1,3 +1,4 @@
+import c
 import files
 
 pub let missing_field: ErrorCode = ErrorCode.package(4)
@@ -39,7 +40,7 @@ func parse(text: str, scratch: u8[]) -> Config!:
         error(failure.code, try format(scratch, f"threads: {failure.message}"))
     return Config(name = name, threads = count)
 
-func load(path: cstr, scratch: u8[]) -> Config!:
+func load(path: c.str, scratch: u8[]) -> Config!:
     let bytes = files.read(path) catch failure:
         if failure.code == files.missing:
             return try parse("name = default\nthreads = 4", scratch)
@@ -47,7 +48,7 @@ func load(path: cstr, scratch: u8[]) -> Config!:
     defer free(bytes)
     return try parse(try str(bytes), scratch)
 
-pub func main(arguments: cstr[]) -> i32!:
+pub func main(arguments: c.str[]) -> i32!:
     var scratch: u8[256]
     let config = try load(arguments[1], scratch)
     print(f"{config.name} on {config.threads} threads")

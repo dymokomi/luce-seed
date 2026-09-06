@@ -176,7 +176,7 @@ The compiler-known core namespace cannot be redeclared: no declaration of any ki
 
 ```text
 assert discard error trap hash print format sizeof alignof offsetof hex bin pad
-bool i8 i16 i32 i64 isize u8 u16 u32 u64 usize f16 f32 f64 char str cstr
+bool i8 i16 i32 i64 isize u8 u16 u32 u64 usize f16 f32 f64 char str
 unit never void fmt Error ErrorCode
 ```
 
@@ -230,7 +230,7 @@ text"""
 ```
 
 - A character literal is one Unicode scalar after escapes. In a `u8` context an ASCII character literal is that byte, so `byte == '\n'` needs no conversion.
-- A string literal is valid UTF-8, stored once in static data, and followed by a NUL byte that is not part of its length. Its type is `str`, and it converts implicitly to `cstr` (§5.5) because the NUL is guaranteed.
+- A string literal is valid UTF-8, stored once in static data, and followed by a NUL byte that is not part of its length. Its type is `str`, and it converts implicitly to `c.str` (§5.5) because the NUL is guaranteed.
 - A byte literal `b"..."` is static data of type `const u8[N]`, with `\xNN` escapes and ASCII text; it is not NUL-terminated.
 - Triple-quoted strings drop a newline that directly follows the opening delimiter, strip indentation by the closing delimiter's column, and normalise CRLF to `\n` before escapes are decoded.
 - Escapes in text are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0`, and `\u{HEX}` with one to six hex digits. There is no `\x` in text; it exists in byte literals.
@@ -255,7 +255,7 @@ Base is statically and nominally typed. Every expression has one type. Inference
 - a pointer to a more-qualified pointer of the same pointee (`T*` to `const T*`, `volatile T*`, or both);
 - any object pointer to `void*`, and any read-only object pointer to `const void*`;
 - a mutable `T[N]` to `T[]`, any `T[N]` to `const T[]`, and `T[]` to `const T[]`;
-- a string literal, or a `str` produced by `format`, to `cstr`;
+- a string literal, or a `str` produced by `format`, to `c.str`;
 - an ASCII character literal to `u8`;
 - `T` to `T?`, and `T` to a successful `T!`;
 - a non-fallible function to the corresponding fallible function type;
@@ -298,8 +298,9 @@ C's types live in the standard `c` module, so that a C signature can be written 
 | `c.long`, `c.ulong` | `long`, `unsigned long` | distinct | 64 bits on SysV and AAPCS64 targets, 32 on Windows x64 |
 | `c.wchar` | `wchar_t` | distinct | 32 bits except on Windows, where it is 16 |
 | `c.va_list` | `va_list` | opaque | may only be passed through to C |
+| `c.str` | `const char*` | distinct | NUL-terminated text of unknown encoding (§5.5) |
 
-A binding therefore reads `w: i32, h: i32, flags: u32`, and uses `c.long` or `c.char` only where C's width varies. `long double` and `_Complex` have no Base type; `luce bind` refuses them and names the shim recipe. `c.long(x)` from `i64` is a checked conversion; `cstr` is `const c.char*`.
+A binding therefore reads `w: i32, h: i32, flags: u32`, and uses `c.long` or `c.char` only where C's width varies. `long double` and `_Complex` have no Base type; `luce bind` refuses them and names the shim recipe. `c.long(x)` from `i64` is a checked conversion; `c.str` is `const c.char*`.
 
 **Why aliases.** A distinct `c.int` would make every binding say `c.` on every parameter for no information: `int` is 32 bits on every target Base supports. The distinct types are kept for the cases where the answer differs by target, because those are the cases where a program written against one target would be wrong on another.
 
@@ -356,13 +357,13 @@ let view = u8[](pointer, count)         # from a pointer and a length; `pointer`
 
 `str` is an immutable UTF-8 view: a `const u8*` and a `usize` byte count, with the invariant that the bytes are valid UTF-8. Equality and ordering compare bytes. `text.length` is the byte count, O(1), as `strlen` is; `text.bytes` is a `const u8[]`; `for character in text` iterates Unicode scalars as `char`. `str` does not support integer indexing, because byte and scalar boundaries differ; slice `text.bytes` and convert, or iterate. Nothing about `str` allocates, and `+` on two strings does not exist; write into a buffer with `format` or a `Writer`.
 
-`cstr` is `const c.char*` pointing at NUL-terminated text of unknown encoding. It exists for the C boundary.
+`c.str` is `const c.char*` pointing at NUL-terminated text of unknown encoding. It exists for the C boundary, and like every `c` type it is visible after `import c` (§5.2, §16.6): Base text is `str`, C text is `c.str`.
 
 Conversions between text and bytes use the two conversion spellings of §7.5:
 
 - `str(bytes)` from a `const u8[]` validates UTF-8 and yields `str!`; `(str)bytes` yields a `str` with no check, for bytes already known to be valid.
-- `str(value)` from a `cstr` scans to the NUL, validates, and yields `str!`.
-- `(cstr)text` yields a `cstr` with no check. It is correct when the byte after the text's last byte is a NUL: a literal, the result of `format`, or text that came from C. Otherwise it is undefined (§12.6), as `(char*)` is in C.
+- `str(value)` from a `c.str` scans to the NUL, validates, and yields `str!`.
+- `(c.str)text` yields a `c.str` with no check. It is correct when the byte after the text's last byte is a NUL: a literal, the result of `format`, or text that came from C. Otherwise it is undefined (§12.6), as `(char*)` is in C.
 
 A formatted string `f"..."` has no value of its own. It is consumed in one of four ways: `print(f"...")`; `writer.write(f"...")` on a `Writer` (§14.4); `format(buffer: u8[], f"...") -> str!`, which writes into the caller's buffer, appends a NUL when there is room, and returns a view of the text; or a parameter of type `fmt`, which a function declares to accept a formatted string or a `str` and may only pass on to one of these four (§9.1). Interpolation lowers to appends on the sink; no intermediate string exists. This is the `printf` replacement.
 
@@ -541,7 +542,7 @@ Base has two conversion spellings with two meanings.
 | integer to float, float to float | value conversion as in C |
 | `(u32)flag` | an integer-backed enum to its representation |
 | `(Kind)n` | an integer to an integer-backed enum with no check |
-| `(str)bytes`, `(cstr)text` | text reinterpretation with no check (§5.5) |
+| `(str)bytes`, `(c.str)text` | text reinterpretation with no check (§5.5) |
 | `(T*)p` from `U*`, `void*`, `const T*`, `const void*` | pointer conversion; removing `const` is permitted and explicit, and modifying an object that was declared `let` or `const` through the result is undefined as in C |
 | `(T*?)n` from `usize` | integer to pointer; nullable because zero is a valid integer |
 | `(usize)p` | pointer to integer |
@@ -550,7 +551,7 @@ Base has two conversion spellings with two meanings.
 
 There is no reinterpreting cast between scalars of different kinds. `f32.bits(u32)` and `f64.bits(u64)` build a float from its bits and `value.bits()` reads them; a union (§10.4) reinterprets anything else.
 
-The parser reads `(` *type* `)` as a cast when the parenthesised text is a type ending in `*`, `[]`, `[N]`, or `?`, or is a scalar, `str`, `cstr`, or `c.` type name, or a parenthesised function type. `(Name)(x)` with a bare struct name is a call, not a cast; struct-to-struct casts do not exist, so nothing is lost.
+The parser reads `(` *type* `)` as a cast when the parenthesised text is a type ending in `*`, `[]`, `[N]`, or `?`, or is a scalar, `str`, or a `c.` type name, or a parenthesised function type. `(Name)(x)` with a bare struct name is a call, not a cast; struct-to-struct casts do not exist, so nothing is lost.
 
 **Why implicit widening.** Full Luce requires every integer conversion to be written, and its arithmetic code is correspondingly full of `u64(index)`. A widening of the same signedness cannot change a value or lose one, so requiring it to be written costs the reader without protecting them. Zig admits exactly this conversion and nothing more, and the rule has held there.
 
@@ -870,7 +871,7 @@ pub func main(arguments: str[]) -> i32:
     return 0
 ```
 
-`main` takes `str[]` or `cstr[]` and returns `i32` or `i32!`. The startup shim builds `arguments` from `argc` and `argv`; with `str[]` it validates each argument as UTF-8 and traps `invalid_utf8` on failure, so a program that takes paths from the command line declares `cstr[]`, because a path on POSIX is bytes. A returned error is printed to standard error as its code and message and becomes exit status 1.
+`main` takes `str[]` or `c.str[]` and returns `i32` or `i32!`. The startup shim builds `arguments` from `argc` and `argv`; with `str[]` it validates each argument as UTF-8 and traps `invalid_utf8` on failure, so a program that takes paths from the command line declares `c.str[]`, because a path on POSIX is bytes. A returned error is printed to standard error as its code and message and becomes exit status 1.
 
 ### 9.8 Declaration attributes
 
@@ -996,7 +997,7 @@ let w = create_window() else error(no_window, "no window") # absence becomes fai
 ```luce
 import files
 
-func load(path: cstr) -> Config!:
+func load(path: c.str) -> Config!:
     let data = try files.read(path)
     return try config.parse(data)
 ```
@@ -1116,7 +1117,7 @@ These two lists are exhaustive for the language. A library may add checks; nothi
 
 **Defined and checked in every build:** integer overflow in `+`, `-`, `*`, `//`, `%` (trap); shift by the operand width or more (trap); division by zero and `minimum_signed // -1` (trap); indexing and slicing of arrays, spans, and `str` (trap); unwrapping every optional (trap through `else trap`, or a compile error without it); dereference of a bare pointer (cannot be null by type, with the one boundary check of §17.1); reading an uninitialised local (compile error, except after `---`); non-exhaustive `match` (compile error); converting an integer to an integer-backed enum with `T(n)` (trap); checked conversions `T(x)` (trap); float-to-integer casts (saturate); reads and writes through `volatile` (never elided or merged); every atomic operation; aliasing of compatible objects (no type-based aliasing rule, except where `noalias` is written); signed right shift (arithmetic); `<<` past the width (discards).
 
-**Undefined, exactly as in C, and the programmer's responsibility:** use after free and double free; freeing storage with an allocator other than the one that provided it; dereferencing a dangling pointer, including one the escape rule of §6.6 could not see; pointer arithmetic that leaves the object, including `p[i]` out of range; misaligned access after a `(T*)` cast; reading storage declared with `---`, or obtained from `alloc`, before writing it; reading a union member with an invariant after another member was written; modifying a `let` or `const` object through a cast; `(cstr)text` on text that is not NUL-terminated; `(str)bytes` on bytes that are not UTF-8; a `noalias` parameter that aliases; a data race on memory that is not `@T`; a `longjmp` through a Base frame; an `asm` block that violates its declared operands or options; a C callee that retains a lent pointer past the call; a C caller that violates a contract stated in an `extern` declaration.
+**Undefined, exactly as in C, and the programmer's responsibility:** use after free and double free; freeing storage with an allocator other than the one that provided it; dereferencing a dangling pointer, including one the escape rule of §6.6 could not see; pointer arithmetic that leaves the object, including `p[i]` out of range; misaligned access after a `(T*)` cast; reading storage declared with `---`, or obtained from `alloc`, before writing it; reading a union member with an invariant after another member was written; modifying a `let` or `const` object through a cast; `(c.str)text` on text that is not NUL-terminated; `(str)bytes` on bytes that are not UTF-8; a `noalias` parameter that aliases; a data race on memory that is not `@T`; a `longjmp` through a Base frame; an `asm` block that violates its declared operands or options; a C callee that retains a lent pointer past the call; a C caller that violates a contract stated in an `extern` declaration.
 
 **Why two lists.** Two exhaustive lists can be checked against the C standard's own catalogue of undefined behaviour, and every future rule has to add itself to one of them.
 
@@ -1309,7 +1310,7 @@ import data.serialisation as serial
 from image.geometry import Point
 ```
 
-`import` keeps a module qualified, with an optional alias. `from ... import` brings named declarations in and also makes the module visible by its last component, so `from io import Writer` alone lets a program write `io.stdout()`; an `import io` beside it is redundant and is pruned. There are no wildcards and no relative imports. An import nothing resolves through is pruned by the checker, so nothing after it sees the import; a duplicate import is an error with an automatic fix.
+`import` keeps a module qualified, with an optional alias. `from ... import` brings named declarations in and nothing else: `from io import Writer` brings `Writer`, `from io import Writer, stdout` brings both, and a program that also writes `io.something` needs `import io` as well. There are no wildcards and no relative imports. An import nothing resolves through is pruned by the checker, so nothing after it sees the import; a duplicate import is an error with an automatic fix.
 
 ### 16.4 Packages
 
@@ -1334,8 +1335,8 @@ The language depends on these modules by name. Their full surfaces are in the li
 | --- | --- |
 | `memory` | `allocator` (thread-local current allocator), `heap` (the initial allocator), `exhausted` and `unset` (error codes), `read`, `write`, `copy`, `move`, `set`, `grow` |
 | `io` | `stdout()` and `stderr()` as `Writer`s |
-| `files` | `read(path: cstr) -> u8[]!` allocating from the current allocator, `write`, `list(path: cstr) -> str[]!`, `missing` (error code) |
-| `process` | `run(program: cstr, arguments: cstr[]) -> i32!` |
+| `files` | `read(path: c.str) -> u8[]!` allocating from the current allocator, `write`, `list(path: c.str) -> str[]!`, `missing` (error code) |
+| `process` | `run(program: c.str, arguments: c.str[]) -> i32!` |
 | `math` | `floor`, `mod`, `sqrt`, the NaN and infinity constants |
 | `thread` | `spawn`, `Handle`, `current`, `pause`, `yield`, `sleep` |
 | `sync` | `Mutex`, `Condition`, `Once`, `Semaphore` |
@@ -1346,13 +1347,13 @@ The language depends on these modules by name. Their full surfaces are in the li
 
 ## 17. Calling C
 
-Base is the layer C bindings are written in. There is no marshalling: a Base pointer is a C pointer, a Base struct is a C struct, `cstr` is `char*`. What full Luce needs three layers for (a foreign declaration, an audited raw module, and a safe wrapper) is one layer in Base, and a safe wrapper for full Luce, when one is wanted, is ordinary Base code behind a `.lucn` module (§18.6).
+Base is the layer C bindings are written in. There is no marshalling: a Base pointer is a C pointer, a Base struct is a C struct, `c.str` is `char*`. What full Luce needs three layers for (a foreign declaration, an audited raw module, and a safe wrapper) is one layer in Base, and a safe wrapper for full Luce, when one is wanted, is ordinary Base code behind a `.lucn` module (§18.6).
 
 ### 17.1 Declarations
 
 ```luce
 extern type Window                          # opaque handle; pointer-shaped
-extern func SDL_CreateWindow(title: cstr, x: i32, y: i32, w: i32, h: i32, flags: u32) -> Window?
+extern func SDL_CreateWindow(title: c.str, x: i32, y: i32, w: i32, h: i32, flags: u32) -> Window?
 extern func SDL_GetWindowSize(window: Window, out w: i32, out h: i32) -> bool
 extern blocking func SDL_Delay(ms: u32)
 extern var SDL_version_number: i32
@@ -1374,7 +1375,7 @@ extern union Event:
 - `extern type` declares an opaque pointer-shaped handle; bare it is never null, `?` is the null niche. `extern type Handle = u32` declares an integer-shaped one.
 - `extern struct` and `extern union` declare C layout and may carry `packed` or `align(N)`. Fields may be any C-representable type (§17.6): `name: c.char[32]`, `next: Node*?`, `callback: func(void*) -> unit`. An `extern struct` may be passed and returned by value, because the backend performs the target's aggregate classification.
 - `extern var` binds a C global of scalar or pointer type; reads and writes are direct.
-- Pointers and function pointers in signatures are written as Base pointers and `func` types. `str` is not admitted in an `extern` signature; C text is `cstr`, and `str(value)` validates it.
+- Pointers and function pointers in signatures are written as Base pointers and `func` types. `str` is not admitted in an `extern` signature; C text is `c.str`, and `str(value)` validates it.
 
 **The one boundary check.** A bare pointer, function, or handle slot in an `extern` signature, or in an exported function's signature, is a contract the C side may violate. At every such crossing the compiler inserts one comparison: a zero arriving in a bare slot, in either direction, traps `null_foreign`. Declare the slot `?` when null is legitimate, and no check is emitted. This comparison is the whole of what Base does at the boundary.
 
@@ -1382,7 +1383,7 @@ extern union Event:
 
 ### 17.2 Variadic calls
 
-`extern func printf(format: cstr, ...) -> i32` declares a variadic function. The argument types in a variadic position:
+`extern func printf(format: c.str, ...) -> i32` declares a variadic function. The argument types in a variadic position:
 
 | Argument | Passed as |
 | --- | --- |
@@ -1391,7 +1392,7 @@ extern union Event:
 | `bool`, `char`, `i8`, `u8`, `i16`, `u16`, `c.char` | promoted to `i32` |
 | `f32` | promoted to `f64` |
 | an integer-backed enum | its representation, promoted as above |
-| a string literal | `cstr` |
+| a string literal | `c.str` |
 | any other integer, float, or pointer | as itself |
 | `str`, a span, a struct, a union, an optional | rejected |
 
@@ -1450,7 +1451,7 @@ struct Cursor:
 
 Export is opt-in. `export func name(...)` gives a function C linkage under `name`, or under the manifest's `symbol_prefix` followed by `name`. `export` on a method exports it as `Type_method` with `self` first. A `pub` function that is not exported has hidden visibility and a module-qualified symbol and cannot collide with C. An `export` is a compile error when the signature is not C-representable or when two exports share a symbol.
 
-C-representable means: scalars, `bool`, `usize`/`isize`, `c.*` types, pointers, `cstr`, spans in parameter position (a pointer and a `usize` length, in that order; the wrapper normalises `(NULL, 0)` to the empty span), structs and unions of C-representable fields, integer-backed enums, and function pointers with C-representable signatures. Not representable: `T[N]` in a signature (C has no by-value array parameters), spans in result, field, or function-pointer positions, `str`, tagged optionals, interface views, `fmt`, and every generic. A fallible function exports in a status form: the C function returns an `int` status and writes the value through a final out-pointer.
+C-representable means: scalars, `bool`, `usize`/`isize`, `c.*` types, pointers, `c.str`, spans in parameter position (a pointer and a `usize` length, in that order; the wrapper normalises `(NULL, 0)` to the empty span), structs and unions of C-representable fields, integer-backed enums, and function pointers with C-representable signatures. Not representable: `T[N]` in a signature (C has no by-value array parameters), spans in result, field, or function-pointer positions, `str`, tagged optionals, interface views, `fmt`, and every generic. A fallible function exports in a status form: the C function returns an `int` status and writes the value through a final out-pointer.
 
 The generated header spells:
 
@@ -1483,11 +1484,11 @@ A full Luce program that imports a Base package compiles both into one intermedi
 | `T[N]` | `array[T, N]` | fixed array | anywhere |
 | integer-backed `enum` | `export c enum` | enum with a fixed integer representation | anywhere |
 
-Types with two representations, crossed only through adapters: `str` (a view here, an owned reference-counted string there); `Error`; `T[]` against `slice[T]` (an owner-retaining view) and `list[T]` (a growable collection); interface views against interface values (boxed). `usize` and `isize` convert (§18.4). Types that never cross: `cstr`, `union`, `@T`, `volatile T*`, `fmt`, `thread_local` globals.
+Types with two representations, crossed only through adapters: `str` (a view here, an owned reference-counted string there); `Error`; `T[]` against `slice[T]` (an owner-retaining view) and `list[T]` (a growable collection); interface views against interface values (boxed). `usize` and `isize` convert (§18.4). Types that never cross: `c.str`, `union`, `@T`, `volatile T*`, `fmt`, `thread_local` globals.
 
 ### 18.3 Plain types
 
-A type is **plain** when its representation is copied data with no reference identity and no pointer: scalars, `bool`, `char`; enums, tuples, arrays, structs, and optionals of plain types; function pointers with plain signatures. `usize`, pointers, spans, `str`, `cstr`, unions, `@T`, interface views, and every runtime-dependent full Luce type are not plain. `Plain` is a compiler-derived marker constraint, derived structurally with the same machinery as full Luce's check that a value may be sent to a worker, and the compiler names the field that fails.
+A type is **plain** when its representation is copied data with no reference identity and no pointer: scalars, `bool`, `char`; enums, tuples, arrays, structs, and optionals of plain types; function pointers with plain signatures. `usize`, pointers, spans, `str`, `c.str`, unions, `@T`, interface views, and every runtime-dependent full Luce type are not plain. `Plain` is a compiler-derived marker constraint, derived structurally with the same machinery as full Luce's check that a value may be sent to a worker, and the compiler names the field that fails.
 
 ### 18.4 Full Luce calls Base: parameters
 
@@ -1498,7 +1499,7 @@ A type is **plain** when its representation is copied data with no reference ide
 | `const T[]`, `T` plain | `slice[T]`, `list[T]`, `array[T, N]`, `bytes` | **lent**: the existing dense storage is viewed, nothing is copied |
 | `T[]`, `T` plain | `list[T]` | lent under the list's mutation guard: structural change through any alias traps until the call returns, and element storage does not move |
 | `str` | `str` | lent: the owned string's bytes are viewed |
-| `cstr` | `str` | lent as a NUL-terminated temporary |
+| `c.str` | `str` | lent as a NUL-terminated temporary |
 | interface view | a conforming value, class instance, or interface value | lent: the payload's address and the same static witness table; for a `mutating` requirement the argument must be a `var` or a class instance |
 | `func(...) -> R`, plain signature | a capture-free function or lambda | by value |
 | `T*`, `const T*`, `void*`, `T*?` | the native pointer from a `.lucn` module | by value; a safe module cannot produce one |
@@ -1515,7 +1516,7 @@ A type is **plain** when its representation is copied data with no reference ide
 | `str` | owned `str` | **copied** into a fresh owned string by the adapter; the allocation is reported |
 | `T!` | `T!` | `T` by the rules above; on failure the adapter builds a full Luce `Error` with the same code and a copied message |
 | `T*`, `const T*`, `void*`, `T*?`, `func` | the native type | only into a `.lucn` module |
-| `T[]`, `cstr`, `union`, `@T`, interface view | nothing | rejected: no owner for a view |
+| `T[]`, `c.str`, `union`, `@T`, interface view | nothing | rejected: no owner for a view |
 
 **The rule in both tables is the same: owned values are lent into Base; views are copied out of Base.** Nothing crosses that could dangle in safe code.
 
@@ -1625,7 +1626,7 @@ Absent from Base, each with the reason it is not a loss:
 
 ## 21. Grammar
 
-Repetition is `{...}`, optional syntax is `[...]`, quoted text is a token. `NEWLINE`, `INDENT`, and `DEDENT` come from the layout lexer; `RAW_LINE` is a physical line captured without tokenisation after removal of the suite's indentation baseline. `IDENT` is an identifier that is not a reserved word; `TYPE_IDENT` is a `PascalCase` identifier; `TYPE_PATH` is a `TYPE_IDENT` optionally qualified by a module path; `CORE_TYPE` is one of the scalar type names, `str`, `cstr`, `fmt`, `unit`, `never`; `COMPARE_OP` is `==`, `!=`, `<`, `<=`, `>`, `>=`; `FORMAT_START`, `FORMAT_TEXT`, `FORMAT_END` are the lexer's pieces of one `f"..."` literal; `constant_expression` is an `expression` meeting §6.4. Semantic restrictions in the earlier chapters remain normative over this shape.
+Repetition is `{...}`, optional syntax is `[...]`, quoted text is a token. `NEWLINE`, `INDENT`, and `DEDENT` come from the layout lexer; `RAW_LINE` is a physical line captured without tokenisation after removal of the suite's indentation baseline. `IDENT` is an identifier that is not a reserved word; `TYPE_IDENT` is a `PascalCase` identifier; `TYPE_PATH` is a `TYPE_IDENT` optionally qualified by a module path; `CORE_TYPE` is one of the scalar type names, `str`, `fmt`, `unit`, `never`; `COMPARE_OP` is `==`, `!=`, `<`, `<=`, `>`, `>=`; `FORMAT_START`, `FORMAT_TEXT`, `FORMAT_END` are the lexer's pieces of one `f"..."` literal; `constant_expression` is an `expression` meeting §6.4. Semantic restrictions in the earlier chapters remain normative over this shape.
 
 ```ebnf
 module          = { import_decl }, { top_decl }, EOF ;
@@ -1826,7 +1827,7 @@ T a[N]                       var a: T[N]
 char buf[N] = {0};           var buf: u8[N]
 char buf[N];                 var buf: u8[N] = ---
 T *items, size_t count       items: T[]
-char *s                      s: cstr
+char *s                      s: c.str
 p = malloc(sizeof(T))        let p = try new T(...)
 p = calloc(n, sizeof(T))     let items = try new T[n]
 p = malloc(n * sizeof(T))    let items = try alloc T[n]
@@ -1996,6 +1997,7 @@ pub func main(arguments: str[]) -> i32!:
 A type that implements `Allocator`, remembers its parent, and is used through `with`.
 
 ```luce
+import c
 import files
 import memory
 from memory import Allocator
@@ -2037,7 +2039,7 @@ func words(text: const u8[]) -> usize:
         inside = not space
     return count
 
-pub func main(arguments: cstr[]) -> i32!:
+pub func main(arguments: c.str[]) -> i32!:
     var arena = try Arena.over(memory.allocator, 1 << 20)
     defer arena.destroy()
     with arena:
@@ -2157,10 +2159,12 @@ pub func main(arguments: str[]) -> i32:
 A binding written by hand: an opaque handle, a nullable result, C text, and cleanup with `defer`.
 
 ```luce
+import c
+
 extern type Window
 extern func SDL_Init(flags: u32) -> i32
-extern func SDL_GetError() -> cstr
-extern func SDL_CreateWindow(title: cstr, x: i32, y: i32, w: i32, h: i32, flags: u32) -> Window?
+extern func SDL_GetError() -> c.str
+extern func SDL_CreateWindow(title: c.str, x: i32, y: i32, w: i32, h: i32, flags: u32) -> Window?
 extern func SDL_DestroyWindow(window: Window)
 extern blocking func SDL_Delay(ms: u32)
 extern func SDL_Quit()
@@ -2387,6 +2391,7 @@ pub func main(arguments: str[]) -> i32!:
 A fallible function calling another, one `catch` that recovers, one that adds context through a caller's buffer, and `main` reporting.
 
 ```luce
+import c
 import files
 
 pub let missing_field: ErrorCode = ErrorCode.package(4)
@@ -2428,7 +2433,7 @@ func parse(text: str, scratch: u8[]) -> Config!:
         error(failure.code, try format(scratch, f"threads: {failure.message}"))
     return Config(name = name, threads = count)
 
-func load(path: cstr, scratch: u8[]) -> Config!:
+func load(path: c.str, scratch: u8[]) -> Config!:
     let bytes = files.read(path) catch failure:
         if failure.code == files.missing:
             return try parse("name = default\nthreads = 4", scratch)
@@ -2436,7 +2441,7 @@ func load(path: cstr, scratch: u8[]) -> Config!:
     defer free(bytes)
     return try parse(try str(bytes), scratch)
 
-pub func main(arguments: cstr[]) -> i32!:
+pub func main(arguments: c.str[]) -> i32!:
     var scratch: u8[256]
     let config = try load(arguments[1], scratch)
     print(f"{config.name} on {config.threads} threads")

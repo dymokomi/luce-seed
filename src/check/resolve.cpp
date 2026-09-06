@@ -70,9 +70,6 @@ auto Checker::named_scalar(string_view name) -> Type* {
     if (name == "str") {
         return ty_str;
     }
-    if (name == "cstr") {
-        return ty_cstr;
-    }
     if (name == "Allocator" || name == "CAllocator") {
         return ty_alloc;
     }
@@ -86,6 +83,16 @@ auto Checker::named_scalar(string_view name) -> Type* {
         return ty_errcode;
     }
     return nullptr;
+}
+
+// A `c.` type at `at`: the `c` module is a standard module, visible only after `import c`
+// (§16.6).
+auto Checker::imported_c_type(Node* at, string_view name) -> Type* {
+    Type* t = c_alias(name);
+    if (t != nullptr && !c_imported) {
+        fail_n(at, "lucb.check.import", "`" + string(name) + "` needs `import c`");
+    }
+    return t;
 }
 
 auto Checker::c_alias(string_view name) -> Type* {
@@ -129,16 +136,22 @@ auto Checker::c_alias(string_view name) -> Type* {
         return ty_isize;
     }
     if (name == "c.long") {
-        return ty_i64;
+        return ty_c_long;
     }
     if (name == "c.ulong") {
-        return ty_u64;
+        return ty_c_ulong;
     }
     if (name == "c.char") {
-        return ty_i8;
+        return ty_c_char;
     }
     if (name == "c.wchar") {
-        return ty_u32;
+        return ty_c_wchar;
+    }
+    if (name == "c.va_list") {
+        return ty_c_va_list;
+    }
+    if (name == "c.str") {
+        return ty_cstr;
     }
     return nullptr;
 }
@@ -563,7 +576,7 @@ auto Checker::resolve_type(Node* n) -> Type* {
         n->ty = named;
         return n->ty;
     }
-    Type* calias = c_alias(n->text);
+    Type* calias = imported_c_type(n, n->text);
     if (calias != nullptr) {
         n->ty = calias;
         return n->ty;

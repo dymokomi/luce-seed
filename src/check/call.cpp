@@ -84,6 +84,15 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
         callee->text == "package") {
         return check_error_code_package(n);
     }
+    if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
+        callee->left->kind == NodeKind::Name && callee->left->text == "c") {
+        Type* ct = imported_c_type(callee, keep("c." + string(callee->text)));
+        if (ct != nullptr) { // `c.long(x)`: the checked conversion (§5.2, §7.5)
+            callee->ty = ct;
+            callee->left->ty = ct;
+            return check_checked_conv(n, ct);
+        }
+    }
     if (callee != nullptr && callee->kind == NodeKind::Member) {
         return check_method_call(n);
     }
@@ -489,7 +498,7 @@ auto Checker::check_variadic_arg(Node* a) -> Type* {
             a->left->ty = ty_cstr;
             return ty_cstr;
         }
-        fail_n(a, "lucb.check.type", "a variadic argument cannot be `str`; use `cstr`");
+        fail_n(a, "lucb.check.type", "a variadic argument cannot be `str`; use `c.str`");
         return t_error();
     }
     if (is_span(t) || (t != nullptr && (t->kind == TypeKind::Struct || is_opt(t) ||
@@ -1052,7 +1061,7 @@ auto Checker::check_method_call(Node* n) -> Type* {
 auto Checker::check_member(Node* n, bool as_call) -> Type* {
     (void)as_call;
     if (n->left != nullptr && n->left->kind == NodeKind::Name && n->left->text == "c") {
-        Type* t = c_alias(keep("c." + string(n->text)));
+        Type* t = imported_c_type(n, keep("c." + string(n->text)));
         if (t != nullptr) {
             n->left->ty = t;
             return t;

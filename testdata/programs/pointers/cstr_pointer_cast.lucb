@@ -1,11 +1,13 @@
-# `cstr` is a pointer to C text; the C cast moves it to and from object pointers,
+# `c.str` is a pointer to C text; the C cast moves it to and from object pointers,
 # which is how an argument vector for `execvp` is built.
-extern func strlen(text: cstr) -> usize
+import c
+
+extern func strlen(text: c.str) -> usize
 
 pub func answer() -> i64:
-    let text: cstr = "hello"
+    let text: c.str = "hello"
     let raw = (void*)text
-    let back = (cstr)raw
+    let back = (c.str)raw
     var slots: void*?[2]
     slots[0] = (void*)text
     slots[1] = none
@@ -13,6 +15,6 @@ pub func answer() -> i64:
     if slots[1] == none:
         total += 10
     if let first = slots[0]:
-        total += (i64)strlen((cstr)first)
+        total += (i64)strlen((c.str)first)
     return total
 # answer: 20

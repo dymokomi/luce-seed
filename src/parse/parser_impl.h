@@ -107,7 +107,7 @@ inline bool is_core_type(string_view name) {
     return name == "bool" || name == "u8" || name == "u16" || name == "u32" || name == "u64" ||
            name == "i8" || name == "i16" || name == "i32" || name == "i64" || name == "usize" ||
            name == "isize" || name == "f16" || name == "f32" || name == "f64" || name == "char" ||
-           name == "str" || name == "cstr" || name == "fmt" || name == "unit" || name == "never";
+           name == "str" || name == "fmt" || name == "unit" || name == "never";
 }
 
 inline bool is_type_path_ident(string_view name) {
@@ -124,7 +124,7 @@ inline bool is_scalar_type(string_view name) {
     return name == "bool" || name == "u8" || name == "u16" || name == "u32" || name == "u64" ||
            name == "i8" || name == "i16" || name == "i32" || name == "i64" || name == "usize" ||
            name == "isize" || name == "f16" || name == "f32" || name == "f64" || name == "char" ||
-           name == "str" || name == "cstr";
+           name == "str";
 }
 
 inline bool is_literal_kind(TokenKind k) {

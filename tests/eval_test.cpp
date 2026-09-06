@@ -812,8 +812,8 @@ TEST(eval_files_list) {
 }
 
 TEST(eval_process_run) {
-    EvalResult r = run("pub func answer() -> i64!:\n"
-                       "    var args: cstr[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
+    EvalResult r = run("import c\npub func answer() -> i64!:\n"
+                       "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                        "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
                        "    if out == \"out\" and err == \"err\":\n"
                        "        return i64(code)\n"

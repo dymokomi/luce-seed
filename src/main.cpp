@@ -32,7 +32,7 @@ using namespace std;
 
 namespace {
 
-const char* k_version = "0.9";
+const char* k_version = "0.10";
 
 void print_help(ostream& out) {
     out << "lucb " << k_version << " — luce-seed, the Luce Base bootstrap compiler\n"

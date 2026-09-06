@@ -66,6 +66,12 @@ struct Checker {
     Type* ty_fixed = nullptr;
     Type* ty_calloc = nullptr;
     Type* ty_fmt = nullptr;
+    Type* ty_c_char = nullptr;
+    Type* ty_c_long = nullptr;
+    Type* ty_c_ulong = nullptr;
+    Type* ty_c_wchar = nullptr;
+    Type* ty_c_va_list = nullptr;
+    void install_core_types();
     Type* ty_writer = nullptr;
     Type* ty_location = nullptr;
     Type* ty_c_mod = nullptr;
@@ -79,6 +85,7 @@ struct Checker {
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
+    bool c_imported = false; // the module being checked has `import c` (§5.2, §16.6)
     vector<Node*> program_modules; // every module of the program, for module_of
     Node* module_of(Node* decl);
     void bind_module_names(Node* mod);
@@ -145,6 +152,7 @@ struct Checker {
 
     Type* named_scalar(string_view name);
     Type* c_alias(string_view name);
+    Type* imported_c_type(Node* at, string_view name);
     Type* make_type(TypeKind kind, string_view name);
     string_view keep(const string& s);
     Type* intern_ptr(Type* elem, bool is_const, bool is_vol, bool nullable);
@@ -303,7 +311,6 @@ struct Checker {
     void check_union(Node* un);
     void resolve_sig(Node* fn);
     void bind_imports(Node* mod);
-    void bind_module_alias(Node* d, Node* other, const string& alias);
     void prune_unused_imports(Node* mod);
     // Warnings and the pruning that follows them (base.md §19.6).
     void warn_n(Node* n, const char* code, const string& message);

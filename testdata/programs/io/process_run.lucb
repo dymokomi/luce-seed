@@ -1,9 +1,10 @@
 # answer: 7
 
+import c
 import process
 
 pub func answer() -> i64!:
-    var args: cstr[2] = ["-c", "printf out; printf err >&2; exit 7"]
+    var args: c.str[2] = ["-c", "printf out; printf err >&2; exit 7"]
     let (code, out, err) = try process.run("/bin/sh", args)
     if out == "out" and err == "err":
         return i64(code)

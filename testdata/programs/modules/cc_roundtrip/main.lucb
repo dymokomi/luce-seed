@@ -1,3 +1,4 @@
+import c
 import emit
 import files
 import process
@@ -7,16 +8,16 @@ pub func answer() -> i64!:
     defer builder.destroy()
     try builder.write(f"int main(void) {{ return 40; }}\n")
     try files.write("/tmp/lucb_seed_toy.c", builder.text())
-    var args: cstr[3] = ["-o", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
+    var args: c.str[3] = ["-o", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
     let (code, out, err) = try process.run("cc", args)
     discard(out)
     if code != 0:
         return i64(err.length) + 1
     discard(err)
-    var empty: cstr[1] = [""]
+    var empty: c.str[1] = [""]
     let (run_code, run_out, run_err) = try process.run("/tmp/lucb_seed_toy", empty[0..<0])
     discard(run_out)
     discard(run_err)
-    var cleanup: cstr[3] = ["-f", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
+    var cleanup: c.str[3] = ["-f", "/tmp/lucb_seed_toy", "/tmp/lucb_seed_toy.c"]
     discard(try process.run("rm", cleanup))
     return i64(run_code)

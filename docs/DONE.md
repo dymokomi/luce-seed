@@ -1,7 +1,23 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.9**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.10**, the seed `luce-base` is written against.
+
+## 0.10: the `c` module as the specification has it
+
+- C's types live in the `c` module (§5.2) and need `import c`. `c.int`,
+  `c.size`, and the other fixed-width ones are the Base types by another
+  name; `c.char`, `c.long`, `c.ulong`, and `c.wchar` are distinct types of
+  their target width (`Type::c_name` carries the C spelling, and `c.char`
+  follows the host's signedness), so `let m: i64 = n` from a `c.long` is an
+  error and `i64(n)`, `c.long(m)`, `(c.long)m` are the conversions;
+  `c.va_list` is opaque and only passed through to C. The C text type is
+  `c.str`; `c.str` is not a name. `testdata/programs/values/c_module_types.lucb`,
+  `tests/check_test.cpp`, and `tests/agree_test.cpp` pin it.
+- The 0.9 rule that `from io import Writer` also made `io` visible is
+  withdrawn: a `from` import brings the named declarations and nothing else
+  (§16.3), and a program that also writes `io.stdout()` writes `import io`;
+  `testdata/programs/modules/imports/fromonly.lucb` pins the rejection.
 
 ## 0.9: names the language keeps, names modules keep apart
 
@@ -18,11 +34,6 @@ This tree is **luce-seed-0.9**, the seed `luce-base` is written against.
   qualified by it: `lb_a_helper`, `lb_b_Box`, `lb_o_a_Box`. The entry
   module's names stay bare. `testdata/programs/modules/private_names/`
   pins it.
-- `from io import Writer` also makes `io` visible by its last component
-  (§16.3), so a program that writes `io.stdout()` needs no second import;
-  an `import io` beside it is the unused one, whichever comes first, and
-  is reported and pruned. `testdata/programs/modules/from_import_qualifies/`
-  and `tests/check_test.cpp` pin it.
 
 ## 0.8: the seed builds luce-base again
 
@@ -236,7 +247,7 @@ made current. Evidence: `agree_user_arena`, `testdata/programs/arena.lucb`.
 
 `memory.copy` / `move` / `set`, `memory.read[T]` / `write[T]`, and
 `memory.grow` (heap realloc; FixedBuffer in-place at the bump tail).
-`str(bytes)` and `str(cstr)` validate UTF-8 and yield `str!`; `(str)bytes`
+`str(bytes)` and `str(c.str)` validate UTF-8 and yield `str!`; `(str)bytes`
 stays unchecked. `files.list` names a directory. `process.run` forks,
 execs, and waits. `hash` is process-seeded; `hex` / `bin` / `pad` are
 Display forms. Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`,
@@ -287,7 +298,7 @@ module's `Mutex`, `Condition`, `Once`, and `Semaphore`, all zeroable, over
 
 `extern func` / `type` / `var` / `struct` / `union`, `as "name"`, `export`
 with unprefixed C symbols, the `c` module aliases, variadic C calls, the
-one `null_foreign` boundary check, `lucb header`, and `cstr` in foreign
+one `null_foreign` boundary check, `lucb header`, and `c.str` in foreign
 signatures. Interpreter covers a libc subset (`abs`, `strlen`, `printf`)
 so it can agree with the C backend. `out` parameters, `luce bind`, and
 `[native]` sources wait. Evidence: `tests/agree_test.cpp`,
@@ -320,7 +331,7 @@ Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 
 `import path` and `from path import Name` resolve `.lucb` files from a
 `luce.toml` package root. Unused and duplicate imports are errors; only
-`pub` names cross modules. `pub func main(arguments: str[]|cstr[]) -> i32|i32!`
+`pub` names cross modules. `pub func main(arguments: str[]|c.str[]) -> i32|i32!`
 is the process entry. `test "name":` runs under `lucb test` with `assert`.
 Evidence: `tests/pkg_test.cpp`, `testdata/m9/`.
 

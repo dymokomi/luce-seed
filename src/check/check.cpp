@@ -176,7 +176,7 @@ static const char* const k_core_names[] = {
     "assert", "discard", "error", "trap", "hash", "print", "format", "sizeof", "alignof",
     "offsetof", "hex", "bin", "pad",
     "bool", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize",
-    "f16", "f32", "f64", "char", "str", "cstr", "unit", "never", "void", "fmt",
+    "f16", "f32", "f64", "char", "str", "unit", "never", "void", "fmt",
     "Error", "ErrorCode",
 };
 
@@ -231,8 +231,8 @@ auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
     if (exported && (fn->flags & FlagFallible) != 0) {
         fail_n(fn, "lucb.check.unsupported", "a fallible `export` is not in this slice");
     }
-    const char* where = exported ? "an `export` signature cannot use `str`; write `cstr`"
-                                 : "an `extern` signature cannot use `str`; write `cstr`";
+    const char* where = exported ? "an `export` signature cannot use `str`; write `c.str`"
+                                 : "an `extern` signature cannot use `str`; write `c.str`";
     for (Node* p = fn->right; p != nullptr; p = p->next) {
         if (p->flags & FlagVariadic) {
             continue;
@@ -776,22 +776,6 @@ auto Checker::bind_module_names(Node* mod) -> void {
     }
 }
 
-// Import `d` makes module `other` visible as `alias`. When the name is already bound to
-// that module, a `from` import takes the binding over: `import io` beside
-// `from io import Writer` is the redundant one, and gets reported as unused.
-auto Checker::bind_module_alias(Node* d, Node* other, const string& alias) -> void {
-    Binding* existing = lookup(keep(alias));
-    if (existing != nullptr && existing->decl == other) {
-        if (d->kind == NodeKind::FromImport) {
-            existing->import_src = d;
-        }
-        return;
-    }
-    Type* mt = make_type(TypeKind::Module, d->text);
-    mt->decl = other;
-    bind(keep(alias), mt, false, other, d);
-}
-
 auto Checker::bind_imports(Node* mod) -> void {
     vector<string_view> seen;
     for (Node* d = mod->body; d != nullptr; d = d->next) {
@@ -819,6 +803,9 @@ auto Checker::bind_imports(Node* mod) -> void {
             // a standard module this seed keeps as builtins (`c`, `luce`): the import is what
             // luce-base requires; every name it could bring in is in scope already
             d->flags |= FlagImportUsed;
+            if (d->text == "c") {
+                c_imported = true;
+            }
             for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
                 nm->flags |= FlagImportUsed;
             }
@@ -831,10 +818,16 @@ auto Checker::bind_imports(Node* mod) -> void {
         if (d->kind == NodeKind::Import) {
             string alias = d->left != nullptr && !d->left->text.empty() ? string(d->left->text)
                                                                         : last_component(d->text);
-            bind_module_alias(d, other, alias);
+            Binding* existing = lookup(keep(alias));
+            if (existing != nullptr && existing->decl == other) {
+                existing->import_src = d;
+                continue;
+            }
+            Type* mt = make_type(TypeKind::Module, d->text);
+            mt->decl = other;
+            bind(keep(alias), mt, false, other, d);
         } else {
-            // `from io import Writer` also makes `io` visible (§16.3)
-            bind_module_alias(d, other, last_component(d->text));
+            // `from io import Writer` brings `Writer` alone; `io` itself needs `import io`
             for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
                 Node* p = pub_member(other, nm->text);
                 if (p == nullptr && is_std_module(d->text)) {
@@ -881,7 +874,7 @@ auto Checker::prune_unused_imports(Node* mod) -> void {
                     name_link = &(*name_link)->next;
                 }
             }
-            drop = d->body == nullptr && (d->flags & FlagImportUsed) == 0;
+            drop = d->body == nullptr;
         }
         if (drop) {
             *link = d->next;
@@ -915,13 +908,13 @@ auto Checker::check_main(Node* fn) -> void {
         nparams++;
     }
     if (nparams != 1) {
-        fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `cstr[]`");
+        fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `c.str[]`");
     } else {
         Type* a = fn->right->ty;
         bool ok = is_span(a) && a->elem != nullptr &&
                   (a->elem->kind == TypeKind::Str || a->elem->kind == TypeKind::CStr);
         if (!ok) {
-            fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `cstr[]`");
+            fail_n(fn, "lucb.check.type", "`main` takes `arguments: str[]` or `c.str[]`");
         }
     }
     if (fn->ty == nullptr || fn->ty->kind != TypeKind::I32) {
@@ -931,6 +924,7 @@ auto Checker::check_main(Node* fn) -> void {
 
 auto Checker::check_module(Node* mod) -> void {
     current_module = mod;
+    c_imported = false;
     if (mod != nullptr && mod->text.empty() && !path.empty()) {
         mod->text = keep(path);
     }
@@ -1013,6 +1007,53 @@ auto Checker::check_module(Node* mod) -> void {
     pop_scope();
 }
 
+// The types the language knows without a declaration (§3.5), and the `c` module's distinct
+// types (§5.2): each is one interned object, so `c.long` and `i64` are different types of
+// the same width, and `c.char` follows the target's signedness.
+auto Checker::install_core_types() -> void {
+    ty_error = make_type(TypeKind::Error, "");
+    ty_never = make_type(TypeKind::Never, "never");
+    ty_unit = make_type(TypeKind::Unit, "unit");
+    ty_bool = make_type(TypeKind::Bool, "bool");
+    ty_i8 = make_type(TypeKind::I8, "i8");
+    ty_i16 = make_type(TypeKind::I16, "i16");
+    ty_i32 = make_type(TypeKind::I32, "i32");
+    ty_i64 = make_type(TypeKind::I64, "i64");
+    ty_isize = make_type(TypeKind::Isize, "isize");
+    ty_u8 = make_type(TypeKind::U8, "u8");
+    ty_u16 = make_type(TypeKind::U16, "u16");
+    ty_u32 = make_type(TypeKind::U32, "u32");
+    ty_u64 = make_type(TypeKind::U64, "u64");
+    ty_usize = make_type(TypeKind::Usize, "usize");
+    ty_f32 = make_type(TypeKind::F32, "f32");
+    ty_f64 = make_type(TypeKind::F64, "f64");
+    ty_char = make_type(TypeKind::Char, "char");
+    ty_str = make_type(TypeKind::Str, "str");
+    ty_cstr = make_type(TypeKind::CStr, "c.str");
+    ty_untyped = make_type(TypeKind::UntypedInt, "<integer>");
+    ty_void = make_type(TypeKind::Void, "void");
+    ty_err = make_type(TypeKind::ErrorVal, "Error");
+    ty_errcode = make_type(TypeKind::ErrorCode, "ErrorCode");
+    ty_alloc = make_type(TypeKind::Allocator, "Allocator");
+    ty_fmt = make_type(TypeKind::Fmt, "fmt");
+#if defined(__aarch64__) && defined(__linux__)
+    ty_c_char = make_type(TypeKind::U8, "c.char"); // `char` is unsigned on AArch64 Linux
+#else
+    ty_c_char = make_type(TypeKind::I8, "c.char");
+#endif
+    ty_c_char->c_name = "char";
+    ty_c_long = make_type(TypeKind::I64, "c.long");
+    ty_c_long->c_name = "long";
+    ty_c_ulong = make_type(TypeKind::U64, "c.ulong");
+    ty_c_ulong->c_name = "unsigned long";
+    ty_c_wchar = make_type(TypeKind::I32, "c.wchar");
+    ty_c_wchar->c_name = "wchar_t";
+    Node* va = syn_node(NodeKind::ExternStruct, "va_list"); // opaque: only passed through to C
+    ty_c_va_list = make_type(TypeKind::Struct, "c.va_list");
+    ty_c_va_list->decl = va;
+    va->ty = ty_c_va_list;
+}
+
 bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string_view path) {
     if (module == nullptr) {
         return false;
@@ -1021,31 +1062,7 @@ bool check_module(Node* module, Arena& arena, DiagnosticBag& diagnostics, string
     c.arena = &arena;
     c.diag = &diagnostics;
     c.path = string(path);
-    c.ty_error = c.make_type(TypeKind::Error, "");
-    c.ty_never = c.make_type(TypeKind::Never, "never");
-    c.ty_unit = c.make_type(TypeKind::Unit, "unit");
-    c.ty_bool = c.make_type(TypeKind::Bool, "bool");
-    c.ty_i8 = c.make_type(TypeKind::I8, "i8");
-    c.ty_i16 = c.make_type(TypeKind::I16, "i16");
-    c.ty_i32 = c.make_type(TypeKind::I32, "i32");
-    c.ty_i64 = c.make_type(TypeKind::I64, "i64");
-    c.ty_isize = c.make_type(TypeKind::Isize, "isize");
-    c.ty_u8 = c.make_type(TypeKind::U8, "u8");
-    c.ty_u16 = c.make_type(TypeKind::U16, "u16");
-    c.ty_u32 = c.make_type(TypeKind::U32, "u32");
-    c.ty_u64 = c.make_type(TypeKind::U64, "u64");
-    c.ty_usize = c.make_type(TypeKind::Usize, "usize");
-    c.ty_f32 = c.make_type(TypeKind::F32, "f32");
-    c.ty_f64 = c.make_type(TypeKind::F64, "f64");
-    c.ty_char = c.make_type(TypeKind::Char, "char");
-    c.ty_str = c.make_type(TypeKind::Str, "str");
-    c.ty_cstr = c.make_type(TypeKind::CStr, "cstr");
-    c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
-    c.ty_void = c.make_type(TypeKind::Void, "void");
-    c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
-    c.ty_errcode = c.make_type(TypeKind::ErrorCode, "ErrorCode");
-    c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
-    c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
+    c.install_core_types();
     c.check_module(module);
     return diagnostics.empty();
 }
@@ -1067,31 +1084,7 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
     c.arena = &arena;
     c.diag = &diagnostics;
     c.path = string(path);
-    c.ty_error = c.make_type(TypeKind::Error, "");
-    c.ty_never = c.make_type(TypeKind::Never, "never");
-    c.ty_unit = c.make_type(TypeKind::Unit, "unit");
-    c.ty_bool = c.make_type(TypeKind::Bool, "bool");
-    c.ty_i8 = c.make_type(TypeKind::I8, "i8");
-    c.ty_i16 = c.make_type(TypeKind::I16, "i16");
-    c.ty_i32 = c.make_type(TypeKind::I32, "i32");
-    c.ty_i64 = c.make_type(TypeKind::I64, "i64");
-    c.ty_isize = c.make_type(TypeKind::Isize, "isize");
-    c.ty_u8 = c.make_type(TypeKind::U8, "u8");
-    c.ty_u16 = c.make_type(TypeKind::U16, "u16");
-    c.ty_u32 = c.make_type(TypeKind::U32, "u32");
-    c.ty_u64 = c.make_type(TypeKind::U64, "u64");
-    c.ty_usize = c.make_type(TypeKind::Usize, "usize");
-    c.ty_f32 = c.make_type(TypeKind::F32, "f32");
-    c.ty_f64 = c.make_type(TypeKind::F64, "f64");
-    c.ty_char = c.make_type(TypeKind::Char, "char");
-    c.ty_str = c.make_type(TypeKind::Str, "str");
-    c.ty_cstr = c.make_type(TypeKind::CStr, "cstr");
-    c.ty_untyped = c.make_type(TypeKind::UntypedInt, "<integer>");
-    c.ty_void = c.make_type(TypeKind::Void, "void");
-    c.ty_err = c.make_type(TypeKind::ErrorVal, "Error");
-    c.ty_errcode = c.make_type(TypeKind::ErrorCode, "ErrorCode");
-    c.ty_alloc = c.make_type(TypeKind::Allocator, "Allocator");
-    c.ty_fmt = c.make_type(TypeKind::Fmt, "fmt");
+    c.install_core_types();
     c.program_modules = modules;
     for (int i = static_cast<int>(modules.size()) - 1; i >= 0; i--) {
         Node* mod = modules[static_cast<size_t>(i)];

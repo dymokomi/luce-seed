@@ -62,6 +62,7 @@ struct Type {
     TypeKind kind = TypeKind::Error;
     string_view name;
     Node* decl = nullptr; // struct declaration
+    string_view c_name;   // a distinct `c` type's C spelling, `long` (§5.2); empty otherwise
     Type* elem = nullptr; // pointee / element
     uint64_t length = 0;  // array N
     bool is_const = false;
@@ -124,6 +125,9 @@ bool is_opt(const Type* t);
 bool is_fail(const Type* t);
 bool is_enum(const Type* t);
 bool is_int_enum(const Type* t);
+// `T(x)` with no function behind it (§7.5): the callee names a scalar, an integer-backed
+// enum, or a `c` type, `i64(x)`, `Kind(x)`, `c.long(x)`, and the result is that type.
+bool is_checked_conversion(const Node* n);
 bool is_union(const Type* t);
 inline bool is_atomic(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Atomic;

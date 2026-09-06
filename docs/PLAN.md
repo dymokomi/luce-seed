@@ -70,7 +70,7 @@ module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
 
 ## M9 — Modules, packages, `main`, `test`
 
-`import`, `luce.toml`, `pub func main(arguments: str[]|cstr[]) -> i32|i32!`,
+`import`, `luce.toml`, `pub func main(arguments: str[]|c.str[]) -> i32|i32!`,
 `test "...":`, `lucb test`.
 **Landed.**
 
@@ -94,7 +94,7 @@ Nominal conformance (`struct Name: Interface:`). Two-word views. `print` / `form
 ## M13 — Calling C
 
 `extern` / `export`, `c` module, variadic calls, the one null-boundary check,
-generated header. `cstr`.
+generated header. `c.str`.
 **Landed.**
 
 ## M14 — Atomics, volatile, threads, `asm`

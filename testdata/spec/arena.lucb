@@ -1,3 +1,4 @@
+import c
 import files
 import memory
 from memory import Allocator
@@ -39,7 +40,7 @@ func words(text: const u8[]) -> usize:
         inside = not space
     return count
 
-pub func main(arguments: cstr[]) -> i32!:
+pub func main(arguments: c.str[]) -> i32!:
     var arena = try Arena.over(memory.allocator, 1 << 20)
     defer arena.destroy()
     with arena:

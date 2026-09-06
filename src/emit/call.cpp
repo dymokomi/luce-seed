@@ -434,10 +434,7 @@ auto Emitter::emit_call(Node* n) -> string {
         bool checked = n->ty != nullptr && is_fail(n->ty);
         return emit_str_conv(n->body->left, checked);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && n->body != nullptr &&
-        n->ty != nullptr &&
-        (n->resolved == nullptr || (n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty))) &&
-        (is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char || is_int_enum(n->ty))) {
+    if (is_checked_conversion(n)) {
         return emit_conv(n->body->left, n->ty, true);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {

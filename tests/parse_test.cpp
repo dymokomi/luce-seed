@@ -201,7 +201,7 @@ TEST(parse_union) {
 }
 
 TEST(parse_extern_func) {
-    Parsed p("extern func printf(format: cstr, ...) -> i32\n"
+    Parsed p("extern func printf(format: c.str, ...) -> i32\n"
              "func f() -> i32:\n"
              "    return printf(\"hi\")\n");
     CHECK(p.diagnostics.empty());
@@ -430,7 +430,7 @@ TEST(parse_interface_junk_recovers) {
 }
 
 TEST(parse_variadic_base_rejected) {
-    Parsed p("func log(fmt: cstr, ...) -> i32:\n    return 0\n");
+    Parsed p("func log(fmt: c.str, ...) -> i32:\n    return 0\n");
     CHECK(p.has("lucb.parse.expect"));
 }
 

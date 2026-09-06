@@ -140,7 +140,7 @@ string type_name(const Type* t) {
     case TypeKind::Module:
         return t->name.empty() ? "<module>" : string(t->name);
     case TypeKind::CStr:
-        return "cstr";
+        return "c.str";
     case TypeKind::Allocator:
         return "Allocator";
     case TypeKind::Param:
@@ -283,6 +283,23 @@ bool is_enum(const Type* t) {
 
 bool is_int_enum(const Type* t) {
     return is_enum(t) && t->elem != nullptr && is_int(t->elem);
+}
+
+bool is_checked_conversion(const Node* n) {
+    const Node* callee = n != nullptr ? n->left : nullptr;
+    if (callee == nullptr || n->body == nullptr || n->ty == nullptr) {
+        return false;
+    }
+    bool c_type = callee->kind == NodeKind::Member && callee->left != nullptr &&
+                  callee->left->kind == NodeKind::Name && callee->left->text == "c";
+    if (callee->kind != NodeKind::Name && !c_type) {
+        return false;
+    }
+    if (n->resolved != nullptr &&
+        !(n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty))) {
+        return false;
+    }
+    return is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char || is_int_enum(n->ty);
 }
 
 bool is_union(const Type* t) {
@@ -651,6 +668,9 @@ int type_offset(const Type* t, string_view field) {
 const char* c_type_name(const Type* t) {
     if (t == nullptr) {
         return "void";
+    }
+    if (!t->c_name.empty()) {
+        return t->c_name.data();
     }
     switch (t->kind) {
     case TypeKind::Bool:

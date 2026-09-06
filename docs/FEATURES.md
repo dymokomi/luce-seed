@@ -74,11 +74,11 @@ not land in this tree).
 | 8.8 | `errdefer` | done | `eval_errdefer`, `agree_errdefer` |
 | 11.1 | Optionals as absence | done | `agree_optional_else`, `agree_if_let`, `agree_program_checked_else`; `else return none` |
 | 11.2–11.4 | `T!`, `try`, `error`, `catch`, `recover` | done | `agree_try_catch`, `agree_try_ok`, `agree_program_inline_catch`, `check_try_needs_fallible` |
-| 9.7 | `pub func main(arguments: str[]\|cstr[]) -> i32\|i32!` | done | `agree_main_hello` |
+| 9.7 | `pub func main(arguments: str[]\|c.str[]) -> i32\|i32!` | done | `agree_main_hello` |
 | 16.3 | `import` / `from … import` | done | `load_and_check_import`, `load_from_import`, `check_unused_import`, `hidden_import_rejected` |
 | 16.4 | `luce.toml` | partial | `[package] name`; extra source roots out of seed |
 | 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
-| 5.2 | `cstr` | done | type, `main(arguments: cstr[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
+| 5.2 | `c.str` | done | type, `main(arguments: c.str[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
 | 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user conformance works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |

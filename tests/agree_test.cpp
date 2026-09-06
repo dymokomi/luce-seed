@@ -153,7 +153,7 @@ TEST(agree_enum_method_on_value_and_case) {
 }
 
 TEST(agree_array_of_optionals) {
-    CHECK(agrees("var xs: (i64?)[4]\nvar names: (cstr?)[2]\nfunc at(list: (cstr?)[], k: usize) -> cstr:\n    return list[k] else (cstr)\"\"\npub func answer() -> i64:\n    xs[1] = 40\n    names[0] = (cstr)\"xy\"\n    let v = xs[1] else return 0\n    let w = xs[2] else return v + (i64)((str)at(names, 0)).length\n    return w\n"));
+    CHECK(agrees("import c\nvar xs: (i64?)[4]\nvar names: (c.str?)[2]\nfunc at(list: (c.str?)[], k: usize) -> c.str:\n    return list[k] else (c.str)\"\"\npub func answer() -> i64:\n    xs[1] = 40\n    names[0] = (c.str)\"xy\"\n    let v = xs[1] else return 0\n    let w = xs[2] else return v + (i64)((str)at(names, 0)).length\n    return w\n"));
 }
 
 TEST(agree_hello) {
@@ -750,21 +750,52 @@ TEST(agree_extern_abs) {
 }
 
 TEST(agree_extern_strlen) {
-    CHECK(agrees("extern func strlen(s: cstr) -> usize\n"
+    CHECK(agrees("import c\nextern func strlen(s: c.str) -> usize\n"
                  "pub func answer() -> i64:\n"
                  "    return i64(strlen(\"hello\"))\n"));
 }
 
 TEST(agree_variadic_printf) {
-    CHECK(agrees("extern func printf(format: cstr, ...) -> i32\n"
+    CHECK(agrees("import c\nextern func printf(format: c.str, ...) -> i32\n"
                  "pub func answer() -> i64:\n"
                  "    return i64(printf(\"%d\", (c.int)40))\n"));
 }
 
 TEST(agree_c_int) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import c\npub func answer() -> i64:\n"
                  "    var n: c.int = 40\n"
                  "    return i64(n)\n"));
+}
+
+// The C of a program, for the tests that look at a spelling.
+static std::string c_of(const char* text) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb", text, diagnostics);
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    if (!diagnostics.empty() || parsed.module == nullptr ||
+        !check_module(parsed.module, arena, diagnostics, "t.lucb")) {
+        return "";
+    }
+    return emit_c(parsed.module);
+}
+
+// `c.long`, `c.char`, and `c.wchar` compute as the integers of their width; the C is spelled
+// `long`, `char`, `wchar_t`, and `c.va_list` is `va_list`.
+TEST(agree_c_distinct_types) {
+    CHECK(agrees("import c\npub func answer() -> i64:\n"
+                 "    var n: c.long = -40\n"
+                 "    let ch: c.char = c.char(65)\n"
+                 "    let w: c.wchar = (c.wchar)ch\n"
+                 "    let back = c.long(i64(w) - 25)\n"
+                 "    return i64(back - n * 0) + i64(n) + 40\n"));
+    std::string c = c_of("import c\nextern func vprintf(pattern: c.str, args: c.va_list) -> i32\n"
+                         "pub func log(pattern: c.str, args: c.va_list) -> i32:\n    return vprintf(pattern, args)\n"
+                         "pub func answer() -> i64:\n    var n: c.long = 40\n    var w: c.wchar = 1\n    return i64(n) + i64(w) - 1\n");
+    CHECK(c.find("va_list") != std::string::npos);
+    CHECK(c.find("long lb_n") != std::string::npos);
+    CHECK(c.find("wchar_t lb_w") != std::string::npos);
 }
 
 TEST(agree_export_twice) {
@@ -1054,8 +1085,8 @@ TEST(agree_str_unchecked) {
 }
 
 TEST(agree_str_cstr) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    let s = try str((cstr)\"hi\")\n"
+    CHECK(agrees("import c\npub func answer() -> i64!:\n"
+                 "    let s = try str((c.str)\"hi\")\n"
                  "    return i64(s.length)\n"));
 }
 
@@ -1067,8 +1098,8 @@ TEST(agree_files_list_missing) {
 }
 
 TEST(agree_process_run) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    var args: cstr[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
+    CHECK(agrees("import c\npub func answer() -> i64!:\n"
+                 "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                  "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
                  "    if out == \"out\" and err == \"err\":\n"
                  "        return i64(code)\n"

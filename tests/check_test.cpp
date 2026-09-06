@@ -177,15 +177,13 @@ TEST(warn_unused_import) {
     CHECK(check_warns("import memory\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
 }
 
-// `from io import Writer` makes `io` visible too (§16.3); an `import io` beside it is the
-// unused one whichever comes first.
-TEST(warn_redundant_import_beside_from_import) {
-    CHECK(!check_warns("from io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
+// `from io import Writer` brings `Writer` alone (§16.3): a program that uses both forms
+// needs both imports, with nothing to warn about. (This seed keeps the standard modules as
+// builtins, so `io.stdout()` without `import io` is refused by luce-base, not here;
+// `testdata/programs/errors/from_import_brings_only_the_name` pins it for a user module.)
+TEST(check_from_import_brings_only_the_name) {
+    CHECK(!check_warns("import io\nfrom io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
                        "lucb.warn.unused"));
-    CHECK(check_warns("import io\nfrom io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
-                      "lucb.warn.unused"));
-    CHECK(check_warns("from io import Writer\nimport io\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
-                      "lucb.warn.unused"));
 }
 
 TEST(warn_unused_private_function) {
@@ -381,20 +379,35 @@ TEST(check_atomic_bad_type) {
 }
 
 TEST(check_c_int_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
+    CHECK(check_ok("import c\npub func answer() -> i64:\n"
                    "    var n: c.int = 40\n"
                    "    return i64(n)\n"));
 }
 
+// The `c` module (§5.2): its types need `import c`; `c.int` is `i32` by another name;
+// `c.long`, `c.char`, and `c.wchar` are distinct, converted with `T(x)` or a cast; the C
+// text type is `c.str`, and `cstr` is no name at all.
+TEST(check_c_module_types) {
+    CHECK(check_has("pub func answer() -> i64:\n    var n: c.int = 40\n    return i64(n)\n", "lucb.check.import"));
+    CHECK(check_ok("import c\npub func answer() -> i64:\n    var n: c.int = 40\n    let m: i32 = n\n    return i64(m)\n"));
+    CHECK(check_has("import c\npub func answer() -> i64:\n    var n: c.long = 40\n    let m: i64 = n\n    return m\n", "lucb.check.type"));
+    CHECK(check_ok("import c\npub func answer() -> i64:\n    var n: c.long = 40\n    let m = i64(n) + i64((c.long)2) + i64(c.long(-2))\n    return m\n"));
+    CHECK(check_ok("import c\npub func answer() -> i64:\n    let ch: c.char = c.char(65)\n    let w: c.wchar = (c.wchar)ch\n    return i64(w) - 25\n"));
+    CHECK(check_ok("import c\nextern func vprintf(pattern: c.str, args: c.va_list) -> i32\n"
+                   "pub func log(pattern: c.str, args: c.va_list) -> i32:\n    return vprintf(pattern, args)\n"
+                   "pub func answer() -> i64:\n    return 40\n"));
+    CHECK(check_has("pub func answer() -> i64:\n    var s: cstr = \"x\"\n    return 40\n", "lucb.check.type"));
+}
+
 TEST(check_extern_handle_ok) {
-    CHECK(check_ok("extern type Window\n"
-                   "extern func SDL_GetError() -> cstr\n"
+    CHECK(check_ok("import c\nextern type Window\n"
+                   "extern func SDL_GetError() -> c.str\n"
                    "pub func answer() -> i64:\n"
                    "    return 0\n"));
 }
 
 TEST(check_variadic_str_rejected) {
-    CHECK(check_has("extern func printf(format: cstr, ...) -> i32\n"
+    CHECK(check_has("import c\nextern func printf(format: c.str, ...) -> i32\n"
                     "pub func answer() -> i64:\n"
                     "    var s = \"hi\"\n"
                     "    return i64(printf(\"%s\", s))\n",
@@ -809,8 +822,8 @@ TEST(check_files_list_ok) {
 }
 
 TEST(check_process_run_ok) {
-    CHECK(check_ok("pub func answer() -> i64!:\n"
-                   "    var args: cstr[1] = [\"\"]\n"
+    CHECK(check_ok("import c\npub func answer() -> i64!:\n"
+                   "    var args: c.str[1] = [\"\"]\n"
                    "    let (code, out, err) = try process.run(\"/bin/true\", args[0..<0])\n"
                    "    discard(out)\n"
                    "    discard(err)\n"

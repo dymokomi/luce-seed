@@ -1,0 +1,15 @@
+# answer: 40
+## The `c` module (§5.2): `c.int` is `i32` by another name; `c.long`, `c.char`, and
+## `c.wchar` are distinct types of the same widths, converted explicitly.
+import c
+
+func widen(n: c.int) -> i64:
+    let same: i32 = n
+    return i64(same)
+
+pub func answer() -> i64:
+    var count: c.long = -40
+    let ch: c.char = c.char(65)
+    let wide: c.wchar = (c.wchar)ch
+    let back = c.long(i64(wide) - 25)
+    return i64(back - count * 0) + i64(count) + widen(40)

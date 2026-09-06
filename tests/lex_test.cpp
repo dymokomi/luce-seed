@@ -209,7 +209,7 @@ TEST(lex_augmented_wrapping_operators) {
 }
 
 TEST(lex_markers_dashes_dots_at) {
-    Lexed lexed("var b: u8[4] = ---\nextern func p(f: cstr, ...) -> i32\nvar n: @u32\n");
+    Lexed lexed("var b: u8[4] = ---\nextern func p(f: c.str, ...) -> i32\nvar n: @u32\n");
     CHECK(lexed.diagnostics.empty());
     bool has_dashes = false;
     bool has_dots = false;

@@ -229,13 +229,8 @@ auto Interp::eval_call(Node* n) -> Value {
         bool checked = n->ty != nullptr && is_fail(n->ty);
         return eval_str_conv(x, src, n->ty, checked);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && n->ty != nullptr &&
-        n->body != nullptr &&
-        (n->resolved == nullptr || (n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty)))) {
-        Type* dest = n->ty;
-        if (is_int(dest) || is_float(dest) || dest->kind == TypeKind::Char || is_int_enum(dest)) {
-            return eval_conv(n->body->left, dest, true);
-        }
+    if (is_checked_conversion(n)) {
+        return eval_conv(n->body->left, n->ty, true);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
         return eval_ctor(n, n->resolved);

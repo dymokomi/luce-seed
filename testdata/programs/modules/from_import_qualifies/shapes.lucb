@@ -1,6 +1,0 @@
-pub struct Point:
-    pub var x: i64
-    pub var y: i64
-
-pub func sum(p: Point) -> i64:
-    return p.x + p.y

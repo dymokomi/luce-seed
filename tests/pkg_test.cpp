@@ -87,6 +87,18 @@ TEST(hidden_import_rejected) {
     CHECK(diagnostics.has_code("lucb.check.import"));
 }
 
+// `from util import add` brings `add` alone (§16.3): `util.add` needs `import util`.
+TEST(from_import_brings_only_the_name) {
+    DiagnosticBag diagnostics;
+    Arena arena;
+    Program program;
+    CHECK(load_program("testdata/programs/modules/imports/fromonly.lucb", program, arena,
+                       diagnostics));
+    check_program(mods_of(program), arena, diagnostics,
+                  "testdata/programs/modules/imports/fromonly.lucb");
+    CHECK(diagnostics.has_code("lucb.check.name"));
+}
+
 TEST(check_unused_import) {
     DiagnosticBag diagnostics;
     Arena arena;
