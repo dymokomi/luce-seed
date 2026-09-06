@@ -1,3 +1,6 @@
+import io
+from io import Writer
+
 func step(out: Writer, n: i64) -> !:
     try out.write(f"{n}")
 func work(out: Writer, fail: bool) -> !:

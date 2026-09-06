@@ -1,4 +1,8 @@
 # args: a b
+
+import files
+import io
+
 pub func main(arguments: str[]) -> i32!:
     let out = io.stdout()
     for a in arguments[1..]:

@@ -1,3 +1,6 @@
+import io
+from memory import FixedBuffer
+
 func boom() -> i64!:
     error(3, "boom")
 pub func main(arguments: str[]) -> i32!:

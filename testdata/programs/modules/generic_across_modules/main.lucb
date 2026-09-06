@@ -1,4 +1,5 @@
 import list
+from memory import FixedBuffer
 
 struct Bag:
     var items: list.List[i64]

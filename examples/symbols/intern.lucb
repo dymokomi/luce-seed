@@ -2,6 +2,9 @@
 ## bytes live once in an arena. The table is open addressing with linear
 ## probing over `hash`, doubling when two thirds full.
 
+import memory
+from memory import Allocator
+
 pub struct Interner:
     var arena: Allocator
     var names: str[]

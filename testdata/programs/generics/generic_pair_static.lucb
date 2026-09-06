@@ -12,3 +12,4 @@ pub func answer() -> i64:
     let p = Pair[str, i64].create("x", 40)
     let q = Pair(key = 1, value = 2)
     return p.sum() + q.key - q.key
+# answer: 40

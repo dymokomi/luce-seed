@@ -1,3 +1,5 @@
+from memory import FixedBuffer
+
 pub func answer() -> i64!:
     var backing: u8[256]
     var arena = FixedBuffer.over(backing)

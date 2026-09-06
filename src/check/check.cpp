@@ -83,6 +83,18 @@ auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* imp
     return true;
 }
 
+static bool is_std_module(string_view name) {
+    static const char* names[] = {"memory", "io", "files", "process", "atomic", "thread", "sync",
+                                  "strings", "paths", "math", "time", "testing", "net", "c",
+                                  "luce", "core", "debug"};
+    for (const char* n : names) {
+        if (name == n) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto Checker::mark_import(Binding* b) -> void {
     if (b != nullptr && b->import_src != nullptr) {
         b->import_src->flags |= FlagImportUsed;
@@ -724,12 +736,15 @@ auto Checker::bind_imports(Node* mod) -> void {
         if (d->kind != NodeKind::Import && d->kind != NodeKind::FromImport) {
             continue;
         }
-        for (size_t i = 0; i < seen.size(); i++) {
-            if (seen[i] == d->text) {
-                fail_n(d, "lucb.check.import", "duplicate import");
+        // `import io` beside `from io import Writer` is two imports, not one twice
+        if (d->kind == NodeKind::Import) {
+            for (size_t i = 0; i < seen.size(); i++) {
+                if (seen[i] == d->text) {
+                    fail_n(d, "lucb.check.import", "duplicate import");
+                }
             }
+            seen.push_back(d->text);
         }
-        seen.push_back(d->text);
         Node* other = d->resolved;
         if (other == nullptr) {
             Binding* b = lookup(d->text);
@@ -737,6 +752,15 @@ auto Checker::bind_imports(Node* mod) -> void {
                 other = b->decl;
                 d->resolved = other;
             }
+        }
+        if (other == nullptr && is_std_module(d->text)) {
+            // a standard module this seed keeps as builtins (`c`, `luce`): the import is what
+            // luce-base requires; every name it could bring in is in scope already
+            d->flags |= FlagImportUsed;
+            for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
+                nm->flags |= FlagImportUsed;
+            }
+            continue;
         }
         if (other == nullptr || other->kind != NodeKind::Module) {
             fail_n(d, "lucb.check.import", "cannot find module `" + string(d->text) + "`");
@@ -756,6 +780,11 @@ auto Checker::bind_imports(Node* mod) -> void {
         } else {
             for (Node* nm = d->body; nm != nullptr; nm = nm->next) {
                 Node* p = pub_member(other, nm->text);
+                if (p == nullptr && is_std_module(d->text)) {
+                    // a standard type this seed keeps as a builtin: the name is already bound
+                    nm->flags |= FlagImportUsed;
+                    continue;
+                }
                 if (p == nullptr) {
                     fail_n(nm, "lucb.check.import",
                            "no public `" + string(nm->text) + "` in `" + string(d->text) + "`");
@@ -763,6 +792,11 @@ auto Checker::bind_imports(Node* mod) -> void {
                 }
                 bool mut = p->kind == NodeKind::Global;
                 bind(nm->text, decl_type(p), mut, p, nm);
+                if (is_std_module(d->text)) {
+                    // the standard types are builtins here, so the name resolves without the
+                    // binding; the import is what luce-base requires, and it counts as used
+                    nm->flags |= FlagImportUsed;
+                }
             }
         }
     }

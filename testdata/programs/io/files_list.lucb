@@ -1,4 +1,7 @@
 # answer: 1
+
+import files
+
 pub func answer() -> i64!:
     let names = try files.list("testdata/programs")
     var found = 0

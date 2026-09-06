@@ -1,4 +1,7 @@
 # answer: 57
+
+import memory
+
 pub func answer() -> i64!:
     var dst: u8[4] = [0, 0, 0, 0]
     var src: u8[4] = [1, 2, 3, 4]

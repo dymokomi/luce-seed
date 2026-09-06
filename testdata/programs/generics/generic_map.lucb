@@ -1,4 +1,9 @@
 # answer: 41
+
+import memory
+from luce import Equatable, Hashable
+from memory import Allocator
+
 pub struct Map[K: Hashable & Equatable, V]:
     var keys: K[]
     var values: V[]

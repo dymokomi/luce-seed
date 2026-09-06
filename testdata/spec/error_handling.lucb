@@ -1,3 +1,5 @@
+import files
+
 pub let missing_field: ErrorCode = ErrorCode.package(4)
 
 struct Config:

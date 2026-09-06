@@ -1,6 +1,7 @@
 ## A block-structured symbol table over interned names: a stack of scopes,
 ## each a list of (name id, kind) pairs; lookup walks from the innermost out.
 
+import memory
 
 pub enum Kind as u8:
     variable = 1

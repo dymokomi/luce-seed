@@ -1,3 +1,6 @@
+import files
+import io
+
 pub func main(arguments: str[]) -> i32!:
     let bytes = try files.read("/etc/hosts")
     defer free(bytes)

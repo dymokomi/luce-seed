@@ -2,6 +2,7 @@
 ## shape a compiler emits, exercised by the machine in code.lucb.
 
 import code
+import io
 
 pub func main(arguments: str[]) -> i32!:
     let out = io.stdout()

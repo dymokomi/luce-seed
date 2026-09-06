@@ -1,4 +1,7 @@
 # answer: 1
+
+from luce import Equatable, Hashable
+
 func intern[K: Hashable & Equatable](keys: const K[], key: K) -> usize:
     var i: usize = 0
     while i < keys.length:

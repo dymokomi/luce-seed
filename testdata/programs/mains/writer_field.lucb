@@ -1,3 +1,6 @@
+import io
+from io import Writer
+
 struct Emitter:
     var out: Writer
     var depth: i64

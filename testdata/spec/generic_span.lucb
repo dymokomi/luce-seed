@@ -1,3 +1,5 @@
+from luce import Comparable
+
 func largest[T: Comparable](values: const T[]) -> T?:
     if values.length == 0: return none
     var best = values[0]

@@ -1,6 +1,8 @@
 # args: "a * b + 12"
 import ast
+import io
 import lexer
+from io import Writer
 
 func emit(node: ast.Node*, out: Writer) -> !:
     match *node:

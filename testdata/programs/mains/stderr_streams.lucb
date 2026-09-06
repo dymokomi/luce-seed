@@ -1,4 +1,7 @@
 # args: a b
+
+import io
+
 pub func main(arguments: str[]) -> i32!:
     try io.stderr().write("direct\n")
     discard(io.stderr().write("in discard\n") catch failure: recover 0)

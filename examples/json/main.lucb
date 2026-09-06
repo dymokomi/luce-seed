@@ -1,8 +1,10 @@
 ## Parse a document into an arena, print it back compactly, and sum its
 ## numbers; then show a syntax error with its byte offset.
 
+import io
 import parser
 import value
+from memory import FixedBuffer
 
 pub func main(arguments: str[]) -> i32!:
     let out = io.stdout()

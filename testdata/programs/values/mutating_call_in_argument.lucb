@@ -1,3 +1,5 @@
+import c
+
 struct Cursor:
     var items: i64[4]
     var pos: usize

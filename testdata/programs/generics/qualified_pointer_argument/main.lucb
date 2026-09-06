@@ -1,5 +1,6 @@
 # A type argument may be a pointer to a type of another module: `Box[node.Node*]`
 # is a generic use, not an index.
+import c
 import node
 
 struct Box[T]:

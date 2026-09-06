@@ -694,6 +694,8 @@ rows: for y in 0..<height:
 ### 8.8 `defer` and `errdefer`
 
 ```luce
+import files
+
 let file = try files.open(path)
 defer file.close() catch failure:
     log(f"close failed: {failure.message}")
@@ -752,6 +754,10 @@ func ticks() -> u64:
 ### 9.1 Declaration and calls
 
 ```luce
+import io
+import luce
+from io import Location
+
 pub func clamp(value: f64, minimum: f64, maximum: f64) -> f64:
     if value < minimum: return minimum
     if value > maximum: return maximum
@@ -809,6 +815,8 @@ A function value is a C function pointer (§5.6). A non-fallible function conver
 ### 9.5 Methods
 
 ```luce
+import math
+
 struct Point:
     pub let x: f64
     pub let y: f64
@@ -978,6 +986,8 @@ let w = create_window() else error(no_window, "no window") # absence becomes fai
 ### 11.2 Fallible functions
 
 ```luce
+import files
+
 func load(path: cstr) -> Config!:
     let data = try files.read(path)
     return try config.parse(data)
@@ -1000,6 +1010,8 @@ error(not_found, "configuration file does not exist")
 ### 11.4 `catch` and `recover`
 
 ```luce
+import files
+
 let text = files.read(path) catch failure:
     if failure.code == files.missing:
         recover ""
@@ -1057,6 +1069,8 @@ free(scratch) in arena
 ### 12.3 The current allocator and `with`
 
 ```luce
+import memory
+
 var arena = try Arena.over(memory.allocator, 1 << 20)
 defer arena.destroy()
 with arena:
@@ -1103,6 +1117,8 @@ These two lists are exhaustive for the language. A library may add checks; nothi
 ### 13.1 Declarations and constraints
 
 ```luce
+from luce import Comparable
+
 func first[T](values: const T[]) -> T?:
     if values.length == 0: return none
     return values[0]
@@ -1129,6 +1145,8 @@ There are no value parameters (array length is the one built-in exception), no v
 ### 14.1 Declaration and conformance
 
 ```luce
+from io import Writer
+
 pub interface Writer:
     mutating func write(bytes: const u8[]) -> usize!
 
@@ -1144,6 +1162,8 @@ An interface is a nominal set of method requirements. Conformance is declared wi
 ### 14.2 Static use
 
 ```luce
+from io import Writer
+
 func header[W: Writer](writer: W*, header: Header) -> !:
     discard(try writer.write(header.bytes))
 ```
@@ -1153,6 +1173,8 @@ A constrained generic is statically dispatched and monomorphised. Nothing alloca
 ### 14.3 Interface views
 
 ```luce
+from io import Writer
+
 var file = FileWriter(descriptor = 1)
 let writer: Writer = &file
 try writer.write(data)
@@ -1185,6 +1207,8 @@ Using an interface as a type denotes a two-word value, a pointer to the conformi
 ### 15.1 Atomic types
 
 ```luce
+import atomic
+
 var ready: @bool
 var hits: @u64
 var head: @Node*?
@@ -1296,7 +1320,7 @@ test "cursor advances by one":
 
 ### 16.6 Standard modules
 
-The language depends on these modules by name. Their full surfaces are in the library reference; what the language needs is stated here.
+The language depends on these modules by name. Their full surfaces are in the library reference; what the language needs is stated here. A standard module is used like any other: nothing is visible without an import, `import io` makes the module visible as `io`, and `from io import Writer` brings one of its declarations into scope by its bare name. Only the core types (`str`, `ErrorCode`, the scalars) and the core functions of §3.5 need no import.
 
 | Module | What the language relies on |
 | --- | --- |
@@ -1920,6 +1944,9 @@ pub func main(arguments: str[]) -> i32!:
 A struct that owns a span, allocated from the allocator that was current when it was made and released through the same one.
 
 ```luce
+import memory
+from memory import Allocator
+
 pub let full: ErrorCode = ErrorCode.package(2)
 
 pub struct Ring:
@@ -1962,6 +1989,10 @@ pub func main(arguments: str[]) -> i32!:
 A type that implements `Allocator`, remembers its parent, and is used through `with`.
 
 ```luce
+import files
+import memory
+from memory import Allocator
+
 pub struct Arena implements Allocator:
     var parent: Allocator
     var block: u8[]
@@ -2202,6 +2233,8 @@ pub func main(arguments: str[]) -> i32!:
 ### 24.11 A generic over a span
 
 ```luce
+from luce import Comparable
+
 func largest[T: Comparable](values: const T[]) -> T?:
     if values.length == 0: return none
     var best = values[0]
@@ -2221,6 +2254,10 @@ pub func main(arguments: str[]) -> i32:
 Formatted output into a caller's buffer, a `str` that views it, and a `fmt` parameter that forwards a formatted string.
 
 ```luce
+import io
+import luce
+from io import Location
+
 func describe(bytes: usize, buffer: u8[]) -> str!:
     if bytes >= 1 << 20:
         return try format(buffer, f"{bytes >> 20} MiB")
@@ -2244,6 +2281,10 @@ pub func main(arguments: str[]) -> i32!:
 A `Writer` over memory it owns, growing with `resize` where the allocator allows and reallocating otherwise.
 
 ```luce
+import memory
+from io import Writer
+from memory import Allocator
+
 pub struct Builder implements Writer:
     var bytes: u8[]
     var length: usize
@@ -2283,6 +2324,10 @@ pub func main(arguments: str[]) -> i32!:
 A generic open-addressing map keyed by any hashable, equatable type.
 
 ```luce
+import memory
+from luce import Equatable, Hashable
+from memory import Allocator
+
 pub struct Map[K: Hashable & Equatable, V]:
     var keys: K[]
     var values: V[]
@@ -2335,6 +2380,8 @@ pub func main(arguments: str[]) -> i32!:
 A fallible function calling another, one `catch` that recovers, one that adds context through a caller's buffer, and `main` reporting.
 
 ```luce
+import files
+
 pub let missing_field: ErrorCode = ErrorCode.package(4)
 
 struct Config:

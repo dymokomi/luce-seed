@@ -1,3 +1,5 @@
+import io
+
 pub func main(arguments: str[]) -> i32!:
     let out = io.stdout()
     let a: i64 = -42

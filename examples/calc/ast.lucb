@@ -1,4 +1,6 @@
 import lexer
+import memory
+from memory import Allocator
 
 pub enum Node:
     number(value: i64)

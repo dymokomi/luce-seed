@@ -4,6 +4,7 @@
 
 import intern
 import scope
+from memory import FixedBuffer
 
 pub func answer() -> i64!:
     var backing: u8[4096]
