@@ -229,6 +229,11 @@ auto Emitter::emit_decls(Node* mod) -> void {
             line(sig);
         } else if (d->kind == NodeKind::ExternVar) {
             line("extern " + c_type(d->ty) + " " + string(d->text) + ";");
+        } else if (d->kind == NodeKind::Asm) {
+            // a module-level `asm` block places raw assembly at file scope (§8.9)
+            line(asm_arch_guard(d));
+            line("__asm__(" + c_escape(asm_body(d)) + ");");
+            line("#endif");
         } else if (d->kind == NodeKind::Func) {
             emit_sig(d, nullptr, false);
         } else if (d->kind == NodeKind::Struct || d->kind == NodeKind::Enum ||

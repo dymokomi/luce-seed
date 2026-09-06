@@ -1,0 +1,14 @@
+## A method called on an enum case directly, and on a call's result: a value receiver.
+enum Flags as u8:
+    a = 1
+    b = 2
+    func name() -> i64:
+        return 20 + (i64)self
+
+func pick() -> Flags:
+    return Flags.b
+
+pub func answer() -> i64:
+    let f = Flags.b
+    return f.name() + Flags.a.name() - pick().name() + 21
+# answer: 42

@@ -1,0 +1,14 @@
+## A capture-free lambda converts to a function pointer (base.md §9.6), inside a function
+## and inside a method alike.
+func apply(f: func(i64) -> i64, x: i64) -> i64:
+    return f(x)
+
+struct Counter:
+    var n: i64
+    func bump(f: func(i64) -> i64) -> i64:
+        return f(self.n)
+
+pub func answer() -> i64:
+    var c = Counter(n = 20)
+    return apply((x) => x + 1, 20) + c.bump((x) => x + 1)
+# answer: 42

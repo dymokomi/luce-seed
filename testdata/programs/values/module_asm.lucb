@@ -1,0 +1,15 @@
+## A module-level `asm` block places raw assembly at file scope (base.md §8.9): a symbol
+## defined there is called through an `extern` declaration.
+# oracle: none
+asm arm64:
+    .globl _from_asm
+    .p2align 2
+    _from_asm:
+        mov x0, #42
+        ret
+
+extern func from_asm() -> i64
+
+pub func answer() -> i64:
+    return from_asm()
+# answer: 42

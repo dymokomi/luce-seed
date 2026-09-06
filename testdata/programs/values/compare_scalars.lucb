@@ -1,0 +1,21 @@
+## `compare` on numbers, `char`, and `str`, and through a `Comparable` constraint at a
+## scalar (base.md §14.4).
+from luce import Comparable
+
+func largest[T: Comparable](items: const T[]) -> T:
+    var best = items[0]
+    for item in items:
+        if item.compare(best) > 0:
+            best = item
+    return best
+
+pub func answer() -> i64:
+    let a: i64 = 3
+    let t: str = "abc"
+    let f: f64 = 2.5
+    let xs: i64[3] = [3, 40, 7]
+    var score: i64 = 0
+    if a.compare(5) < 0 and t.compare("abd") < 0 and f.compare(2.5) == 0 and 'b'.compare('a') > 0:
+        score += 2
+    return score + largest[i64](xs)
+# answer: 42

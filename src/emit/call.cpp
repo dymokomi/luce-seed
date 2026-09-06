@@ -705,6 +705,11 @@ auto Emitter::emit_call(Node* n) -> string {
         if (callee->text == "compare" && method == nullptr) {
             string L = emit_expr(obj);
             string R = emit_expr(n->body != nullptr ? n->body->left : nullptr);
+            Type* rt = obj != nullptr ? obj->ty : nullptr;
+            if (rt != nullptr && rt->kind == TypeKind::Str) {
+                // text orders by bytes, then by length (§5.5), through the runtime
+                return "((int64_t)lb_str_compare(" + L + ", " + R + "))";
+            }
             return "((" + L + " < " + R + ") ? -1LL : ((" + L + " > " + R + ") ? 1LL : 0LL))";
         }
         Node* owner = ot != nullptr ? ot->decl : nullptr;

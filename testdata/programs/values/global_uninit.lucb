@@ -1,0 +1,7 @@
+## A global declared with `---` (base.md §6.2) has storage and no written initialiser.
+var buffer: u8[64] = ---
+
+pub func answer() -> i64:
+    buffer[0] = 42
+    return (i64)buffer[0]
+# answer: 42

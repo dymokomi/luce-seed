@@ -1,7 +1,18 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.5**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.6**, the seed `luce-base` is written against.
+
+## 0.6: two decisions and a value receiver
+
+- An unused import is pruned by the checker rather than reported, so nothing
+  after the checker sees it; a `from` import keeps only the names that were
+  used. The specification's §16.3 says so.
+- A triple-quoted text drops the newline directly after its opening
+  delimiter (§4.4); `testdata/programs/text/triple_quoted_text.lucb` pins it.
+- A method may be called on a value receiver, `Flags.a.name()` or a call's
+  result, in the interpreter and the C; an integer-backed enum is
+  forward-declared so its methods can be.
 
 ## 0.5: the oracle audited
 

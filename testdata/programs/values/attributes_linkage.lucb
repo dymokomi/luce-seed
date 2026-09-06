@@ -1,0 +1,14 @@
+## The declaration attributes of base.md §9.8 reach the object file and change nothing
+## about the answer: a weak function, a kept variable in a named section, cold and
+## noinline advice.
+weak func base(x: i64) -> i64:
+    return x + 41
+
+used section("__DATA,__custom") var table: i64[4]
+
+cold noinline func rare() -> i64:
+    return 1
+
+pub func answer() -> i64:
+    return base(rare()) + table[0]
+# answer: 42

@@ -1,0 +1,18 @@
+## `packed` removes padding, `align(N)` raises a struct's or a field's alignment
+## (base.md §5.11); both backends agree with C.
+packed struct Wire:
+    var tag: u8
+    var value: u32
+
+align(16) struct Vec:
+    var x: f32
+    var y: f32
+
+struct Spaced:
+    var a: u8
+    align(8) var b: u8
+
+pub func answer() -> i64:
+    # 5 + 1 + 16 + 16 + 16 = 54
+    return (i64)sizeof(Wire) + (i64)offsetof(Wire, value) + (i64)sizeof(Vec) + (i64)alignof(Vec) + (i64)sizeof(Spaced) - 12
+# answer: 42

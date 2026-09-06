@@ -1,0 +1,11 @@
+## A `naked func` is one asm block per architecture and no prologue (base.md §9.8).
+## The interpreter cannot run it; the two backends must agree.
+# oracle: none
+naked func forty_two() -> i64:
+    asm arm64:
+        mov x0, #42
+        ret
+
+pub func answer() -> i64:
+    return forty_two()
+# answer: 42

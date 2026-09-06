@@ -1,0 +1,8 @@
+## `volatile` qualifies a pointee (base.md §15.2): a load and a store through
+## `volatile i64*`.
+pub func answer() -> i64:
+    var v: i64 = 40
+    let p: volatile i64* = &v
+    *p = *p + 2
+    return *p
+# answer: 42
