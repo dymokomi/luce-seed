@@ -62,6 +62,7 @@ auto Checker::fail_n(Node* n, const char* code, const string& message) -> void {
 auto Checker::pop_scope() -> void {
     while (!scope.empty() && scope.back().depth == depth) {
         const Binding& b = scope.back();
+        note_unused_local(b);
         if (b.shadowed >= 0) {
             scope_index[b.name] = b.shadowed;
         } else {
@@ -77,7 +78,11 @@ auto Checker::lookup(string_view name) -> Binding* {
     if (it == scope_index.end()) {
         return nullptr;
     }
-    return &scope[static_cast<size_t>(it->second)];
+    // every resolution of a name is a use of the binding: read or assigned, it is not pruned
+    // (base.md §19.6); a function is referenced only from an expression or a callee
+    Binding* b = &scope[static_cast<size_t>(it->second)];
+    b->used = true;
+    return b;
 }
 
 auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src) -> bool {
@@ -829,10 +834,14 @@ auto Checker::prune_unused_imports(Node* mod) -> void {
         bool drop = false;
         if (d->kind == NodeKind::Import) {
             drop = (d->flags & FlagImportUsed) == 0;
+            if (drop) {
+                warn_n(d, "lucb.warn.unused", "unused import `" + string(d->text) + "`");
+            }
         } else if (d->kind == NodeKind::FromImport) {
             Node** name_link = &d->body;
             while (*name_link != nullptr) {
                 if (((*name_link)->flags & FlagImportUsed) == 0) {
+                    warn_n(*name_link, "lucb.warn.unused", "unused import `" + string((*name_link)->text) + "`");
                     *name_link = (*name_link)->next;
                 } else {
                     name_link = &(*name_link)->next;
@@ -960,9 +969,12 @@ auto Checker::check_module(Node* mod) -> void {
         }
     }
     for (size_t i = 0; i < pending_clones.size(); i++) {
+        // a generated function, a lambda's or a thunk's, is referenced by what made it
+        pending_clones[i]->flags |= FlagReferenced;
         append_node(&mod->body, pending_clones[i]);
     }
     pending_clones.clear();
+    prune_unused_functions(mod);
     prune_unused_imports(mod);
     pop_scope();
 }
@@ -1045,6 +1057,157 @@ bool check_program(const vector<Node*>& modules, Arena& arena, DiagnosticBag& di
         }
     }
     return diagnostics.empty();
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// -- Warnings and pruning (base.md §19.6) ------------------------------------------------
+//
+// The checker warns about what a program does not use and removes it from the tree, so
+// nothing after the checker sees an unused local, import, or private function, an
+// unreachable statement, or a branch a literal condition rules out. Every removal keeps
+// the program's meaning: an unused binding whose initialiser may do something stays as an
+// expression statement.
+
+auto Checker::warn_n(Node* n, const char* code, const string& message) -> void {
+    if (diag != nullptr && n != nullptr) {
+        diag->warn(code, path, n->span, message);
+    }
+}
+
+// A local nothing read, at the end of its scope: a warning and a mark the block prunes by.
+// A name beginning with `_` says the silence is intended.
+auto Checker::pruning_enabled() -> bool {
+    // a generic template's body is checked again per instance, and the template pass need
+    // not resolve every use, so nothing is pruned or warned about there
+    return !checking_generic_template &&
+           (current_struct == nullptr || !is_generic_decl(current_struct));
+}
+
+auto Checker::note_unused_local(const Binding& b) -> void {
+    if (!pruning_enabled()) {
+        return;
+    }
+    if (b.used || b.depth <= 0 || b.decl == nullptr || b.name.empty() || b.name[0] == '_') {
+        return;
+    }
+    if (b.decl->kind != NodeKind::Let && b.decl->kind != NodeKind::Var) {
+        return;
+    }
+    if (b.decl->text != b.name) {
+        return; // a tuple binding's names are not pruned
+    }
+    warn_n(b.decl, "lucb.warn.unused", "unused local `" + string(b.name) + "`");
+    b.decl->flags |= FlagUnused;
+}
+
+auto Checker::mark_referenced(Node* decl) -> void {
+    if (decl != nullptr && decl->kind == NodeKind::Func) {
+        decl->flags |= FlagReferenced;
+    }
+}
+
+// An expression whose evaluation neither traps nor has an effect, safe to drop unread.
+auto Checker::is_pure(Node* e) -> bool {
+    if (e == nullptr) {
+        return true;
+    }
+    switch (e->kind) {
+    case NodeKind::Literal:
+    case NodeKind::Name:
+    case NodeKind::Self:
+        return true;
+    case NodeKind::Group:
+        return is_pure(e->left);
+    case NodeKind::Member:
+        return is_pure(e->left);
+    case NodeKind::Unary:
+        return e->op == TokenKind::Amp && is_pure(e->left);
+    default:
+        return false;
+    }
+}
+
+// After a block is checked: unused bindings leave, or stay as the expression they
+// evaluated when that expression may do something.
+auto Checker::prune_block(Node* block) -> void {
+    if (!pruning_enabled()) {
+        return;
+    }
+    Node** link = &block->body;
+    while (*link != nullptr) {
+        Node* s = *link;
+        const bool binding = s->kind == NodeKind::Let || s->kind == NodeKind::Var;
+        if (binding && (s->flags & FlagUnused) != 0) {
+            if (s->left == nullptr || is_pure(s->left)) {
+                *link = s->next;
+                continue;
+            }
+            s->kind = NodeKind::ExprStmt;
+            s->text = {};
+            s->type = nullptr;
+        }
+        link = &s->next;
+    }
+}
+
+// `if true:` keeps its body and `if false:` its alternative; `while false:` is nothing.
+auto Checker::fold_constant_branch(Node* n) -> void {
+    if (!pruning_enabled()) {
+        return;
+    }
+    Node* cond = n->left;
+    if (cond == nullptr || cond->kind != NodeKind::Literal ||
+        (cond->op != TokenKind::KwTrue && cond->op != TokenKind::KwFalse)) {
+        return;
+    }
+    const bool truth = cond->op == TokenKind::KwTrue;
+    if (n->kind == NodeKind::While) {
+        if (truth) {
+            return;
+        }
+        warn_n(n, "lucb.warn.dead", "this loop never runs: its condition is `false`");
+        n->kind = NodeKind::Block;
+        n->body = nullptr;
+        n->left = nullptr;
+        return;
+    }
+    Node* taken = truth ? n->body : n->right;
+    Node* dropped = truth ? n->right : n->body;
+    if (dropped != nullptr) {
+        warn_n(dropped, "lucb.warn.dead", string("this branch never runs: the condition is `") + (truth ? "true" : "false") + "`");
+    }
+    n->kind = NodeKind::Block;
+    n->left = nullptr;
+    n->right = nullptr;
+    if (taken == nullptr) {
+        n->body = nullptr;
+    } else if (taken->kind == NodeKind::Block) {
+        n->body = taken->body;
+    } else {
+        taken->next = nullptr; // an `elif` chain: the alternative is one `if` statement
+        n->body = taken;
+    }
+}
+
+// A private function no name resolved to leaves the module. `main`, tests, exports, and
+// anything with a linkage attribute stay, as do methods.
+auto Checker::prune_unused_functions(Node* mod) -> void {
+    Node** link = &mod->body;
+    while (*link != nullptr) {
+        Node* d = *link;
+        const bool candidate = d->kind == NodeKind::Func && (d->flags & FlagReferenced) == 0 &&
+                               (d->flags & (FlagPub | FlagExport | FlagUsed | FlagWeakAttr | FlagNaked)) == 0 &&
+                               d->attrs == nullptr && d->text != "main" && d->text != "answer";
+        if (candidate) {
+            warn_n(d, "lucb.warn.unused", "unused function `" + string(d->text) + "`");
+            *link = d->next;
+            continue;
+        }
+        link = &d->next;
+    }
 }
 
 } // namespace lucb

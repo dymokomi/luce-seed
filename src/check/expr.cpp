@@ -281,6 +281,7 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
         fail_n(n, "lucb.check.name", "unknown name `" + string(n->text) + "`");
         return t_error();
     }
+    mark_referenced(b->decl);
     n->resolved = b->decl;
     mark_import(b);
     if (lambda_depth > 0 && b->depth > 1 && b->depth < lambda_depth) {

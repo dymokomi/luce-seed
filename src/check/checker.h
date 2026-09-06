@@ -32,6 +32,7 @@ struct Binding {
     Node* import_src = nullptr;
     int depth = 0;
     int shadowed = -1; // index of the same name's outer binding, or -1
+    bool used = false; // some expression read or assigned the name
 };
 
 struct Checker {
@@ -302,6 +303,15 @@ struct Checker {
     void resolve_sig(Node* fn);
     void bind_imports(Node* mod);
     void prune_unused_imports(Node* mod);
+    // Warnings and the pruning that follows them (base.md §19.6).
+    void warn_n(Node* n, const char* code, const string& message);
+    bool pruning_enabled();
+    void note_unused_local(const Binding& b);
+    void mark_referenced(Node* decl);
+    void prune_block(Node* block);
+    void prune_unused_functions(Node* mod);
+    void fold_constant_branch(Node* n);
+    bool is_pure(Node* e);
     void check_test(Node* t);
     void check_main(Node* fn);
     void check_module(Node* mod);

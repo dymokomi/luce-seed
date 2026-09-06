@@ -62,9 +62,17 @@ string read_file(const string& path, string& error) {
     return buffer.str();
 }
 
+// `-W` on any command prints the checker's warnings; without it they are silent.
+static bool g_show_warnings = false;
+
 int print_diagnostics(const lucb::DiagnosticBag& diagnostics) {
     for (size_t i = 0; i < diagnostics.items.size(); i++) {
         cerr << diagnostics.items[i].format() << '\n';
+    }
+    if (g_show_warnings) {
+        for (size_t i = 0; i < diagnostics.warnings.size(); i++) {
+            cerr << diagnostics.warnings[i].format() << '\n';
+        }
     }
     return diagnostics.empty() ? 0 : 1;
 }
@@ -326,6 +334,18 @@ int cmd_dump(const string& path) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // `-W` may appear anywhere; it is taken out before the command sees its arguments
+    static vector<char*> kept;
+    for (int i = 0; i < argc; i++) {
+        if (string_view(argv[i]) == "-W") {
+            g_show_warnings = true;
+        } else {
+            kept.push_back(argv[i]);
+        }
+    }
+    kept.push_back(nullptr);
+    argc = static_cast<int>(kept.size()) - 1;
+    argv = kept.data();
     if (argc < 2) {
         print_help(cerr);
         return 2;

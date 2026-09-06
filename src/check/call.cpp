@@ -93,6 +93,9 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
             return check_checked_conv(n, conv);
         }
         Binding* b = lookup(callee->text);
+        if (b != nullptr) {
+            mark_referenced(b->decl);
+        }
         if (b == nullptr) {
             fail_n(n, "lucb.check.name", "unknown name `" + string(callee->text) + "`");
             return t_error();
@@ -699,6 +702,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
                         fail_n(n, "lucb.check.type", "`thread.spawn` needs a function name");
                     } else {
                         Binding* fb = lookup(entry->text);
+                        if (fb != nullptr) {
+                            mark_referenced(fb->decl);
+                        }
                         if (fb == nullptr || fb->decl == nullptr ||
                             fb->decl->kind != NodeKind::Func) {
                             fail_n(n, "lucb.check.type", "`thread.spawn` needs a function name");
@@ -1019,6 +1025,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
             fail_n(n, "lucb.check.type", "`Once.run` needs a function name");
         } else {
             Binding* fb = lookup(entry->text);
+            if (fb != nullptr) {
+                mark_referenced(fb->decl);
+            }
             if (fb == nullptr || fb->decl == nullptr || fb->decl->kind != NodeKind::Func) {
                 fail_n(n, "lucb.check.type", "`Once.run` needs a function name");
             } else if (fb->decl->right != nullptr) {

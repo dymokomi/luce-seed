@@ -92,41 +92,43 @@ enum class NodeKind : uint16_t {
     Pattern,
 };
 
-enum {
-    FlagPub = 1u << 0,
-    FlagMutating = 1u << 1,
-    FlagStatic = 1u << 2,
-    FlagExport = 1u << 3,
-    FlagPacked = 1u << 4,
-    FlagThreadLocal = 1u << 5,
-    FlagUninit = 1u << 6,
-    FlagConst = 1u << 7,
-    FlagVolatile = 1u << 8,
-    FlagAtomic = 1u << 9,
-    FlagOptional = 1u << 10,
-    FlagFallible = 1u << 11,
-    FlagByPtr = 1u << 12,
-    FlagNoalias = 1u << 13,
-    FlagOut = 1u << 14,
-    FlagBlocking = 1u << 15,
-    FlagVariadic = 1u << 16,
-    FlagStar = 1u << 17,  // type: pointer suffix
-    FlagSpan = 1u << 18,  // type: T[]
-    FlagArray = 1u << 19, // type: T[N]
-    FlagFuncType = 1u << 20,
-    FlagVoid = 1u << 21,
-    FlagTupleType = 1u << 22,
-    FlagIfLet = 1u << 23,
-    FlagInline = 1u << 24,
-    FlagNoinline = 1u << 25,
-    FlagCold = 1u << 26,
-    FlagNaked = 1u << 27,
-    FlagUsed = 1u << 28,
-    FlagWeakAttr = 1u << 29,
-    FlagBuiltin = 1u << 30,       // synthesized by the checker for a standard module
-    FlagLiteralCached = 1u << 31, // `cached` holds the decoded integer literal
-    FlagLocal = 1u << 30,         // pointer/span/str derived from a local
-    FlagImportUsed = 1u << 31,
+enum : uint64_t {
+    FlagPub = 1ull << 0,
+    FlagMutating = 1ull << 1,
+    FlagStatic = 1ull << 2,
+    FlagExport = 1ull << 3,
+    FlagPacked = 1ull << 4,
+    FlagThreadLocal = 1ull << 5,
+    FlagUninit = 1ull << 6,
+    FlagConst = 1ull << 7,
+    FlagVolatile = 1ull << 8,
+    FlagAtomic = 1ull << 9,
+    FlagOptional = 1ull << 10,
+    FlagFallible = 1ull << 11,
+    FlagByPtr = 1ull << 12,
+    FlagNoalias = 1ull << 13,
+    FlagOut = 1ull << 14,
+    FlagBlocking = 1ull << 15,
+    FlagVariadic = 1ull << 16,
+    FlagStar = 1ull << 17,  // type: pointer suffix
+    FlagSpan = 1ull << 18,  // type: T[]
+    FlagArray = 1ull << 19, // type: T[N]
+    FlagFuncType = 1ull << 20,
+    FlagVoid = 1ull << 21,
+    FlagTupleType = 1ull << 22,
+    FlagIfLet = 1ull << 23,
+    FlagInline = 1ull << 24,
+    FlagNoinline = 1ull << 25,
+    FlagCold = 1ull << 26,
+    FlagNaked = 1ull << 27,
+    FlagUsed = 1ull << 28,
+    FlagWeakAttr = 1ull << 29,
+    FlagBuiltin = 1ull << 30,       // synthesized by the checker for a standard module
+    FlagLiteralCached = 1ull << 31, // `cached` holds the decoded integer literal
+    FlagLocal = 1ull << 30,         // pointer/span/str derived from a local
+    FlagImportUsed = 1ull << 31,
+    FlagUnused = 1ull << 32,     // a local no expression read: pruned by the checker
+    FlagReferenced = 1ull << 33, // a function some name resolved to; an unreferenced private one is pruned
 };
 
 struct Node {
@@ -134,7 +136,7 @@ struct Node {
     Span span;
     string_view text;
     TokenKind op = TokenKind::EndOfFile;
-    uint32_t flags = 0;
+    uint64_t flags = 0;
     Node* left = nullptr;
     Node* right = nullptr;
     Node* body = nullptr;

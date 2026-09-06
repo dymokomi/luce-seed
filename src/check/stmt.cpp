@@ -23,8 +23,13 @@ auto Checker::check_stmt(Node* n) -> void {
         push_scope();
         for (Node* s = n->body; s != nullptr; s = s->next) {
             check_stmt(s);
+            if (s->next != nullptr && pruning_enabled() && always_returns(s)) {
+                warn_n(s->next, "lucb.warn.dead", "unreachable code");
+                s->next = nullptr;
+            }
         }
         pop_scope();
+        prune_block(n);
         break;
     case NodeKind::Let:
     case NodeKind::Var: {
@@ -62,6 +67,9 @@ auto Checker::check_stmt(Node* n) -> void {
             }
         } else if (n->left != nullptr) {
             Type* init = check_expr(n->left, t);
+            if (init != nullptr && init->kind == TypeKind::Unit) {
+                fail_n(n->left, "lucb.check.type", "this expression has no value");
+            }
             if (is_fail(init) && (t == nullptr || !is_fail(t))) {
                 fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
             }
@@ -159,6 +167,9 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->right != nullptr) {
             check_stmt(n->right);
         }
+        if ((n->flags & FlagIfLet) == 0) {
+            fold_constant_branch(n);
+        }
         break;
     }
     case NodeKind::While: {
@@ -186,6 +197,9 @@ auto Checker::check_stmt(Node* n) -> void {
             loop_labels.push_back(n->label);
             check_stmt(n->body);
             loop_labels.pop_back();
+        }
+        if ((n->flags & FlagIfLet) == 0) {
+            fold_constant_branch(n);
         }
         break;
     }

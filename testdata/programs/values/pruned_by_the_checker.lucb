@@ -1,0 +1,28 @@
+## The checker prunes what a program does not use (base.md §19.6) without changing what it
+## does: an unused binding with an effectful initialiser keeps its effect, a literal
+## condition keeps its live branch, code after `return` goes.
+var hits: i64 = 0
+
+func bump() -> i64:
+    hits += 1
+    return 1
+
+func never_called() -> i64:
+    return 7
+
+pub func answer() -> i64:
+    let unused = 5
+    let effect = bump()
+    var total: i64 = 40
+    if true:
+        total += 1
+    else:
+        total += 100
+    if false:
+        total += 100
+    while false:
+        total += 100
+    total += hits
+    return total
+    total += 1000
+# answer: 42

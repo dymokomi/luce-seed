@@ -1598,7 +1598,7 @@ A Base executable links a startup shim and a trap reporter and no Luce runtime (
 
 ### 19.6 Tooling
 
-`luce fmt`, `luce check`, `luce build`, `luce test`, and `luce bind` apply to Base modules. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target` with no argument lists the targets above and the `asm` architectures a package covers.
+`luce fmt`, `luce check`, `luce build`, `luce test`, and `luce bind` apply to Base modules. `-W` on `check`, `build`, or `test` prints the checker's warnings: an unused local (a name beginning with `_` is exempt), an unused import, a private function nothing references, a statement no path reaches, and a branch or loop whose literal condition rules it out. Each is also pruned from the program by the checker, so nothing after the checker sees it; an unused binding whose initialiser may have an effect stays as that expression. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target` with no argument lists the targets above and the `asm` architectures a package covers.
 
 ## 20. Exclusions
 

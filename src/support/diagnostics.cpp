@@ -13,7 +13,26 @@ namespace lucb {
 
 string Diagnostic::format() const {
     return path + ":" + std::to_string(span.line) + ":" + std::to_string(span.column) + ": " +
-           message + " [" + code + "]";
+           (warning ? "warning: " : "") + message + " [" + code + "]";
+}
+
+void DiagnosticBag::warn(string code, string path, Span span, string message) {
+    Diagnostic item;
+    item.code = code;
+    item.path = path;
+    item.span = span;
+    item.message = message;
+    item.warning = true;
+    warnings.push_back(item);
+}
+
+bool DiagnosticBag::has_warning(string_view code) const {
+    for (size_t i = 0; i < warnings.size(); i++) {
+        if (warnings[i].code == code) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void DiagnosticBag::add(string code, string path, Span span, string message) {

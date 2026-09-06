@@ -42,6 +42,21 @@ static bool check_ok(const char* text) {
     return check_module(parsed.module, arena, diagnostics, "t.lucb");
 }
 
+// The checker warns and prunes (base.md §19.6): the program still checks, the warning is
+// in the bag, and the tree no longer holds what was warned about.
+static bool check_warns(const char* text, const char* code) {
+    DiagnosticBag diagnostics;
+    Source source = Source::from_bytes("t.lucb", text, diagnostics);
+    Arena arena;
+    std::vector<Token> tokens = tokenize(source, diagnostics);
+    lucb::ParseResult parsed = parse(source, tokens, arena, diagnostics);
+    if (!diagnostics.empty() || parsed.module == nullptr) {
+        return false;
+    }
+    check_module(parsed.module, arena, diagnostics, "t.lucb");
+    return diagnostics.empty() && diagnostics.has_warning(code);
+}
+
 static bool check_has(const char* text, const char* code) {
     DiagnosticBag diagnostics;
     Source source = Source::from_bytes("t.lucb", text, diagnostics);
@@ -151,6 +166,62 @@ TEST(check_untyped_expression_against_typed_operand) {
 
 TEST(check_unused_import_is_pruned) {
     CHECK(check_ok("import memory\npub func answer() -> i64:\n    return 42\n"));
+}
+
+TEST(warn_unused_local_is_pruned) {
+    CHECK(check_warns("pub func answer() -> i64:\n    let unused = 5\n    return 42\n", "lucb.warn.unused"));
+    CHECK(check_ok("pub func answer() -> i64:\n    let _scratch = 5\n    return 42\n"));
+}
+
+TEST(warn_unused_import) {
+    CHECK(check_warns("import memory\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
+}
+
+TEST(warn_unused_private_function) {
+    CHECK(check_warns("func spare() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
+    CHECK(!check_warns("func used() -> i64:\n    return 1\npub func answer() -> i64:\n    return 41 + used()\n", "lucb.warn.unused"));
+    CHECK(!check_warns("pub func exported() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.warn.unused"));
+}
+
+TEST(warn_unreachable_code) {
+    CHECK(check_warns("pub func answer() -> i64:\n    return 42\n    let x = 1\n", "lucb.warn.dead"));
+}
+
+TEST(warn_constant_branch) {
+    CHECK(check_warns("pub func answer() -> i64:\n    if true:\n        return 42\n    else:\n        return 0\n", "lucb.warn.dead"));
+    CHECK(check_warns("pub func answer() -> i64:\n    while false:\n        return 0\n    return 42\n", "lucb.warn.dead"));
+}
+
+TEST(check_binding_forms_positive) {
+    const char* pre = "struct P:\n    var a: i64\n    var b: i64\nfunc give() -> i64:\n    return 42\nfunc two() -> (i64, i64):\n    return (40, 2)\n";
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    let x = 42\n    return x\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var x: i64\n    x += 42\n    return x\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var x: i64 = 41\n    x += 1\n    return x\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    let b: u8 = 42\n    return (i64)b\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    let x = give()\n    return x\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var p = P(a = 42, b = 0)\n    return p.a\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    let xs = [40, 2]\n    return xs[0] + xs[1]\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    let (a, b) = two()\n    return a + b\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var buf: u8[8] = ---\n    buf[0] = 42\n    return (i64)buf[0]\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var q: i64*? = none\n    if q == none:\n        return 42\n    return 0\n").c_str()));
+    CHECK(check_ok((std::string(pre) + "pub func answer() -> i64:\n    var p: P\n    p.a = 42\n    return p.a + p.b\n").c_str()));
+}
+
+TEST(check_binding_forms_negative) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x: i64\n    return 42\n", "lucb.parse.expect"));
+    CHECK(check_has("pub func answer() -> i64:\n    var x\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = none\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("interface S:\n    func a() -> i64\npub func answer() -> i64:\n    var v: S\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("interface S:\n    func a() -> i64\npub func answer() -> i64:\n    var vs: S[2]\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    var p: i64*\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    var x = ---\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x: i64 = \"text\"\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = 1\n    let x = 2\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = 1\n    if true:\n        let x = 2\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_has("func nothing():\n    return\npub func answer() -> i64:\n    let x = nothing()\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let b: u8 = 300\n    return 42\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = 1\n    x = 2\n    return 42\n", "lucb.check.mut"));
+    CHECK(check_has("pub func answer() -> i64:\n    let y = x + 1\n    let x = 41\n    return y\n", "lucb.check.name"));
 }
 
 TEST(check_escape_local) {
