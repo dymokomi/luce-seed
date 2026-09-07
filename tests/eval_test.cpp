@@ -879,3 +879,18 @@ TEST(eval_handler_steers_array_loop) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 6);
 }
+
+// §12.2, §12.4: `free` hands the block back to its allocator's `release`, in bytes
+TEST(eval_free_releases_through_the_allocator) {
+    EvalResult r = run("import memory\n"
+                       "struct Counting: memory.Allocator:\n    var bytes: usize\n"
+                       "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                       "        self.bytes += size\n        return memory.heap.allocate(size, alignment)\n"
+                       "    pub mutating func resize(block: u8[], size: usize) -> bool:\n        return false\n"
+                       "    pub mutating func release(block: u8[]):\n        self.bytes -= block.length\n        memory.heap.release(block)\n"
+                       "pub func answer() -> i64!:\n    var c = Counting(bytes = 0)\n"
+                       "    let items = try new i64[4] in c\n    let one = try new i64 in c\n    let after = c.bytes\n"
+                       "    free(items) in c\n    free(one) in c\n    return (i64)after * 1000 + (i64)c.bytes\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40000);
+}

@@ -333,6 +333,7 @@ struct Parser {
     Node* parse_lambda();
     Node* parse_group_or_tuple();
     Node* parse_array_lit();
+    bool paren_type_ahead() const;
     Node* parse_new_or_alloc(bool is_alloc);
     Node* parse_type();
     Node* parse_primary_type();

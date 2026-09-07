@@ -149,6 +149,9 @@ auto Interp::lvalue(Node* n) -> Value* {
     if (n == nullptr || trapped) {
         return nullptr;
     }
+    if (n->kind == NodeKind::Group) {
+        return lvalue(n->left);
+    }
     if (n->kind == NodeKind::Name || n->kind == NodeKind::Self) {
         string_view name = n->kind == NodeKind::Self ? string_view("self") : n->text;
         Slot* s = find_slot(name, n->resolved);

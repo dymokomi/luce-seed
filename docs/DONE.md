@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.26**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.27**, the seed `luce-base` is written against.
+
+## 0.27: what chapter 12 of the conformance suite found
+
+- `free` hands the block back: a user allocator's `release` runs with the block
+  in bytes, a `FixedBuffer` takes back its last block, the heap needs nothing;
+- `memory.heap` answers `allocate`, `resize`, and `release` as a view;
+- `in allocator` binds below `catch`, so `new T in arena catch e:` handles the
+  allocation; `alloc (T)[n]` parenthesises a type;
+- a grouped place, `(*p)[i] = v`, is assignable and an lvalue;
+- `new T[count]` needs a zeroable `T`.
 
 ## 0.26
 

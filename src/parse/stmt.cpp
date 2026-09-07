@@ -92,7 +92,7 @@ auto Parser::parse_free() -> Node* {
     n->left = parse_expression();
     expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
     if (eat(TokenKind::KwIn)) {
-        n->right = parse_expression();
+        n->right = parse_else_expr();
     }
     n->span = span_from(start);
     return n;

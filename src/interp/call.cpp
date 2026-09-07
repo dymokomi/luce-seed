@@ -935,7 +935,13 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         if (ot != nullptr && ot->kind == TypeKind::Interface) {
             Value view = eval(callee->left);
-            if (trapped || view.ptr == nullptr) {
+            if (trapped) {
+                return v_unit();
+            }
+            if (view.ptr == nullptr && view.kind == TypeKind::Allocator) {
+                return heap_view_call(callee->text, n); // `memory.heap` as a view (§12.3)
+            }
+            if (view.ptr == nullptr) {
                 fail("null interface");
                 return v_unit();
             }

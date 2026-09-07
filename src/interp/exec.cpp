@@ -405,12 +405,14 @@ auto Interp::exec(Node* n) -> void {
     case NodeKind::ExprStmt:
         eval(n->left);
         break;
-    case NodeKind::Free:
-        eval(n->left);
-        if (n->right != nullptr) {
-            as_alloc(n->right);
+    case NodeKind::Free: {
+        Value block = eval(n->left);
+        Value a = as_alloc(n->right);
+        if (!trapped) {
+            release_bytes(a, block);
         }
         break;
+    }
     case NodeKind::With: {
         Value saved = current_alloc;
         current_alloc = as_alloc(n->left);

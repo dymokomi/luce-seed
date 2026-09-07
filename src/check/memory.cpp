@@ -89,6 +89,9 @@ auto Checker::check_new(Node* n) -> Type* {
         } else {
             fail_n(n, "lucb.check.type", "`new T[count]` needs a count");
         }
+        if (!is_zeroable(elem)) {
+            fail_n(n, "lucb.check.type", "`new T[count]` zeroes its elements, so `T` must be zeroable; use `alloc`");
+        }
         return intern_fail(intern_sp(elem, false));
     }
     Type* t = resolve_type(tn);

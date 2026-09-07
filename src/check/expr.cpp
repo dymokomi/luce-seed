@@ -1154,6 +1154,9 @@ auto Checker::is_mut_place(Node* n) -> bool {
     if (n == nullptr) {
         return false;
     }
+    if (n->kind == NodeKind::Group) {
+        return is_mut_place(n->left);
+    }
     if (n->kind == NodeKind::Name) {
         Binding* b = lookup(n->text);
         return b != nullptr && b->mut;

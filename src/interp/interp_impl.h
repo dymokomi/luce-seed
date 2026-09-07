@@ -50,6 +50,11 @@ struct Interp {
     Value* bump_fb = nullptr;
     Value* bump_ptr = nullptr;
     size_t bump_len = 0;
+    // the FixedBuffer's last block, so `free` can give it back (§12.4)
+    Value* fb_last = nullptr;
+    size_t fb_last_start = 0;
+    size_t fb_last_end = 0;
+    void release_bytes(const Value& a, const Value& block);
     struct Deferred {
         Node* n = nullptr;
         bool err_only = false;
@@ -106,6 +111,7 @@ struct Interp {
     Value eval_binary(Node* n);
     Value eval_else(Node* n);
     void run_catch_handler(Node* n, const Value& errv);
+    Value heap_view_call(string_view method, Node* call);
     Value eval_catch(Node* n);
     bool match_pat(Node* pat, const Value& scrut, Type* st);
     Value eval_match(Node* n);

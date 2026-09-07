@@ -542,10 +542,20 @@ auto Parser::parse_array_lit() -> Node* {
     return n;
 }
 
+// `alloc (T)[n]` parenthesises a type; `alloc(size, alignment)` opens on an expression.
+auto Parser::paren_type_ahead() const -> bool {
+    Token inner = peek(1);
+    if (inner.kind == TokenKind::KwFunc || inner.kind == TokenKind::KwConst || inner.kind == TokenKind::KwVolatile) {
+        return true;
+    }
+    return inner.kind == TokenKind::Name && !inner.text.empty() &&
+           (is_core_type(inner.text) || (inner.text[0] >= 'A' && inner.text[0] <= 'Z'));
+}
+
 auto Parser::parse_new_or_alloc(bool is_alloc) -> Node* {
     Token start = take();
     Node* n = make(is_alloc ? NodeKind::Alloc : NodeKind::New, start.span);
-    if (is_alloc && at(TokenKind::LParen)) {
+    if (is_alloc && at(TokenKind::LParen) && !paren_type_ahead()) {
         n->body = parse_arg_list();
     } else {
         n->type = parse_type();
@@ -563,7 +573,7 @@ auto Parser::parse_new_or_alloc(bool is_alloc) -> Node* {
         }
     }
     if (eat(TokenKind::KwIn)) {
-        n->right = parse_expression();
+        n->right = parse_else_expr(); // `catch` after the allocator handles the allocation
     }
     n->span = span_from(start);
     return n;

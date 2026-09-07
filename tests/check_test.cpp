@@ -1124,3 +1124,9 @@ TEST(check_unary_under_optional_context) {
                    "func h(v: u32) -> u32?:\n    return -%v\n"
                    "pub func answer() -> i64:\n    let a = f(1) else 0\n    return (i64)a\n"));
 }
+
+// §12.2: `alloc (T)[n]` parenthesises a type; `alloc(size, alignment)` takes expressions
+TEST(check_alloc_paren_type) {
+    CHECK(check_ok("pub func answer() -> i64!:\n    let p = try alloc (i64*)[4]\n    free(p)\n"
+                   "    let raw = try alloc(16, 8)\n    free(raw)\n    return 0\n"));
+}

@@ -24,6 +24,38 @@ auto Interp::heap_alloc_value() -> Value {
     return a;
 }
 
+// `memory.heap.allocate(size, alignment)`, `.release(block)`, and `.resize(block, size)`: the
+// process's allocator reached as an `Allocator` view (§12.3). The interpreter's heap is the
+// host's, so a block is fresh zeroed cells, a release is nothing, and nothing resizes.
+auto Interp::heap_view_call(string_view method, Node* call) -> Value {
+    Node* first = call->body != nullptr ? call->body->left : nullptr;
+    Node* second = call->body != nullptr && call->body->next != nullptr ? call->body->next->left : nullptr;
+    Value a = eval(first);
+    Value b = eval(second);
+    if (trapped) {
+        return v_unit();
+    }
+    if (method == "allocate") {
+        const size_t count = static_cast<size_t>(as_u(a, first != nullptr ? first->ty : nullptr));
+        Type* span_t = is_opt(call->ty) ? call->ty->elem : call->ty;
+        vector<Value> elems(count, zero_of(span_t != nullptr ? span_t->elem : nullptr));
+        Value block = make_array(span_t, std::move(elems));
+        block.kind = TypeKind::Optional;
+        block.type = call->ty;
+        block.present = true;
+        return block;
+    }
+    if (method == "resize") {
+        return v_bool(false);
+    }
+    if (method == "release") {
+        return v_unit();
+    }
+    (void)b;
+    fail("unknown method");
+    return v_unit();
+}
+
 auto Interp::fail_exhausted(Type* fail_ty) -> Value {
     Value v;
     v.kind = TypeKind::Fallible;
@@ -119,7 +151,38 @@ auto Interp::bump_fixed(Value* fb, size_t size, size_t align) -> bool {
         return false;
     }
     fb->fields[2].u = start + size;
+    fb_last = fb;
+    fb_last_start = start;
+    fb_last_end = start + size;
     return true;
+}
+
+// `free(block)` and `free(block) in allocator` (§12.2): a user allocator's `release` runs; a
+// FixedBuffer takes back its last block, as the prelude's does; the heap needs nothing.
+auto Interp::release_bytes(const Value& a, const Value& block) -> void {
+    if (a.kind == TypeKind::Allocator && a.ptr != nullptr && a.u == 1) {
+        Value* fb = a.ptr;
+        if (fb == fb_last && fb->fields.size() >= 3 && fb->fields[2].u == fb_last_end) {
+            fb->fields[2].u = fb_last_start;
+            fb_last = nullptr;
+        }
+        return;
+    }
+    if ((a.kind == TypeKind::Interface || a.u == 2) && a.ptr != nullptr) {
+        Node* st = a.ptr->type != nullptr ? a.ptr->type->decl : nullptr;
+        if (st == nullptr && a.type != nullptr) {
+            st = a.type->decl;
+        }
+        // `release` takes the block as bytes: a `T[]` of n elements or one `T*` is its size
+        vector<Value> args;
+        Value span = block;
+        Type* elem = is_ptr(block.type) || is_span(block.type) ? block.type->elem : nullptr;
+        const size_t unit = static_cast<size_t>(type_size(elem) > 0 ? type_size(elem) : 1);
+        span.kind = TypeKind::Span;
+        span.length = (block.kind == TypeKind::Pointer ? 1 : block.length) * unit;
+        args.push_back(span);
+        invoke_method(a.ptr, st, "release", args);
+    }
 }
 
 auto Interp::take_bytes(const Value& a, size_t size, size_t align) -> bool {
