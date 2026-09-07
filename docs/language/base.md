@@ -1340,7 +1340,7 @@ The language depends on these modules by name. Their full surfaces are in the li
 | `files` | `read(path: c.str) -> u8[]!` allocating from the current allocator, `write`, `list(path: c.str) -> str[]!`, `missing` (error code) |
 | `process` | `run(program: c.str, arguments: c.str[]) -> i32!` |
 | `math` | `pi`, `tau`, `e`, `infinity`, `nan`; `floor`, `ceil`, `round`, `trunc`, `sqrt`, `cbrt`, `hypot`, `mod`, `pow`, `exp`, `exp2`, `log`, `log2`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `abs`, `sign`, `min`, `max`, `clamp`, `is_nan`, `is_finite`, `is_infinite` on `f64`; `div_floor`, `mod_floor`, `iabs`, `imin`, `imax`, `iclamp` on `i64`. `from math import sqrt` brings one in; `import math` keeps them qualified |
-| `os` | the target as constants: `arm64`, `x86_64`, `macos`, `linux`, `pointer_bits`; `cpus()`, `page_size()`, `env`, `set_env`, `unset_env`, `cwd`, `change_dir`, `pid`, `parent_pid`, `hostname`, `exit` |
+| `os` | the target as constants: `arm64`, `x86_64`, `macos`, `linux`, `windows`, `posix`, `pointer_bits`, `name`; `cpus()`, `page_size()`, `env`, `set_env`, `unset_env`, `cwd`, `change_dir`, `pid`, `parent_pid`, `hostname`, `exit` |
 | `thread` | `spawn`, `Handle`, `current`, `pause`, `yield`, `sleep` |
 | `sync` | `Mutex`, `Condition`, `Once`, `Semaphore` |
 | `atomic` | `fence`, `Ordering` |
@@ -1599,6 +1599,8 @@ A Base executable links a startup shim and a trap reporter and no Luce runtime (
 
 ### 19.5 Targets
 
+`luce build --target NAME` compiles for a target; without `--target` the host is the target. The compiler writes the `platform` standard module for the build, whose constants `os` re-exports, so `if os.linux and os.x86_64:` is decided at compile time and the other arms are pruned (§19.6): one source covers every target, and each target links only what it uses. The standard library is written that way: a constant whose value differs by target is a conditional of constants, `6 if platform.macos else 1`, and a call whose shape differs is an `if` over the target's arms. The native backend emits the host's target; another target's program is written as C with `--emit=c` and compiled there.
+
 | `--target` | `asm` name | Pointer width | `c.long` | `c.char` | Calling convention |
 | --- | --- | --- | --- | --- | --- |
 | `x86_64-linux` | `x86_64` | 64 | 64 | signed | SysV |
@@ -1610,7 +1612,7 @@ A Base executable links a startup shim and a trap reporter and no Luce runtime (
 
 ### 19.6 Tooling
 
-`luce fmt`, `luce check`, `luce build`, `luce test`, and `luce bind` apply to Base modules. `-W` on `check`, `build`, or `test` prints the checker's warnings: an unused local (a name beginning with `_` is exempt), an unused import, a private function nothing references, a statement no path reaches, and a branch or loop whose literal condition rules it out. Each is also pruned from the program by the checker, so nothing after the checker sees it. A condition that is a constant expression without being a literal, `if os.arm64:` or `if os.pointer_bits == 64:`, is decided the same way and its ruled-out branch pruned, silently, since the program meant it: this is how a program covers several targets in one source; an unused binding whose initialiser may have an effect stays as that expression. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target` with no argument lists the targets above and the `asm` architectures a package covers.
+`luce fmt`, `luce check`, `luce build`, `luce test`, and `luce bind` apply to Base modules. `-W` on `check`, `build`, or `test` prints the checker's warnings: an unused local (a name beginning with `_` is exempt), an unused import, a private function nothing references, a statement no path reaches, and a branch or loop whose literal condition rules it out. Each is also pruned from the program by the checker, so nothing after the checker sees it. A condition that is a constant expression without being a literal, `if os.arm64:` or `if os.pointer_bits == 64:`, is decided the same way and its ruled-out branch pruned, silently, since the program meant it: this is how a program covers several targets in one source; an unused binding whose initialiser may have an effect stays as that expression. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target NAME` selects a target (§19.5); `--target` with no argument lists the targets above and the `asm` architectures a package covers.
 
 ## 20. Exclusions
 
