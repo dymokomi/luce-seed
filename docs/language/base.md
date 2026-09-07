@@ -1310,7 +1310,7 @@ import data.serialisation as serial
 from image.geometry import Point
 ```
 
-`import` keeps a module qualified, with an optional alias. `from ... import` brings named declarations in and nothing else: `from io import Writer` brings `Writer`, `from io import Writer, stdout` brings both, and a program that also writes `io.something` needs `import io` as well. There are no wildcards and no relative imports. An import nothing resolves through is pruned by the checker, so nothing after it sees the import; a duplicate import is an error with an automatic fix.
+`import` keeps a module qualified, with an optional alias; without one the qualifier is the path's last segment, so `import image.color` is used as `color.rgb`. `from ... import` brings named declarations in and nothing else: `from io import Writer` brings `Writer`, `from io import Writer, stdout` brings both, and a program that also writes `io.something` needs `import io` as well. There are no wildcards and no relative imports. An import nothing resolves through is pruned by the checker, so nothing after it sees the import; a duplicate import is an error with an automatic fix.
 
 ### 16.4 Packages
 
