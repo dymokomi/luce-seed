@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.39**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.40**, the seed `luce-base` is written against.
+
+## 0.40: the escape rule through aggregates
+
+- a tuple or array literal holding a local's address is as local as that address, and a
+  result or a stored value whose type holds a view anywhere inside, a tuple, an array, a
+  struct, or an optional of one, is checked like the view itself (§6.6): `return (1, &n)`
+  is refused.
 
 ## 0.39: what the expanded conformance programs found
 

@@ -36,6 +36,36 @@ auto Checker::check_naked_body(Node* fn) -> void {
     }
 }
 
+// Whether a value of type `t` can hold a view of a frame: a pointer, span, or `str`, an
+// optional of one, or a tuple, array, or struct with such a component (§6.6).
+auto Checker::holds_view(const Type* t) -> bool {
+    if (t == nullptr) {
+        return false;
+    }
+    if (is_ptr(t) || is_span(t) || t->kind == TypeKind::Str) {
+        return true;
+    }
+    if (is_opt(t) || is_array(t)) {
+        return holds_view(t->elem);
+    }
+    if (is_tup(t)) {
+        for (int i = 0; i < t->ntargs; i++) {
+            if (holds_view(t->args[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (t->kind == TypeKind::Struct && t->decl != nullptr) {
+        for (Node* f = t->decl->body; f != nullptr; f = f->next) {
+            if (f->kind == NodeKind::Field && holds_view(f->ty)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 auto Checker::mark_local(Node* n) -> void {
     if (n != nullptr) {
         n->flags |= FlagLocal;

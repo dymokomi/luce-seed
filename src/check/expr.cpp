@@ -82,6 +82,7 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
         break;
     case NodeKind::Tuple:
         t = check_tuple_expr(n, expected);
+        mark_if_member_local(n);
         break;
     case NodeKind::Self:
         t = check_self(n);
@@ -145,6 +146,7 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
         break;
     case NodeKind::ArrayLit:
         t = check_array_lit(n, expected);
+        mark_if_member_local(n);
         break;
     case NodeKind::SpanMake:
         t = check_span_make(n);
@@ -343,6 +345,17 @@ auto Checker::is_place_expr(Node* n) -> bool {
         return n->op == TokenKind::Star;
     default:
         return false;
+    }
+}
+
+// A tuple or array literal holding a local's address is as local as that address:
+// `return (1, &n)` leaves the frame through the tuple (§6.6).
+auto Checker::mark_if_member_local(Node* n) -> void {
+    for (Node* m = n->body; m != nullptr; m = m->next) {
+        if (is_local(m)) {
+            mark_local(n);
+            return;
+        }
     }
 }
 

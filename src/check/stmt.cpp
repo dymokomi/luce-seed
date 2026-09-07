@@ -177,7 +177,7 @@ auto Checker::check_stmt(Node* n) -> void {
                 !can_ptr_convert(rt, dest, n->right)) {
                 fail_n(n, "lucb.check.type", "assignment type mismatch");
             }
-            const bool view = is_ptr(dest) || is_span(dest) || (dest != nullptr && dest->kind == TypeKind::Str);
+            const bool view = holds_view(dest);
             if (view && is_local(n->right) && !place_is_local(n->left)) {
                 // §6.6: a local's address may not be stored in a global or through a pointer
                 fail_n(n->right, "lucb.check.escape", "this pointer or view must not be stored where it outlives the function");
@@ -280,9 +280,7 @@ auto Checker::check_stmt(Node* n) -> void {
             fail_n(n, "lucb.check.type",
                    "return type is " + type_name(t) + ", expected " + type_name(return_type));
         }
-        if (n->left != nullptr && is_local(n->left) &&
-            (is_ptr(return_type) || is_span(return_type) ||
-             (return_type != nullptr && return_type->kind == TypeKind::Str))) {
+        if (n->left != nullptr && is_local(n->left) && holds_view(return_type)) {
             fail_n(n, "lucb.check.escape", "this pointer or view must not escape the function");
         }
         break;
