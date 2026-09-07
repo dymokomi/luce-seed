@@ -940,6 +940,10 @@ auto Interp::eval_call(Node* n) -> Value {
         if (callee->text == "bits" && method == nullptr && callee->left != nullptr) {
             return eval_float_bits(callee, n);
         }
+        if ((callee->text == "first" || callee->text == "last") && method == nullptr &&
+            callee->left != nullptr && (is_span(callee->left->ty) || is_array(callee->left->ty))) {
+            return eval_span_end(callee, n);
+        }
         if (callee->text == "compare" && (method == nullptr || method->kind != NodeKind::Func)) {
             Value L = eval(callee->left);
             Value R = eval(n->body != nullptr ? n->body->left : nullptr);
@@ -1200,6 +1204,32 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
 } // namespace lucb
 
 namespace lucb {
+
+// `span.first()` and `span.last()`: the end element as `T?`, `none` when empty (§5.4).
+auto Interp::eval_span_end(Node* callee, Node* n) -> Value {
+    Value s = eval(callee->left);
+    if (trapped) {
+        return v_unit();
+    }
+    size_t len = s.length != 0 ? s.length : s.fields.size();
+    if (s.kind == TypeKind::Array && s.type != nullptr) {
+        len = static_cast<size_t>(s.type->length);
+    }
+    Value out;
+    out.kind = TypeKind::Optional;
+    out.type = n->ty;
+    if (len == 0) {
+        out.present = false;
+        return out;
+    }
+    const size_t at = callee->text == "first" ? 0 : len - 1;
+    Value elem = s.ptr != nullptr ? s.ptr[at] : (at < s.fields.size() ? s.fields[at] : Value());
+    elem = copy_value(elem);
+    elem.kind = TypeKind::Optional;
+    elem.type = n->ty;
+    elem.present = true;
+    return elem;
+}
 
 // `f64.bits(u)`, `f32.bits(u)`, `f16.bits(u)`, and `value.bits()`: a float and its IEEE
 // bits (§7.5), at the float's width.

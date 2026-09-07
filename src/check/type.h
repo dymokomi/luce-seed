@@ -100,6 +100,8 @@ int int_bits(const Type* t);
 int float_bits(const Type* t);
 // Whether `k` is one of the float kinds.
 bool is_float_kind(TypeKind k);
+// A nullable pointer or nullable function: an optional whose `none` is address zero (§5.8).
+bool is_null_niche(const Type* t);
 // The float kind `name` spells (`f16`, `f32`, `f64`), or `TypeKind::Error`.
 TypeKind float_kind_named(std::string_view name);
 // The width of the float kind `k` in bits: 16, 32, or 64.

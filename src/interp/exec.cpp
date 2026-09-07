@@ -178,7 +178,7 @@ auto Interp::exec(Node* n) -> void {
             if (trapped) {
                 return;
             }
-            bool some = v.kind == TypeKind::Optional ? v.present : v.ptr != nullptr;
+            bool some = v.kind == TypeKind::Optional ? v.present : (v.kind == TypeKind::Func ? v.fn != nullptr : v.ptr != nullptr);
             if (some) {
                 Slot s;
                 s.name = let != nullptr ? let->text : string_view{};
@@ -215,7 +215,7 @@ auto Interp::exec(Node* n) -> void {
                 if (trapped) {
                     return;
                 }
-                bool some = v.kind == TypeKind::Optional ? v.present : v.ptr != nullptr;
+                bool some = v.kind == TypeKind::Optional ? v.present : (v.kind == TypeKind::Func ? v.fn != nullptr : v.ptr != nullptr);
                 if (!some) {
                     break;
                 }
@@ -362,6 +362,19 @@ auto Interp::exec(Node* n) -> void {
                 elem = elems[i];
             } else if (i < it.fields.size()) {
                 elem = it.fields[i];
+            }
+            if ((n->flags & FlagIndexed) != 0 && n->left != nullptr) {
+                // `for (i, x) in items.indexed()`: the index beside the element
+                s.value = v_int(n->ty, static_cast<uint64_t>(i));
+                Slot value;
+                value.name = n->left->text;
+                value.value = elem;
+                frames.back().slots.push_back(s);
+                frames.back().slots.push_back(value);
+                exec(n->body);
+                frames.back().slots.pop_back();
+                frames.back().slots.pop_back();
+                continue;
             }
             if (n->flags & FlagByPtr) {
                 Value p;

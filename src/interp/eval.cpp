@@ -276,14 +276,16 @@ static string utf8_of(uint32_t cp) {
 }
 
 auto Interp::show(const Value& v) -> string {
-    if (v.kind == TypeKind::Bool) {
-        return v.b ? "true" : "false";
+    Type* shown = is_atomic(v.type) ? v.type->elem : v.type;
+    if (v.kind == TypeKind::Bool || (shown != nullptr && shown->kind == TypeKind::Bool)) {
+        const bool truth = v.b || (v.kind != TypeKind::Bool && v.u != 0);
+        return truth ? "true" : "false";
     }
     if (v.kind == TypeKind::Char || (v.type != nullptr && v.type->kind == TypeKind::Char)) {
         return utf8_of(static_cast<uint32_t>(as_u(v, v.type)));
     }
-    if (v.kind == TypeKind::Str) {
-        return decode_string(v.str);
+    if (v.kind == TypeKind::Str || v.kind == TypeKind::Fmt) {
+        return decode_string(v.str); // a forwarded `fmt` parameter shows its text
     }
     if (is_float(v.type) || is_float_kind(v.kind)) {
         char buf[64];
@@ -819,8 +821,8 @@ auto Interp::eval_else(Node* n) -> Value {
     if (v.kind == TypeKind::Optional) {
         some = v.present;
     }
-    if (is_ptr(n->left != nullptr ? n->left->ty : nullptr) && n->left->ty->is_nullable) {
-        some = v.ptr != nullptr;
+    if (is_null_niche(n->left != nullptr ? n->left->ty : nullptr)) {
+        some = v.kind == TypeKind::Func ? v.fn != nullptr : (v.kind == TypeKind::Optional ? v.present : v.ptr != nullptr);
     }
     if (some) {
         if (v.kind == TypeKind::Optional && n->ty != nullptr) {

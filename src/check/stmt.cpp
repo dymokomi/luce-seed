@@ -202,11 +202,10 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->flags & FlagIfLet) {
             Node* let = n->left;
             Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
-            if (!is_opt(ot) && !(is_ptr(ot) && ot->is_nullable)) {
+            if (!is_opt(ot) && !is_null_niche(ot)) {
                 fail_n(n, "lucb.check.type", "`if let` needs an optional");
             }
-            Type* payload =
-                is_opt(ot) ? ot->elem : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
+            Type* payload = is_opt(ot) ? ot->elem : non_null(ot);
             push_scope();
             if (let != nullptr) {
                 bind(let->text, payload, false, let);
@@ -232,11 +231,10 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->flags & FlagIfLet) {
             Node* let = n->left;
             Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
-            if (!is_opt(ot) && !(is_ptr(ot) && ot->is_nullable)) {
+            if (!is_opt(ot) && !is_null_niche(ot)) {
                 fail_n(n, "lucb.check.type", "`while let` needs an optional");
             }
-            Type* payload =
-                is_opt(ot) ? ot->elem : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
+            Type* payload = is_opt(ot) ? ot->elem : non_null(ot);
             enter_loop(n);
             push_scope();
             if (let != nullptr) {
@@ -277,6 +275,18 @@ auto Checker::check_stmt(Node* n) -> void {
         break;
     }
     case NodeKind::For: {
+        // `for (i, x) in items.indexed()` walks the sequence itself with its index (§5.4)
+        if (n->left != nullptr) {
+            Node* call = n->right;
+            Node* callee = call != nullptr && call->kind == NodeKind::Call ? call->left : nullptr;
+            if (callee != nullptr && callee->kind == NodeKind::Member && callee->text == "indexed" &&
+                call->body == nullptr) {
+                n->right = callee->left;
+                n->flags |= FlagIndexed;
+            } else {
+                fail_n(n, "lucb.check.type", "a tuple of names needs `.indexed()`");
+            }
+        }
         Type* it =
             n->right != nullptr && n->right->kind == NodeKind::Binary &&
                     (n->right->op == TokenKind::DotDotLt || n->right->op == TokenKind::DotDotEq)
@@ -346,7 +356,14 @@ auto Checker::check_stmt(Node* n) -> void {
         n->ty = elem;
         enter_loop(n);
         push_scope();
-        bind(n->text, elem, false, n);
+        if ((n->flags & FlagIndexed) != 0 && n->left != nullptr) {
+            n->left->ty = elem;
+            n->ty = t_usize();
+            bind(n->text, t_usize(), false, n);
+            bind(n->left->text, elem, false, n->left);
+        } else {
+            bind(n->text, elem, false, n);
+        }
         check_stmt(n->body);
         pop_scope();
         loop_labels.pop_back();

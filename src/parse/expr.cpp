@@ -337,10 +337,15 @@ auto Parser::parse_type_builtin() -> Node* {
         bool as_type = at(TokenKind::KwConst) || at(TokenKind::KwFunc) ||
                        at(TokenKind::KwVolatile) || at(TokenKind::At) || at(TokenKind::LParen);
         if (at(TokenKind::Name)) {
+            // `sizeof(n.next)` measures a member; `sizeof(c.long)` and `sizeof(m.Type*)`
+            // name a type, which the checker tells apart when nothing follows the name
             TokenKind nxt = peek(1).kind;
+            if (nxt == TokenKind::Dot) {
+                nxt = peek(3).kind;
+            }
             if (nxt == TokenKind::Star || nxt == TokenKind::StarQuestion ||
                 nxt == TokenKind::LBracket || nxt == TokenKind::Question ||
-                nxt == TokenKind::Bang || nxt == TokenKind::Dot) {
+                nxt == TokenKind::Bang) {
                 as_type = true;
             }
         }

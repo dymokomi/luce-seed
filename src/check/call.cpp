@@ -991,6 +991,15 @@ auto Checker::check_method_call(Node* n) -> Type* {
     if (mem->text == "bits" && is_float(recv)) {
         return check_float_bits(n, obj);
     }
+    if ((mem->text == "first" || mem->text == "last") && (is_span(recv) || is_array(recv))) {
+        // `span.first()` and `span.last()` are `T?` (§5.4)
+        if (count_args(n->body) != 0) {
+            fail_n(n, "lucb.check.call", "`" + string(mem->text) + "` takes no argument");
+        }
+        n->resolved = nullptr;
+        mem->resolved = nullptr;
+        return intern_opt(recv->elem);
+    }
     if (mem->text == "compare" && comparable_type(recv)) {
         if (count_args(n->body) != 1) {
             fail_n(n, "lucb.check.call", "`compare` takes one argument");

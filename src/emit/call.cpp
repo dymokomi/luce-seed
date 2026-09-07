@@ -757,6 +757,10 @@ auto Emitter::emit_call(Node* n) -> string {
         if (callee->text == "bits" && method == nullptr && obj != nullptr) {
             return emit_float_bits(obj, n);
         }
+        if ((callee->text == "first" || callee->text == "last") && method == nullptr &&
+            obj != nullptr && (is_span(obj->ty) || is_array(obj->ty))) {
+            return emit_span_end(obj, n, callee->text == "first");
+        }
         if (callee->text == "compare" && method == nullptr) {
             string L = emit_expr(obj);
             string R = emit_expr(n->body != nullptr ? n->body->left : nullptr);
@@ -872,6 +876,27 @@ auto Emitter::emit_ctor(Node* n, Node* st) -> string {
 } // namespace lucb
 
 namespace lucb {
+
+// `span.first()` and `span.last()`: the end element as `T?`, `none` when empty (§5.4).
+auto Emitter::emit_span_end(Node* obj, Node* n, bool first) -> string {
+    const int id = tmp();
+    const string sn = "_lb_se" + std::to_string(id);
+    const string rn = "_lb_sr" + std::to_string(id);
+    Type* st = obj->ty;
+    string len;
+    string elem;
+    if (is_array(st)) {
+        len = std::to_string(st->length) + "ULL";
+        elem = sn + ".d[" + (first ? string("0") : std::to_string(st->length - 1)) + "]";
+    } else {
+        len = sn + ".length";
+        const string q = st->is_const ? "const " : "";
+        elem = "((" + q + c_type(st->elem) + "*)" + sn + ".data)[" + (first ? string("0") : sn + ".length - 1") + "]";
+    }
+    return "({ " + c_type(st) + " " + sn + " = " + emit_expr(obj) + "; " + c_type(n->ty) + " " + rn +
+           "; if (" + len + " > 0) { " + rn + ".present = true; " + rn + ".value = " + elem + "; } else { " +
+           rn + " = " + none_opt(n->ty) + "; } " + rn + "; })";
+}
 
 // `f64.bits(u)` and `value.bits()` are a memcpy each way (§7.5), at the float's width.
 auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {

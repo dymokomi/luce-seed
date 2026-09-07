@@ -1,0 +1,20 @@
+# answer: 49
+## `span.first()` and `span.last()` are `T?`, `none` when empty, and `indexed()` walks a
+## sequence with its index (§5.4), on spans and arrays alike.
+pub func answer() -> i64:
+    var numbers: i64[4] = [3, 5, 7, 9]
+    let view: i64[] = numbers
+    let empty = view[0..<0]
+    var total: i64 = 0
+    if let f = view.first():
+        total += f
+    if let l = numbers.last():
+        total += l
+    if let absent = empty.first():
+        total += 1000
+    for (i, n) in view.indexed():
+        total += i64(i) * n
+    for (i, n) in numbers.indexed():
+        if i == 3:
+            total -= n
+    return total

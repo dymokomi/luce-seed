@@ -244,6 +244,10 @@ bool is_float(const Type* t) {
     return t != nullptr && is_float_kind(t->kind);
 }
 
+bool is_null_niche(const Type* t) {
+    return t != nullptr && (is_ptr(t) || is_func(t)) && t->is_nullable;
+}
+
 bool is_float_kind(TypeKind k) {
     return k == TypeKind::F16 || k == TypeKind::F32 || k == TypeKind::F64;
 }
@@ -515,6 +519,13 @@ int type_align(const Type* t) {
         }
         return align < 1 ? 1 : align;
     }
+    if (t->kind == TypeKind::Optional) {
+        return type_align(t->elem);
+    }
+    if (t->kind == TypeKind::Fallible) {
+        const int a = t->elem != nullptr ? type_align(t->elem) : 1;
+        return a > 8 ? a : 8;
+    }
     if (t->kind == TypeKind::Enum) {
         if (is_int_enum(t)) {
             return type_align(t->elem);
@@ -540,6 +551,15 @@ int type_align(const Type* t) {
         return 1;
     }
     return n;
+}
+
+// `n` rounded up to a multiple of `align`: the tail padding C adds to an aggregate.
+static int padded(int n, int align) {
+    if (align <= 1) {
+        return n;
+    }
+    const int rem = n % align;
+    return rem == 0 ? n : n + (align - rem);
 }
 
 int type_size(const Type* t) {
@@ -586,10 +606,18 @@ int type_size(const Type* t) {
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
     case TypeKind::Span:
         return static_cast<int>(sizeof(void*) + sizeof(size_t));
-    case TypeKind::Optional:
-        return type_size(t->elem) + 1;
-    case TypeKind::Fallible:
-        return type_size(t->elem) + static_cast<int>(sizeof(void*) * 2 + 1);
+    case TypeKind::Optional: {
+        // `{ T value; bool present; }` as C lays it out: the tag, then tail padding
+        const int align = type_align(t);
+        return padded(type_size(t->elem) + 1, align);
+    }
+    case TypeKind::Fallible: {
+        // `{ T value; lb_error error; bool failed; }`: the error is a code and a `str`,
+        // eight-aligned and 24 bytes; a `unit` result has no value at all
+        const int align = type_align(t);
+        const int value = t->elem != nullptr && t->elem->kind != TypeKind::Unit ? type_size(t->elem) : 0;
+        return padded(padded(value, 8) + 24 + 1, align);
+    }
     case TypeKind::ErrorVal:
         return static_cast<int>(sizeof(int32_t) + sizeof(void*) + sizeof(size_t));
     case TypeKind::Atomic:
@@ -606,7 +634,7 @@ int type_size(const Type* t) {
             }
             size += type_size(t->args[i]);
         }
-        return size;
+        return padded(size, type_align(t));
     }
     case TypeKind::Array:
         return type_size(t->elem) * static_cast<int>(t->length);

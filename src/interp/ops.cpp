@@ -744,6 +744,11 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         v.u = u;
         return v;
     }
+    if ((is_ptr(src) || (src != nullptr && (src->kind == TypeKind::CStr || src->kind == TypeKind::Func))) &&
+        is_int(dest)) {
+        // `(usize)p`: the address itself (§7.5), so two objects have two addresses
+        return v_int(dest, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(x.ptr)));
+    }
     if (is_int(src) && is_int(dest)) {
         int64_t s = is_signed_int(src) ? as_s(x, src) : static_cast<int64_t>(as_u(x, src));
         int to_bits = int_bits(dest);
@@ -786,6 +791,10 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         if (src != nullptr && src->kind == TypeKind::CStr && x.ptr == nullptr) {
             static Value text_marker;
             x.ptr = &text_marker;
+        }
+        if (is_int(src)) {
+            // `(T*?)n`: the integer is an address `(usize)p` produced, so it comes back
+            x.ptr = reinterpret_cast<Value*>(static_cast<uintptr_t>(x.u));
         }
         x.type = dest;
         x.kind = TypeKind::Pointer;

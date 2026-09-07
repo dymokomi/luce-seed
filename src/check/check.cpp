@@ -215,13 +215,39 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
         return const_u64(n->left, out);
     }
     if (n->kind == NodeKind::Call && n->left != nullptr && n->left->kind == NodeKind::Name &&
-        n->left->text == "sizeof") {
+        (n->left->text == "sizeof" || n->left->text == "alignof")) {
         if (n->body == nullptr || n->body->left == nullptr) {
             return false;
         }
         Type* t = type_from_expr_or_name(n->body->left);
-        *out = static_cast<uint64_t>(type_size(t));
+        *out = static_cast<uint64_t>(n->left->text == "sizeof" ? type_size(t) : type_align(t));
         return true;
+    }
+    // a `usize` expression of literals, `sizeof`, constants, and arithmetic is a constant (§5.1)
+    if (n->kind == NodeKind::Binary) {
+        uint64_t a = 0;
+        uint64_t b = 0;
+        if (!const_u64(n->left, &a) || !const_u64(n->right, &b)) {
+            return false;
+        }
+        switch (n->op) {
+        case TokenKind::Star: *out = a * b; return true;
+        case TokenKind::Plus: *out = a + b; return true;
+        case TokenKind::Minus: *out = a - b; return true;
+        case TokenKind::SlashSlash: *out = b == 0 ? 0 : a / b; return b != 0;
+        case TokenKind::Percent: *out = b == 0 ? 0 : a % b; return b != 0;
+        case TokenKind::LtLt: *out = a << b; return true;
+        case TokenKind::GtGt: *out = a >> b; return true;
+        default: return false;
+        }
+    }
+    if (n->kind == NodeKind::Name) {
+        Binding* b = lookup(n->text);
+        Node* d = b != nullptr ? b->decl : nullptr;
+        // only a top-level `let` is a constant (§6.3); a local is a value
+        if (d != nullptr && (d->kind == NodeKind::Global || d->kind == NodeKind::Const) && d->left != nullptr) {
+            return const_u64(d->left, out);
+        }
     }
     return false;
 }
@@ -339,6 +365,14 @@ auto Checker::check_struct(Node* st) -> void {
                 m->ty = resolve_type(m->type);
             }
         }
+    }
+    // a struct has at least one field, as in C (§10.1)
+    bool any_field = false;
+    for (Node* m = st->body; m != nullptr; m = m->next) {
+        any_field = any_field || m->kind == NodeKind::Field;
+    }
+    if (!any_field && st->kind == NodeKind::Struct) {
+        fail_n(st, "lucb.check.type", "a struct has at least one field");
     }
     for (Node* m = st->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Func) {

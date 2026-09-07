@@ -58,6 +58,10 @@ auto Emitter::produces_opt(Node* n) -> bool {
         n->resolved != nullptr && is_opt(n->resolved->ty)) {
         return true;
     }
+    if (n->kind == NodeKind::Call && n->resolved == nullptr && n->left != nullptr &&
+        n->left->kind == NodeKind::Member && (n->left->text == "first" || n->left->text == "last")) {
+        return true; // `span.first()` builds the optional itself
+    }
     if (n->kind == NodeKind::Index) {
         // an element of an array or span of optionals is the optional itself
         Type* bt = n->left != nullptr ? n->left->ty : nullptr;

@@ -196,7 +196,7 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
 
 auto Checker::check_literal(Node* n, Type* expected) -> Type* {
     if (n->op == TokenKind::KwNone) {
-        if (expected != nullptr && is_ptr(expected) && expected->is_nullable) {
+        if (is_null_niche(expected)) {
             return expected;
         }
         if (expected != nullptr && is_opt(expected)) {

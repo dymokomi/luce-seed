@@ -1,7 +1,22 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.18**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.19**, the seed `luce-base` is written against.
+
+## 0.19: what chapter 5 of the conformance suite found
+
+- `span.first()`, `span.last()`, and `for (i, x) in items.indexed()` (§5.4), on spans
+  and arrays, in the interpreter and the C;
+- `sizeof(n.next)` measures a member, `sizeof(c.long)` and `sizeof(m.Type)` name
+  types; `alignof`, a top-level constant, and arithmetic fold in an array length;
+- `(func(...) -> R)?` is a nullable function everywhere a nullable pointer is:
+  `none`, assignment, `if let`, `else`;
+- `sizeof` of a tuple, an optional, and a fallible result includes C's tail padding;
+- `(usize)p` is the address, so two objects compare unequal, and `(T*)n` brings it back;
+- a struct has at least one field; an `@bool` and a forwarded `fmt` display as their
+  values.
+
+`testdata/programs/values/{span_ends,nullable_function,aggregate_sizes}` pin them.
 
 ## 0.18: what the conformance suite found in chapters 3 and 4
 

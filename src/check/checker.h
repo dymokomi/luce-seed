@@ -175,6 +175,8 @@ struct Checker {
     Type* intern_atomic(Type* elem);
     Type* intern_tup(Type** elems, int n);
     Type* intern_func(Type** params, int n, Type* result, bool nullable);
+    // The payload of a nullable pointer or function: the same type, non-nullable.
+    Type* non_null(Type* t);
     Type* func_type_of(Node* fn, Node* owner = nullptr);
     bool func_converts(Type* from, Type* to);
     Node* make_fail_thunk(Node* fn, Type* ft);

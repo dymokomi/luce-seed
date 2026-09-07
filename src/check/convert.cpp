@@ -215,6 +215,10 @@ auto Checker::can_ptr_convert(Type* from, Type* to, Node* n) -> bool {
     if (from->kind == TypeKind::Str && is_span(to) && to->elem == ty_u8 && to->is_const) {
         return true;
     }
+    if (is_func(from) && is_func(to)) {
+        // a function converts to the nullable function of its own signature (§5.6)
+        return to->is_nullable && !from->is_nullable && non_null(to) == from;
+    }
     if (!is_ptr(from) || !is_ptr(to)) {
         return false;
     }

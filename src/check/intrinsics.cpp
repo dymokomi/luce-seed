@@ -39,6 +39,28 @@ auto Checker::type_from_expr_or_name(Node* a) -> Type* {
             return b->type;
         }
     }
+    if (a->kind == NodeKind::Member && a->left != nullptr && a->left->kind == NodeKind::Name) {
+        // `c.long` or `module.Type` names a type; anything else is a value to measure
+        if (a->left->text == "c") {
+            Type* ct = imported_c_type(a, keep("c." + string(a->text)));
+            if (ct != nullptr) {
+                a->ty = ct;
+                return ct;
+            }
+        }
+        Binding* b = lookup(a->left->text);
+        if (b != nullptr && b->type != nullptr && b->type->kind == TypeKind::Module) {
+            Node* p = pub_member(b->decl, a->text);
+            if (p != nullptr && (p->kind == NodeKind::Struct || p->kind == NodeKind::Enum ||
+                                 p->kind == NodeKind::Union || p->kind == NodeKind::TypeAlias)) {
+                mark_import(b);
+                Type* t = p->kind == NodeKind::TypeAlias ? resolve_alias(p) : decl_type(p);
+                a->ty = t;
+                a->resolved = p;
+                return t;
+            }
+        }
+    }
     return check_expr(a, nullptr);
 }
 
@@ -249,6 +271,11 @@ auto Checker::check_formatted(Node* n) -> Type* {
             Type* ft = check_expr(p->left, nullptr);
             if (ft != nullptr && ft->kind == TypeKind::UntypedInt) {
                 ft = coerce(p->left, ft, t_i64());
+                p->left->ty = ft;
+            }
+            if (is_atomic(ft)) {
+                // a plain read of `@T` is a load (§15.1): the field displays as its `T`
+                ft = ft->elem;
                 p->left->ty = ft;
             }
             if (is_display(ft)) {

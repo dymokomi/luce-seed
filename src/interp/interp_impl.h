@@ -69,6 +69,7 @@ struct Interp {
 
     Value make_array(Type* t, vector<Value> elems);
     Value eval_float_bits(Node* callee, Node* n);
+    Value eval_span_end(Node* callee, Node* n);
     bool is_place_expression(Node* e);
     Value copy_value(const Value& v);
     Value zero_of(Type* t);

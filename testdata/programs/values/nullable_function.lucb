@@ -1,0 +1,22 @@
+# answer: 42
+## `(func(...) -> R)?` is a nullable function with the null niche (§5.6): `none`, a function
+## assigned to it, `if let` to call it, and `else` for a fallback.
+func twice(a: i64) -> i64:
+    return a * 2
+
+func thrice(a: i64) -> i64:
+    return a * 3
+
+pub func answer() -> i64:
+    var chosen: (func(i64) -> i64)? = none
+    var total: i64 = 0
+    if let f = chosen:
+        total += f(100)
+    chosen = twice
+    if let f = chosen:
+        total += f(20)
+    let fallback = chosen else thrice
+    total += fallback(1)
+    chosen = none
+    let other = chosen else thrice
+    return total + other(0) - 0 + i64(sizeof(chosen)) - 8

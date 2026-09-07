@@ -402,6 +402,13 @@ auto Checker::intern_func(Type** params, int n, Type* result, bool nullable) -> 
     return t;
 }
 
+auto Checker::non_null(Type* t) -> Type* {
+    if (is_func(t)) {
+        return intern_func(t->args, t->ntargs, t->elem, false);
+    }
+    return intern_ptr(t->elem, t->is_const, t->is_volatile, false);
+}
+
 auto Checker::func_type_of(Node* fn, Node* owner) -> Type* {
     vector<Type*> ps;
     if (owner != nullptr && fn != nullptr && (fn->flags & FlagStatic) == 0) {

@@ -153,6 +153,7 @@ struct Emitter {
     void emit_loop_label(const char* prefix, Node* loop);
     bool is_place_expression(Node* e);
     string emit_float_bits(Node* obj, Node* n);
+    string emit_span_end(Node* obj, Node* n, bool first);
     string type_attrs(Node* n);
     void emit_struct(Node* st);
     void emit_union(Node* un);

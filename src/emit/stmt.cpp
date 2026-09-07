@@ -374,7 +374,12 @@ auto Emitter::emit_stmt(Node* n) -> void {
         scopes.push_back(sc);
         line("for (size_t " + init + "; " + idx + " < " + len + "; " + step + ") {");
         indent++;
-        if (n->flags & FlagByPtr) {
+        if ((n->flags & FlagIndexed) != 0 && n->left != nullptr) {
+            // `for (i, x) in items.indexed()`: the index beside the element
+            line("size_t " + ident("lb_", n->text) + " __attribute__((unused)) = " + idx + ";");
+            line(c_type(n->left->ty) + " " + ident("lb_", n->left->text) +
+                 " __attribute__((unused)) = " + elem_e + ";");
+        } else if (n->flags & FlagByPtr) {
             line(c_type(n->ty) + " " + ident("lb_", n->text) + " __attribute__((unused)) = &(" +
                  elem_e + ");");
         } else {
