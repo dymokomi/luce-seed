@@ -868,3 +868,14 @@ TEST(eval_negative_backed_enum_case) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 1);
 }
+
+// §8.5, §11.4: `break` and `continue` from a handler steer the loop over an array
+TEST(eval_handler_steers_array_loop) {
+    EvalResult r = run("let bad = ErrorCode.package(1)\n"
+                       "func d(n: i64) -> i64!:\n    if n < 0:\n        error(bad, \"neg\")\n    if n > 100:\n        error(bad, \"big\")\n    return n * 2\n"
+                       "pub func answer() -> i64:\n    var seen: i64 = 0\n    for n in [1, -1, 2, 200, 3]:\n"
+                       "        let v = d(n) catch e:\n            if n < 0:\n                continue\n            break\n"
+                       "        seen += v\n    return seen\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 6);
+}

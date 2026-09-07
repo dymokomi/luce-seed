@@ -1109,3 +1109,10 @@ TEST(check_error_message_from_local_through_let) {
                     "pub func answer() -> i64:\n    return 0\n",
                     "lucb.check.escape"));
 }
+
+// §11.3: `error` needs a fallible function, in a handler too
+TEST(check_error_in_handler_needs_fallible) {
+    CHECK(check_has("func may() -> i64!:\n    return 1\n"
+                    "pub func answer() -> i64:\n    let v = may() catch e:\n        error(e.code, e.message)\n    return v\n",
+                    "lucb.check.type"));
+}

@@ -254,17 +254,7 @@ auto Interp::exec(Node* n) -> void {
                 }
                 exec(n->body);
             }
-            if (breaking) {
-                if (jump_label.empty() || jump_label == n->label) {
-                    breaking = false;
-                }
-                break;
-            }
-            if (continuing) {
-                if (jump_label.empty() || jump_label == n->label) {
-                    continuing = false;
-                    continue;
-                }
+            if (leave_loop(n)) {
                 break;
             }
         }
@@ -326,17 +316,7 @@ auto Interp::exec(Node* n) -> void {
                 frames.back().slots.push_back(s);
                 exec(n->body);
                 frames.back().slots.pop_back();
-                if (breaking) {
-                    if (jump_label.empty() || jump_label == n->label) {
-                        breaking = false;
-                    }
-                    break;
-                }
-                if (continuing) {
-                    if (jump_label.empty() || jump_label == n->label) {
-                        continuing = false;
-                        continue;
-                    }
+                if (leave_loop(n)) {
                     break;
                 }
             }
@@ -368,6 +348,9 @@ auto Interp::exec(Node* n) -> void {
                 frames.back().slots.push_back(s);
                 exec(n->body);
                 frames.back().slots.pop_back();
+                if (leave_loop(n)) {
+                    break;
+                }
             }
             break;
         }
@@ -392,6 +375,9 @@ auto Interp::exec(Node* n) -> void {
                 exec(n->body);
                 frames.back().slots.pop_back();
                 frames.back().slots.pop_back();
+                if (leave_loop(n)) {
+                    break;
+                }
                 continue;
             }
             if (n->flags & FlagByPtr) {
@@ -410,6 +396,9 @@ auto Interp::exec(Node* n) -> void {
             frames.back().slots.push_back(s);
             exec(n->body);
             frames.back().slots.pop_back();
+            if (leave_loop(n)) {
+                break;
+            }
         }
         break;
     }
@@ -433,6 +422,26 @@ auto Interp::exec(Node* n) -> void {
         fail("unsupported statement at runtime");
         break;
     }
+}
+
+// After a loop body: a `break` or `continue` aimed at this loop, unlabelled or by its label,
+// is consumed here; one aimed at an outer loop stops this one and stays pending. True when
+// the loop is over.
+auto Interp::leave_loop(Node* loop) -> bool {
+    if (breaking) {
+        if (jump_label.empty() || jump_label == loop->label) {
+            breaking = false;
+        }
+        return true;
+    }
+    if (continuing) {
+        if (jump_label.empty() || jump_label == loop->label) {
+            continuing = false;
+            return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 } // namespace lucb

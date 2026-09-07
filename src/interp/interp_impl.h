@@ -127,6 +127,7 @@ struct Interp {
     Value eval_extern(Node* n, Node* fn);
     Value eval_ctor(Node* n, Node* st);
     void exec(Node* n);
+    bool leave_loop(Node* loop);
 };
 
 } // namespace lucb

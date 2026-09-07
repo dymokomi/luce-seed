@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.23**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.24**, the seed `luce-base` is written against.
+
+## 0.24: what chapter 11 of the conformance suite found, continued
+
+- a `break` or `continue` from a `catch` handler steers the loop over an array,
+  a span, or text as it does a `while` or a range: every loop consumes the jump
+  through one `leave_loop`;
+- `error` needs a fallible function, inside a handler or not.
 
 ## 0.23: what chapter 11 of the conformance suite found
 
