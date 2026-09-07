@@ -373,8 +373,8 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
             Binding* b = lookup(n->text);
             d = b != nullptr ? b->decl : nullptr;
         }
-        // only a top-level `let` is a constant (§6.3); a local is a value
-        if (d != nullptr && (d->kind == NodeKind::Global || d->kind == NodeKind::Const) && d->left != nullptr) {
+        // only a top-level `let` is a constant (§6.4); a `var` and a local are values
+        if (d != nullptr && d->kind == NodeKind::Const && d->left != nullptr) {
             return const_u64(d->left, out);
         }
     }
@@ -414,6 +414,24 @@ auto Checker::const_bool(Node* n, bool* out) -> bool {
         }
         *out = !inner;
         return true;
+    }
+    if (n->kind == NodeKind::Name || (n->kind == NodeKind::Member && n->left != nullptr && n->left->kind == NodeKind::Name)) {
+        // a top-level `let` of `bool`, its own module's or an imported one's: `os.arm64`
+        Node* d = n->resolved;
+        if (d == nullptr && n->kind == NodeKind::Name) {
+            Binding* b = lookup(n->text);
+            d = b != nullptr ? b->decl : nullptr;
+        }
+        if (d == nullptr && n->kind == NodeKind::Member) {
+            Binding* mb = lookup(n->left->text);
+            if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
+                d = pub_member(mb->type->decl, n->text);
+            }
+        }
+        if (d != nullptr && d->kind == NodeKind::Const && d->left != nullptr) {
+            return const_bool(d->left, out);
+        }
+        return false;
     }
     if (n->kind != NodeKind::Binary) {
         return false;
@@ -1640,16 +1658,25 @@ auto Checker::fold_constant_branch(Node* n) -> void {
         return;
     }
     Node* cond = n->left;
-    if (cond == nullptr || cond->kind != NodeKind::Literal ||
-        (cond->op != TokenKind::KwTrue && cond->op != TokenKind::KwFalse)) {
+    if (cond == nullptr) {
         return;
     }
-    const bool truth = cond->op == TokenKind::KwTrue;
+    bool truth = false;
+    bool named = false; // a constant such as `os.arm64`: the branch is meant to go, quietly
+    if (cond->kind == NodeKind::Literal && (cond->op == TokenKind::KwTrue || cond->op == TokenKind::KwFalse)) {
+        truth = cond->op == TokenKind::KwTrue;
+    } else if (const_bool(cond, &truth)) {
+        named = true;
+    } else {
+        return;
+    }
     if (n->kind == NodeKind::While) {
         if (truth) {
             return;
         }
-        warn_n(n, "lucb.warn.dead", "this loop never runs: its condition is `false`");
+        if (!named) {
+            warn_n(n, "lucb.warn.dead", "this loop never runs: its condition is `false`");
+        }
         n->kind = NodeKind::Block;
         n->body = nullptr;
         n->left = nullptr;
@@ -1657,7 +1684,7 @@ auto Checker::fold_constant_branch(Node* n) -> void {
     }
     Node* taken = truth ? n->body : n->right;
     Node* dropped = truth ? n->right : n->body;
-    if (dropped != nullptr) {
+    if (dropped != nullptr && !named) {
         warn_n(dropped, "lucb.warn.dead", string("this branch never runs: the condition is `") + (truth ? "true" : "false") + "`");
     }
     n->kind = NodeKind::Block;

@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.36**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.37**, the seed `luce-base` is written against.
+
+## 0.37: constant conditions decide branches
+
+- `if os.arm64:`, `if bits == 64:`: a condition that is a constant, a top-level `let`
+  of `bool` or a comparison of constants, is decided by the checker and the branch it
+  rules out is pruned, without a warning (§19.6); `if true:` keeps its warning. Only a
+  top-level `let` is a constant: a `var` with an initialiser never folds (§6.4).
 
 ## 0.36: the math module as source, and three decisions
 
