@@ -309,6 +309,9 @@ struct Checker {
     Type* check_slice(Node* n);
     Type* check_array_lit(Node* n, Type* expected);
     Type* check_span_make(Node* n);
+    Type* check_splat(Node* n);
+    Type* check_vector_binary(Node* n, Type* L, Type* R);
+    bool vector_operand(Node* side, Type** st, Type* vt);
     bool is_arith(TokenKind op);
     bool is_bit(TokenKind op);
     Type* check_binary(Node* n, Type* expected);

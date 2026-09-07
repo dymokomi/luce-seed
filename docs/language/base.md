@@ -407,6 +407,28 @@ Base has no type-based aliasing rule. Any pointer may alias any object of compat
 
 **Why.** A Base struct is a C struct; that is what lets Base be the language C libraries are bound in and the runtime is written in. The aliasing guarantee exists because unions and `(T*)` casts are how C reinterprets memory, and a future backend adding type-based alias analysis would break every program that uses them. `noalias` gives the optimiser the fact it needs in the code that needs it, DSP loops and matrix kernels, without a global rule.
 
+### 5.12 Vectors
+
+A **vector** is an array whose elements are one integer type of a stated width (`i8` to `u64`), `f32`, or `f64`, and whose bytes number eight or sixteen: `f32[4]`, `f64[2]`, `i32[4]`, `u8[16]`, `i16[8]`, `i64[2]`, `f32[2]`, `i32[2]`, `u8[8]`, `i16[4]`, and the rest of that table. Nothing about the type changes: it is the array of §5.4, a value with C's layout and the element's alignment, indexed and sliced and compared as one. What a vector adds is arithmetic, lane by lane:
+
+```luce
+let a: f32[4] = [1.0, 2.0, 3.0, 4.0]
+let b = f32[4](0.5)                     # every lane 0.5: the broadcast form
+let c = a * b + a                       # lane by lane: [1.5, 3.0, 4.5, 6.0]
+let d = c * 2.0                         # a scalar of the element type broadcasts
+let total = c.sum()                     # 15.0; also `min()` and `max()`
+var counts: u32[4] = [1, 2, 3, 4]
+counts = counts +% counts               # the wrapping form, as on scalars
+```
+
+- The operators of §7.2 and §7.3 that take two operands of one type take two vectors of one type, or a vector and a scalar of its element type in either position, and yield that vector type: `+`, `-`, `*` (checked; a lane's overflow traps), `+%`, `-%`, `*%`, `+|`, `-|`, `*|`, `/` (float vectors), `&`, `|`, `^`, and the shifts, whose count is a scalar. Unary `-`, `-%`, and `~` apply to every lane. Each lane computes exactly as the scalar operator would, in lane order, traps included, so a vector expression means what the same expression means on each element, and the interpreter and every backend agree to the bit.
+- `T[N](x)` is the vector whose every lane is `x`; it is not the span constructor of §5.4, which takes a pointer and a count.
+- `v.sum()`, `v.min()`, and `v.max()` fold the lanes with `+`, `<`, and `>` in lane order and yield an element; `sum()` traps on integer overflow as `+` does. A float `min()` or `max()` follows the comparison: a NaN lane is skipped when another lane compares, and is the result when every lane is NaN.
+- `//`, `%`, the `?` forms, and lane-wise comparison are not defined on vectors; index a lane, or write the loop.
+- A lane-wise operator computes at run time: it is not a constant expression (§6.4). A top-level `let` of a vector type is an array literal, or `T[N](x)` with a constant `x`.
+
+**Why.** A vector is what the processor computes sixteen bytes at a time, and every target of §19.5 has that unit: a backend keeps a vector in a vector register and computes a lane-wise expression in one instruction where the machine has it, checking overflow with the lanes' own comparison. The array is already the right value with the right layout, so a vector is a use of a type the program has, not a type it has to convert to and from; the same array indexes and slices as before, and a function that takes `f32[4]` takes it whether the caller thinks of it as four floats or as one value. The set of lane widths is the set every target has in one register.
+
 ## 6. Bindings and initialisation
 
 ### 6.1 `let`, `var`, and zero values
@@ -469,7 +491,7 @@ A module may declare `var` at top level. It is zero before `main` runs, or holds
 
 ### 6.4 Constant expressions
 
-A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; `luce.location`, `luce.file`, `luce.line`, and `luce.function`; arithmetic, bit, comparison, and cast operators on constants; array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function, or of a global's element or field reached by constant steps; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`. `luce.location` (and its pieces) expand to the file, line, and function of the use site; when used as a default argument they expand at the call site.
+A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; `luce.location`, `luce.file`, `luce.line`, and `luce.function`; arithmetic, bit, comparison, and cast operators on scalar constants (a lane-wise operator of §5.12 is not one); array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function, or of a global's element or field reached by constant steps; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`. `luce.location` (and its pieces) expand to the file, line, and function of the use site; when used as a default argument they expand at the call site.
 
 ### 6.5 Assignment
 

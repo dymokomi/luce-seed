@@ -400,6 +400,9 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
     Type* operand_expected = is_opt(expected) && !is_ptr(expected) && !is_func(expected) ? expected->elem : expected;
     if (n->op == TokenKind::Tilde) {
         Type* inner = check_expr(n->left, operand_expected);
+        if (is_vector(inner) && is_int(inner->elem)) {
+            return inner; // every lane (§5.12)
+        }
         if (!is_int(inner) && !is_int_enum(inner)) {
             fail_n(n, "lucb.check.type", "`~` requires an integer");
             return t_error();
@@ -408,6 +411,9 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
     }
     if (n->op == TokenKind::MinusPercent) {
         Type* inner = check_expr(n->left, operand_expected);
+        if (is_vector(inner) && is_int(inner->elem)) {
+            return inner; // every lane (§5.12)
+        }
         if (!is_int(inner)) {
             fail_n(n, "lucb.check.type", "wrapping negate requires an integer");
             return t_error();
@@ -428,6 +434,14 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
             dest = t_i64();
         }
         Type* inner = check_expr(n->left, is_float(dest) ? dest : nullptr);
+        if (is_vector(inner)) {
+            // every lane (§5.12), under the scalar rule
+            if (is_unsigned_int(inner->elem)) {
+                fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
+                return t_error();
+            }
+            return inner;
+        }
         if (expected == nullptr && inner != nullptr && inner->kind == TypeKind::UntypedInt &&
             n->left != nullptr && n->left->kind == NodeKind::Literal) {
             // `-literal` with no context stays untyped, so `-2147483647 - 1` can still be an `i32`
@@ -847,6 +861,9 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         }
         return t_bool();
     }
+    if (is_vector(L) || is_vector(R)) {
+        return check_vector_binary(n, L, R);
+    }
     if (op == TokenKind::Slash) {
         if (!is_float(L) || !is_float(R)) {
             fail_n(n, "lucb.check.type", "`/` requires float operands");
@@ -898,6 +915,78 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
     }
     fail_n(n, "lucb.check.unsupported", "this operator is not in the scalar core yet");
     return t_error();
+}
+
+// Lane-wise arithmetic (§5.12): two vectors of one type, or a vector and a scalar of its
+// element type, under the operators of §7.2 and §7.3 that keep the type; a shift's count is
+// a scalar. Comparisons were answered before this: `==` compares the arrays, `<` is refused.
+auto Checker::check_vector_binary(Node* n, Type* L, Type* R) -> Type* {
+    TokenKind op = n->op;
+    Type* vt = is_vector(L) ? L : R;
+    Type* et = vt->elem;
+    if (op == TokenKind::LtLt || op == TokenKind::GtGt) {
+        if (!is_vector(L) || !is_int(et)) {
+            fail_n(n, "lucb.check.type", "a vector shift needs an integer vector on the left (§5.12)");
+            return t_error();
+        }
+        if (R->kind == TypeKind::UntypedInt) {
+            n->right->ty = coerce(n->right, R, et);
+        } else if (!is_int(R)) {
+            fail_n(n, "lucb.check.type", "a shift count is an integer");
+            return t_error();
+        }
+        return vt;
+    }
+    if (!vector_operand(n->left, &L, vt) || !vector_operand(n->right, &R, vt)) {
+        fail_n(n, "lucb.check.type",
+               "vector arithmetic takes two vectors of one type, or a vector and a scalar of its element type (§5.12)");
+        return t_error();
+    }
+    if (op == TokenKind::Slash) {
+        if (!is_float(et)) {
+            fail_n(n, "lucb.check.type", "`/` requires float operands");
+            return t_error();
+        }
+        return vt;
+    }
+    if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
+        return vt;
+    }
+    if (op == TokenKind::PlusPercent || op == TokenKind::MinusPercent || op == TokenKind::StarPercent ||
+        op == TokenKind::PlusPipe || op == TokenKind::MinusPipe || op == TokenKind::StarPipe ||
+        op == TokenKind::Amp || op == TokenKind::Pipe || op == TokenKind::Caret) {
+        if (!is_int(et)) {
+            fail_n(n, "lucb.check.type", "wrapping, saturating, and bit operators need integer lanes (§5.12)");
+            return t_error();
+        }
+        return vt;
+    }
+    fail_n(n, "lucb.check.type", "this operator is not defined on vectors (§5.12)");
+    return t_error();
+}
+
+// An operand of vector arithmetic: the vector itself, or a scalar of its element type, which
+// an untyped integer literal or a plain float literal becomes.
+auto Checker::vector_operand(Node* side, Type** st, Type* vt) -> bool {
+    Type* t = *st;
+    Type* et = vt->elem;
+    if (type_eq(t, vt)) {
+        return true;
+    }
+    if (t == nullptr || is_array(t)) {
+        return false;
+    }
+    if (t->kind == TypeKind::UntypedInt && is_int(et)) {
+        *st = coerce(side, t, et);
+        side->ty = *st;
+        return true;
+    }
+    if (is_float(et) && t->kind == TypeKind::F64 && is_plain_float_lit(side)) {
+        side->ty = et;
+        *st = et;
+        return true;
+    }
+    return type_eq(t, et);
 }
 
 auto Checker::check_else(Node* n, Type* expected) -> Type* {

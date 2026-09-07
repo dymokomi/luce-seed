@@ -1219,3 +1219,37 @@ TEST(check_luce_import_and_call_statements) {
     CHECK(check_ok("func f() -> i64!:\n    return 1\n"
                    "pub func answer() -> i64!:\n    discard(try f())\n    (try f())\n    f() catch e:\n        recover 0\n    return 0\n"));
 }
+
+TEST(check_vector_operands_share_one_type) {
+    CHECK(check_has("pub func answer() -> i64:\n    let a: f32[4] = [1.0, 2.0, 3.0, 4.0]\n    let b: i32[4] = [1, 2, 3, 4]\n    let c = a + b\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_vector_has_no_lane_comparison) {
+    CHECK(check_has("pub func answer() -> i64:\n    let a: f32[4] = [1.0, 2.0, 3.0, 4.0]\n    let c = a < a\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_vector_unsigned_has_no_negation) {
+    CHECK(check_has("pub func answer() -> i64:\n    let a: u32[4] = [1, 2, 3, 4]\n    let c = -a\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_vector_is_eight_or_sixteen_bytes) {
+    CHECK(check_has("pub func answer() -> i64:\n    let a: f32[3] = [1.0, 2.0, 3.0]\n    let c = a * 2.0\n    return 0\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let c = f32[3](1.0)\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_vector_splat_takes_one_value) {
+    CHECK(check_has("pub func answer() -> i64:\n    let c = f32[4](1.0, 2.0)\n    return 0\n", "lucb.check.call"));
+}
+
+TEST(check_vector_has_no_division_or_remainder) {
+    CHECK(check_has("pub func answer() -> i64:\n    let a: i32[4] = [1, 2, 3, 4]\n    let c = a // 2\n    return 0\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    let a: i32[4] = [1, 2, 3, 4]\n    let c = a / a\n    return 0\n", "lucb.check.type"));
+}
+
+TEST(check_vector_arithmetic_ok) {
+    CHECK(check_ok("pub func answer() -> i64:\n    let a: i32[4] = [1, 2, 3, 4]\n    let b = a * 2 + i32[4](1)\n    let c = (b << 1) ^ a\n    let d = -%c\n    return (i64)d.sum() + (i64)a.min()\n"));
+}
+
+TEST(check_vector_arithmetic_is_not_a_constant) {
+    CHECK(check_has("let base: f32[4] = [1.0, 2.0, 3.0, 4.0]\nlet scaled = base * 2.0\npub func answer() -> i64:\n    return (i64)scaled[0]\n", "lucb.check.type"));
+}

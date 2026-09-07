@@ -128,6 +128,7 @@ inline bool needs_null_foreign(const Type* t) {
 }
 bool is_array(const Type* t);
 bool is_span(const Type* t);
+bool is_vector(const Type* t);
 inline bool is_u8_cspan(const Type* t) {
     return is_span(t) && t->is_const && t->elem != nullptr && t->elem->kind == TypeKind::U8;
 }

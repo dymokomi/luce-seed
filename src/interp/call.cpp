@@ -145,6 +145,9 @@ auto Interp::invoke_method(Value* self, Node* st, string_view name, const vector
 
 auto Interp::eval_call(Node* n) -> Value {
     Node* callee = n->left;
+    if (n->flags & FlagVectorSplat) {
+        return eval_splat(n);
+    }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
         return eval_hash(n);
     }
@@ -1019,6 +1022,10 @@ auto Interp::eval_call(Node* n) -> Value {
         if (callee->text == "bits" && method == nullptr && callee->left != nullptr) {
             return eval_float_bits(callee, n);
         }
+        if ((callee->text == "sum" || callee->text == "min" || callee->text == "max") &&
+            method == nullptr && callee->left != nullptr && is_vector(callee->left->ty)) {
+            return eval_vector_fold(callee, n);
+        }
         if ((callee->text == "first" || callee->text == "last") && method == nullptr &&
             callee->left != nullptr && (is_span(callee->left->ty) || is_array(callee->left->ty))) {
             return eval_span_end(callee, n);
@@ -1388,6 +1395,51 @@ auto Interp::is_place_expression(Node* e) -> bool {
     default:
         return false;
     }
+}
+
+} // namespace lucb
+
+namespace lucb {
+
+// `T[N](x)`: every lane is `x` (§5.12).
+auto Interp::eval_splat(Node* n) -> Value {
+    Value x = eval(n->body != nullptr ? n->body->left : nullptr);
+    if (trapped) {
+        return v_unit();
+    }
+    Type* vt = n->ty;
+    vector<Value> out(static_cast<size_t>(vt->length), x);
+    return make_array(vt, std::move(out));
+}
+
+// `v.sum()`, `v.min()`, `v.max()`: the lanes folded in order with `+`, `<`, or `>` (§5.12);
+// a float `min` or `max` skips a NaN lane when another lane compares.
+auto Interp::eval_vector_fold(Node* callee, Node* n) -> Value {
+    Value v = eval(callee->left);
+    if (trapped) {
+        return v_unit();
+    }
+    Type* vt = callee->left->ty;
+    Type* et = vt->elem;
+    const size_t len = static_cast<size_t>(vt->length);
+    Value acc = v.ptr != nullptr ? v.ptr[0] : v.fields[0];
+    for (size_t i = 1; i < len; i++) {
+        const Value& lane = v.ptr != nullptr ? v.ptr[i] : v.fields[i];
+        if (callee->text == "sum") {
+            acc = arith(et, acc, lane, TokenKind::Plus);
+            if (trapped) {
+                return v_unit();
+            }
+            continue;
+        }
+        const TokenKind op = callee->text == "min" ? TokenKind::Lt : TokenKind::Gt;
+        const bool acc_is_nan = is_float(et) && acc.f != acc.f;
+        if (acc_is_nan || cmp_num(lane, acc, et, op)) {
+            acc = lane;
+        }
+    }
+    acc.type = n->ty;
+    return acc;
 }
 
 } // namespace lucb

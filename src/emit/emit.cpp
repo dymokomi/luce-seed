@@ -214,7 +214,9 @@ auto Emitter::emit_global(Node* g) -> void {
     }
     string init = "0";
     if (g->left != nullptr) {
+        at_file_scope = true;
         init = emit_expr(g->left);
+        at_file_scope = false;
     } else if (g->ty != nullptr &&
                (g->ty->kind == TypeKind::Struct || g->ty->kind == TypeKind::Union ||
                 g->ty->kind == TypeKind::Enum || is_array(g->ty) || is_opt(g->ty) ||

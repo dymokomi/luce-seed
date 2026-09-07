@@ -34,6 +34,8 @@ struct Emitter {
     Node* current_fn = nullptr;
     string src_file = "t.lucb";
     bool wrote_writer_rt = false;
+    // Writing a global's initialiser, where C takes a constant expression and no statement
+    bool at_file_scope = false;
     vector<Node*> builtin_ifaces_done; // standard interfaces whose table type is written
     void emit_builtin_iface_typedef(Node* iface);
     string current_sink; // the `lb_iface` a Display field writes through, while emitting it
@@ -157,6 +159,12 @@ struct Emitter {
     bool is_place_expression(Node* e);
     string emit_float_bits(Node* obj, Node* n);
     string emit_span_end(Node* obj, Node* n, bool first);
+    string emit_arith(Type* t, TokenKind op, const string& L, const string& R);
+    string emit_unary_scalar(Type* t, TokenKind op, const string& x);
+    string emit_vector_binary(Node* n, Type* vt, const string& L, const string& R);
+    string emit_vector_unary(Node* n, Type* vt, const string& x);
+    string emit_splat(Node* n);
+    string emit_vector_fold(Node* obj, Node* n);
     string type_attrs(Node* n);
     void emit_struct(Node* st);
     void emit_union(Node* un);

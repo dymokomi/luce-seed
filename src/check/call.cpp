@@ -26,9 +26,20 @@ auto Checker::count_args(Node* args) -> int {
     return n;
 }
 
+// The ten element types a vector may have (§5.12), by name: `T[N](x)` with one of them is
+// the broadcast form, not a call through an indexed value.
+static bool is_lane_type_name(string_view text) {
+    return text == "i8" || text == "i16" || text == "i32" || text == "i64" || text == "u8" ||
+           text == "u16" || text == "u32" || text == "u64" || text == "f32" || text == "f64";
+}
+
 auto Checker::check_call(Node* n, Type* expected) -> Type* {
     (void)expected;
     Node* callee = n->left;
+    if (callee != nullptr && callee->kind == NodeKind::Index && callee->left != nullptr &&
+        callee->left->kind == NodeKind::Name && is_lane_type_name(callee->left->text)) {
+        return check_splat(n);
+    }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
         return check_print(n);
     }
@@ -737,6 +748,36 @@ auto Checker::check_memory_rw(Node* n, string_view name) -> Type* {
     return t_unit();
 }
 
+// `T[N](x)`: the vector whose every lane is `x` (§5.12).
+auto Checker::check_splat(Node* n) -> Type* {
+    Node* callee = n->left;
+    Node* tn = arena->make<Node>();
+    tn->kind = NodeKind::Type;
+    tn->text = callee->left->text;
+    tn->span = callee->left->span;
+    Type* elem = resolve_type(tn);
+    uint64_t len = 0;
+    if (!const_u64(callee->body, &len) || len == 0) {
+        fail_n(n, "lucb.check.type", "array length must be a positive constant");
+        return t_error();
+    }
+    Type* vt = intern_arr(elem, len);
+    if (!is_vector(vt)) {
+        fail_n(n, "lucb.check.type", "`T[N](x)` makes a vector, and " + type_name(vt) + " is not one (§5.12)");
+        return t_error();
+    }
+    if (count_args(n->body) != 1) {
+        fail_n(n, "lucb.check.call", "a vector is made from one value, for every lane");
+        return vt;
+    }
+    Type* at = check_expr(n->body->left, elem);
+    n->body->left->ty = coerce(n->body->left, at, elem);
+    n->flags |= FlagVectorSplat;
+    n->resolved = nullptr;
+    callee->resolved = nullptr;
+    return vt;
+}
+
 auto Checker::check_method_call(Node* n) -> Type* {
     Node* mem = n->left;
     Node* obj = mem->left;
@@ -1062,6 +1103,15 @@ auto Checker::check_method_call(Node* n) -> Type* {
     }
     if (mem->text == "bits" && is_float(recv)) {
         return check_float_bits(n, obj);
+    }
+    if ((mem->text == "sum" || mem->text == "min" || mem->text == "max") && is_vector(recv)) {
+        // a vector folds to one lane (§5.12)
+        if (count_args(n->body) != 0) {
+            fail_n(n, "lucb.check.call", "`" + string(mem->text) + "` takes no argument");
+        }
+        n->resolved = nullptr;
+        mem->resolved = nullptr;
+        return recv->elem;
     }
     if ((mem->text == "first" || mem->text == "last") && (is_span(recv) || is_array(recv))) {
         // `span.first()` and `span.last()` are `T?` (§5.4)

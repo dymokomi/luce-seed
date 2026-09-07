@@ -88,9 +88,9 @@ auto Checker::is_constant_expr(Node* n) -> bool {
         if (n->op == TokenKind::Amp) {
             return is_global_place(n->left);
         }
-        return is_constant_expr(n->left);
+        return !is_vector(n->ty) && is_constant_expr(n->left); // a lane-wise operator runs (§5.12)
     case NodeKind::Binary:
-        return is_constant_expr(n->left) && is_constant_expr(n->right);
+        return !is_vector(n->ty) && is_constant_expr(n->left) && is_constant_expr(n->right);
     case NodeKind::Cast:
         return is_constant_expr(n->left);
     case NodeKind::Conditional:

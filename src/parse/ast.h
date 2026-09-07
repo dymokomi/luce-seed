@@ -133,6 +133,7 @@ enum : uint64_t {
                                  // displays a field through it, and the field itself (§14.4)
     FlagIndexed = 1ull << 36, // `for (i, x) in items.indexed()`: `right` is the sequence, `left` the value name
     FlagPackageCode = 1ull << 35, // `cached` holds an `ErrorCode.package` value with its package identity
+    FlagVectorSplat = 1ull << 37, // a call `T[N](x)`: the vector whose every lane is `x` (§5.12)
 };
 
 struct Node {

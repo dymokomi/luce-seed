@@ -246,6 +246,9 @@ auto Emitter::emit_extern_args(Node* n, const string& out_prefix) -> string {
 
 auto Emitter::emit_call(Node* n) -> string {
     Node* callee = n->left;
+    if (n->flags & FlagVectorSplat) {
+        return emit_splat(n);
+    }
     if (callee != nullptr && callee->kind == NodeKind::Member && callee->resolved != nullptr &&
         callee->resolved->kind == NodeKind::Field && is_func(callee->ty)) {
         // `holder.callback(args)`: a field of function type, called through its value
@@ -828,6 +831,10 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         if (callee->text == "bits" && method == nullptr && obj != nullptr) {
             return emit_float_bits(obj, n);
+        }
+        if ((callee->text == "sum" || callee->text == "min" || callee->text == "max") &&
+            method == nullptr && obj != nullptr && is_vector(obj->ty)) {
+            return emit_vector_fold(obj, n);
         }
         if ((callee->text == "first" || callee->text == "last") && method == nullptr &&
             obj != nullptr && (is_span(obj->ty) || is_array(obj->ty))) {

@@ -76,6 +76,11 @@ struct Interp {
     Value make_array(Type* t, vector<Value> elems);
     Value eval_float_bits(Node* callee, Node* n);
     Value eval_span_end(Node* callee, Node* n);
+    Value eval_vector_binary(Node* n, const Value& L, const Value& R);
+    Value eval_vector_unary(Node* n, const Value& x);
+    Value unary_scalar(Type* t, const Value& x, TokenKind op);
+    Value eval_splat(Node* n);
+    Value eval_vector_fold(Node* callee, Node* n);
     bool is_place_expression(Node* e);
     Value copy_value(const Value& v);
     Value zero_of(Type* t);

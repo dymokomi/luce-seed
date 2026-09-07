@@ -284,7 +284,23 @@ auto Interp::eval_unary(Node* n) -> Value {
         return x;
     }
     Type* t = n->ty != nullptr ? n->ty : x.type;
-    if (n->op == TokenKind::Tilde) {
+    if (is_vector(t)) {
+        return eval_vector_unary(n, x);
+    }
+    if (n->op == TokenKind::Minus && !is_float(t) && n->left != nullptr &&
+        n->left->kind == NodeKind::Literal && n->left->op == TokenKind::IntLit) {
+        // `-2147483648`: the literal is one past the type's maximum, the value its minimum
+        ParsedInt p = parse_int_literal(n->left->text);
+        if (p.ok && p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
+            return v_int(t, static_cast<uint64_t>(int_min(t)));
+        }
+    }
+    return unary_scalar(t, x, n->op);
+}
+
+// `~x`, `-x`, and `-%x` on one scalar of type `t`.
+auto Interp::unary_scalar(Type* t, const Value& x, TokenKind op) -> Value {
+    if (op == TokenKind::Tilde) {
         Type* bits_t = is_int_enum(t) ? t->elem : t;
         uint64_t u = ~as_u(x, bits_t);
         if (is_int_enum(t)) {
@@ -297,26 +313,18 @@ auto Interp::eval_unary(Node* n) -> Value {
         return v_int(t, u);
     }
     if (is_float(t)) {
-        if (n->op == TokenKind::Minus) {
+        if (op == TokenKind::Minus) {
             return v_float(t, -x.f);
         }
     }
-    int bits = int_bits(t);
-    if (n->op == TokenKind::MinusPercent) {
+    if (op == TokenKind::MinusPercent) {
         if (is_signed_int(t)) {
             uint64_t r = 0u - static_cast<uint64_t>(as_s(x, t));
             return v_int(t, r);
         }
         return v_int(t, 0u - as_u(x, t));
     }
-    if (n->op == TokenKind::Minus) {
-        if (n->left != nullptr && n->left->kind == NodeKind::Literal &&
-            n->left->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(n->left->text);
-            if (p.ok && p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
-                return v_int(t, static_cast<uint64_t>(int_min(t)));
-            }
-        }
+    if (op == TokenKind::Minus) {
         int64_t a = as_s(x, t);
         if (a == int_min(t)) {
             fail("integer overflow");
@@ -324,9 +332,54 @@ auto Interp::eval_unary(Node* n) -> Value {
         }
         return v_int(t, static_cast<uint64_t>(-a));
     }
-    (void)bits;
     fail("unsupported unary operator");
     return v_unit();
+}
+
+// Whether a value is an array, and its lane `i`.
+static bool is_array_value(const Value& v) {
+    return v.kind == TypeKind::Array || (v.type != nullptr && v.type->kind == TypeKind::Array);
+}
+
+static const Value& lane_of(const Value& v, size_t i) {
+    return v.ptr != nullptr ? v.ptr[i] : v.fields[i];
+}
+
+// Lane-wise arithmetic (§5.12): each lane computes as the scalar operator would, in lane
+// order, traps included; a scalar operand stands for every lane.
+auto Interp::eval_vector_binary(Node* n, const Value& L, const Value& R) -> Value {
+    Type* vt = n->ty;
+    Type* et = vt->elem;
+    const size_t len = static_cast<size_t>(vt->length);
+    const bool lv = is_array_value(L);
+    const bool rv = is_array_value(R);
+    vector<Value> out;
+    out.reserve(len);
+    for (size_t i = 0; i < len; i++) {
+        const Value& a = lv ? lane_of(L, i) : L;
+        const Value& b = rv ? lane_of(R, i) : R;
+        Value r = arith(et, a, b, n->op);
+        if (trapped) {
+            return v_unit();
+        }
+        out.push_back(r);
+    }
+    return make_array(vt, std::move(out));
+}
+
+auto Interp::eval_vector_unary(Node* n, const Value& x) -> Value {
+    Type* vt = n->ty;
+    const size_t len = static_cast<size_t>(vt->length);
+    vector<Value> out;
+    out.reserve(len);
+    for (size_t i = 0; i < len; i++) {
+        Value r = unary_scalar(vt->elem, lane_of(x, i), n->op);
+        if (trapped) {
+            return v_unit();
+        }
+        out.push_back(r);
+    }
+    return make_array(vt, std::move(out));
 }
 
 auto Interp::cmp_num(const Value& L, const Value& R, Type* t, TokenKind op) -> bool {
@@ -557,6 +610,9 @@ auto Interp::eval_binary(Node* n) -> Value {
     }
     TokenKind op = n->op;
     Type* t = n->ty;
+    if (is_vector(t)) {
+        return eval_vector_binary(n, L, R);
+    }
     if (L.kind == TypeKind::Pointer || R.kind == TypeKind::Pointer) {
         if ((L.punned || R.punned) && op != TokenKind::EqEq && op != TokenKind::NotEq) {
             fail("pointer reinterpretation is not modelled by the interpreter; build it");

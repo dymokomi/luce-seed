@@ -284,6 +284,39 @@ bool is_array(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Array;
 }
 
+// A vector (§5.12): an array of one integer type of a stated width, or of `f32` or `f64`,
+// whose bytes number eight or sixteen.
+bool is_vector(const Type* t) {
+    if (!is_array(t) || t->elem == nullptr || !t->elem->c_name.empty()) {
+        return false;
+    }
+    uint64_t bytes = 0;
+    switch (t->elem->kind) {
+    case TypeKind::I8:
+    case TypeKind::U8:
+        bytes = 1;
+        break;
+    case TypeKind::I16:
+    case TypeKind::U16:
+        bytes = 2;
+        break;
+    case TypeKind::I32:
+    case TypeKind::U32:
+    case TypeKind::F32:
+        bytes = 4;
+        break;
+    case TypeKind::I64:
+    case TypeKind::U64:
+    case TypeKind::F64:
+        bytes = 8;
+        break;
+    default:
+        return false;
+    }
+    const uint64_t total = t->length * bytes;
+    return total == 8 || total == 16;
+}
+
 bool is_span(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Span;
 }

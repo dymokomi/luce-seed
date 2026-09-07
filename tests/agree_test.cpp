@@ -1393,3 +1393,57 @@ TEST(header_export_func) {
     CHECK(h.find("int32_t twice(") != std::string::npos);
     CHECK(h.find("lb_twice") == std::string::npos);
 }
+
+TEST(agree_vector_arithmetic) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let a: f32[4] = [1.0, 2.0, 3.0, 4.0]\n"
+                 "    let b = f32[4](0.5)\n"
+                 "    let c = a * b + a\n"
+                 "    let d = c * 2.0\n"
+                 "    var total: i64 = 0\n"
+                 "    if c[0] == 1.5 and c[3] == 6.0 and d[3] == 12.0:\n"
+                 "        total += 10\n"
+                 "    if c.sum() == 15.0 and c.min() == 1.5 and c.max() == 6.0:\n"
+                 "        total += 10\n"
+                 "    var counts: u32[4] = [1, 2, 3, 4]\n"
+                 "    counts = counts +% counts\n"
+                 "    let masked = counts & 6\n"
+                 "    let shifted = counts << 2\n"
+                 "    if counts[3] == 8 and masked[1] == 4 and masked[3] == 0 and shifted[0] == 8 and counts.sum() == 20:\n"
+                 "        total += 10\n"
+                 "    let signed: i16[8] = [1, -2, 3, -4, 5, -6, 7, -8]\n"
+                 "    let neg = -signed\n"
+                 "    let inv = ~signed\n"
+                 "    let wide = signed *| 20000\n"
+                 "    if neg[1] == 2 and inv[0] == -2 and wide[0] == 20000 and wide[1] == -32768 and signed.min() == -8 and signed.max() == 7:\n"
+                 "        total += 10\n"
+                 "    let pair: f64[2] = [2.5, 0.0]\n"
+                 "    let q = pair / f64[2](2.0)\n"
+                 "    if q[0] == 1.25 and q[1] == 0.0 and pair == [2.5, 0.0]:\n"
+                 "        total += 2\n"
+                 "    return total\n"));
+}
+
+TEST(agree_vector_lane_overflow_traps) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    var big: i32[4] = [1, 2, 2147483647, 4]\n"
+                 "    let more = big + 1\n"
+                 "    return (i64)more[0]\n"));
+}
+
+TEST(agree_vector_float_fold_skips_nan) {
+    CHECK(agrees("pub func answer() -> i64:\n"
+                 "    let nan = f64.bits(9221120237041090560)\n"
+                 "    let v: f64[2] = [nan, 3.0]\n"
+                 "    let w: f64[2] = [nan, nan]\n"
+                 "    var total: i64 = 0\n"
+                 "    if v.min() == 3.0 and v.max() == 3.0:\n"
+                 "        total += 21\n"
+                 "    if w.max() != w.max():\n"
+                 "        total += 21\n"
+                 "    return total\n"));
+}
+
+TEST(agree_vector_splat_at_top_level) {
+    CHECK(agrees("let ones = i32[4](1)\nlet base: f32[4] = [1.0, 2.0, 3.0, 4.0]\npub func answer() -> i64:\n    let scaled = base * 2.0\n    return (i64)ones.sum() + (i64)scaled[3] + 30\n"));
+}

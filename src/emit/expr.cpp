@@ -579,7 +579,25 @@ auto Emitter::emit_unary(Node* n) -> string {
     // under an optional context the operator computes in the payload's type; emit_expr wraps
     Type* t = is_opt(n->ty) && !is_ptr(n->ty) && !is_func(n->ty) ? n->ty->elem : n->ty;
     string x = emit_expr(n->left);
-    if (n->op == TokenKind::Tilde) {
+    if (is_vector(t)) {
+        return emit_vector_unary(n, t, x);
+    }
+    if (n->op == TokenKind::Minus && !is_float(t) && n->left != nullptr &&
+        n->left->kind == NodeKind::Literal && n->left->op == TokenKind::IntLit) {
+        ParsedInt p = parse_int_literal(n->left->text);
+        if (p.ok && t != nullptr &&
+            p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "(int64_t)(1ULL << %d)", int_bits(t) - 1);
+            return down_cast(t, buf);
+        }
+    }
+    return emit_unary_scalar(t, n->op, x);
+}
+
+// `~x`, `-x`, and `-%x` on one scalar of type `t`.
+auto Emitter::emit_unary_scalar(Type* t, TokenKind op, const string& x) -> string {
+    if (op == TokenKind::Tilde) {
         if (t != nullptr && is_unsigned_int(t)) {
             return down_cast(t, "lb_not_u(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
         }
@@ -588,21 +606,11 @@ auto Emitter::emit_unary(Node* n) -> string {
     if (is_float(t)) {
         return "(-(" + x + "))";
     }
-    if (n->op == TokenKind::MinusPercent) {
+    if (op == TokenKind::MinusPercent) {
         const char* h = is_signed_int(t) ? "lb_negw_s" : "lb_negw_u";
         return down_cast(t, string(h) + "(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
     }
-    if (n->op == TokenKind::Minus) {
-        if (n->left != nullptr && n->left->kind == NodeKind::Literal &&
-            n->left->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(n->left->text);
-            if (p.ok && t != nullptr &&
-                p.value == static_cast<uint64_t>(int_max_signed(int_bits(t))) + 1) {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "(int64_t)(1ULL << %d)", int_bits(t) - 1);
-                return down_cast(t, buf);
-            }
-        }
+    if (op == TokenKind::Minus) {
         return down_cast(t, "lb_neg_s(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
     }
     return "0";
@@ -734,6 +742,9 @@ auto Emitter::emit_binary(Node* n) -> string {
                       " = " + R + "; " + emit_equal(lt, a, b) + "; })";
         return op == TokenKind::EqEq ? "(" + test + ")" : "(!" + test + ")";
     }
+    if (is_vector(t)) {
+        return emit_vector_binary(n, t, L, R);
+    }
     if (is_ptr(lt) || is_ptr(rt)) {
         if (op == TokenKind::EqEq) {
             return "(" + L + " == " + R + ")";
@@ -797,6 +808,35 @@ auto Emitter::emit_binary(Node* n) -> string {
                                                   : ">=";
         return "(" + a + " " + cop + " " + b + ")";
     }
+    if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
+        op == TokenKind::StarQuestion) {
+        Type* et = result != nullptr && is_opt(result) ? result->elem : result;
+        const char* q = op == TokenKind::PlusQuestion    ? "qadd"
+                        : op == TokenKind::MinusQuestion ? "qsub"
+                                                         : "qmul";
+        string h = "lb_";
+        h += q;
+        h += is_signed_int(et) ? "_s" : "_u";
+        int id = tmp();
+        string o = "_lb_qo" + std::to_string(id);
+        string r = "_lb_qr" + std::to_string(id);
+        string oty = is_signed_int(et) ? "int64_t" : "uint64_t";
+        string s = "({ ";
+        s += oty + " " + o + "; ";
+        s += opt_c_name(result) + " " + r + "; ";
+        s += r + ".present = " + h + "(" + word_cast(et, L) + ", " + word_cast(et, R) + ", " +
+             bits_lit(et) + ", &" + o + "); ";
+        s += r + ".value = (" + c_type(et) + ")(" + o + "); ";
+        s += r + "; })";
+        return s;
+    }
+    return emit_arith(t, op, L, R);
+}
+
+// One scalar arithmetic, wrapping, saturating, bit, or shift operation of §7.2 and §7.3 on
+// operands `L` and `R` of type `t`: a C operator for floats and bits, a runtime helper for
+// the checked and modular integer forms.
+auto Emitter::emit_arith(Type* t, TokenKind op, const string& L, const string& R) -> string {
     if (is_float(t)) {
         const char* cop = op == TokenKind::Plus    ? "+"
                           : op == TokenKind::Minus ? "-"
@@ -835,32 +875,92 @@ auto Emitter::emit_binary(Node* n) -> string {
         helper = "shl";
     } else if (op == TokenKind::GtGt) {
         helper = "shr";
-    } else if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
-               op == TokenKind::StarQuestion) {
-        Type* et = result != nullptr && is_opt(result) ? result->elem : result;
-        const char* q = op == TokenKind::PlusQuestion    ? "qadd"
-                        : op == TokenKind::MinusQuestion ? "qsub"
-                                                         : "qmul";
-        string h = "lb_";
-        h += q;
-        h += is_signed_int(et) ? "_s" : "_u";
-        int id = tmp();
-        string o = "_lb_qo" + std::to_string(id);
-        string r = "_lb_qr" + std::to_string(id);
-        string oty = is_signed_int(et) ? "int64_t" : "uint64_t";
-        string s = "({ ";
-        s += oty + " " + o + "; ";
-        s += opt_c_name(result) + " " + r + "; ";
-        s += r + ".present = " + h + "(" + word_cast(et, L) + ", " + word_cast(et, R) + ", " +
-             bits_lit(et) + ", &" + o + "); ";
-        s += r + ".value = (" + c_type(et) + ")(" + o + "); ";
-        s += r + "; })";
-        return s;
     }
     if (helper != nullptr) {
         return emit_helper(helper, t, L, R);
     }
     return "0";
+}
+
+// Lane-wise arithmetic (§5.12): the operands are bound once, each lane of the result is the
+// scalar operation on the operands' lanes, a scalar operand standing for every lane.
+auto Emitter::emit_vector_binary(Node* n, Type* vt, const string& L, const string& R) -> string {
+    Type* et = vt->elem;
+    Type* lt = n->left->ty;
+    Type* rt = n->right->ty;
+    const int id = tmp();
+    const string a = "_lb_va" + std::to_string(id);
+    const string b = "_lb_vb" + std::to_string(id);
+    const string r = "_lb_vr" + std::to_string(id);
+    const bool lv = is_array(lt);
+    const bool rv = is_array(rt);
+    string s = "({ " + c_type(lt) + " " + a + " = " + L + "; " + c_type(rt) + " " + b + " = " + R +
+               "; " + c_type(vt) + " " + r + "; ";
+    for (uint64_t i = 0; i < vt->length; i++) {
+        const string k = std::to_string(i);
+        const string ai = lv ? a + ".d[" + k + "]" : a;
+        const string bi = rv ? b + ".d[" + k + "]" : b;
+        s += r + ".d[" + k + "] = " + emit_arith(et, n->op, ai, bi) + "; ";
+    }
+    return s + r + "; })";
+}
+
+auto Emitter::emit_vector_unary(Node* n, Type* vt, const string& x) -> string {
+    const int id = tmp();
+    const string a = "_lb_va" + std::to_string(id);
+    const string r = "_lb_vr" + std::to_string(id);
+    string s = "({ " + c_type(vt) + " " + a + " = " + x + "; " + c_type(vt) + " " + r + "; ";
+    for (uint64_t i = 0; i < vt->length; i++) {
+        const string k = std::to_string(i);
+        s += r + ".d[" + k + "] = " + emit_unary_scalar(vt->elem, n->op, a + ".d[" + k + "]") + "; ";
+    }
+    return s + r + "; })";
+}
+
+// `T[N](x)`: every lane is `x`, computed once (§5.12); in a global's initialiser `x` is a
+// constant and the lanes are a compound literal.
+auto Emitter::emit_splat(Node* n) -> string {
+    Type* vt = n->ty;
+    if (at_file_scope) {
+        const string x = emit_expr(n->body != nullptr ? n->body->left : nullptr);
+        string s = "((" + c_type(vt) + "){{";
+        for (uint64_t i = 0; i < vt->length; i++) {
+            s += (i == 0 ? "" : ", ") + x;
+        }
+        return s + "}})";
+    }
+    const int id = tmp();
+    const string a = "_lb_va" + std::to_string(id);
+    const string r = "_lb_vr" + std::to_string(id);
+    string s = "({ " + c_type(vt->elem) + " " + a + " = " +
+               emit_expr(n->body != nullptr ? n->body->left : nullptr) + "; " + c_type(vt) + " " + r + "; ";
+    for (uint64_t i = 0; i < vt->length; i++) {
+        s += r + ".d[" + std::to_string(i) + "] = " + a + "; ";
+    }
+    return s + r + "; })";
+}
+
+// `v.sum()`, `v.min()`, `v.max()`: the lanes folded in order (§5.12); a float `min` or `max`
+// skips a NaN lane when another lane compares.
+auto Emitter::emit_vector_fold(Node* obj, Node* n) -> string {
+    Type* vt = obj->ty;
+    Type* et = vt->elem;
+    const int id = tmp();
+    const string v = "_lb_va" + std::to_string(id);
+    const string acc = "_lb_vf" + std::to_string(id);
+    const string which = string(n->left->text);
+    string s = "({ " + c_type(vt) + " " + v + " = " + emit_expr(obj) + "; " + c_type(et) + " " + acc +
+               " = " + v + ".d[0]; ";
+    for (uint64_t i = 1; i < vt->length; i++) {
+        const string lane = v + ".d[" + std::to_string(i) + "]";
+        if (which == "sum") {
+            s += acc + " = " + emit_arith(et, TokenKind::Plus, acc, lane) + "; ";
+        } else {
+            const string nan = is_float(et) ? acc + " != " + acc + " || " : string();
+            s += "if (" + nan + lane + (which == "min" ? " < " : " > ") + acc + ") " + acc + " = " + lane + "; ";
+        }
+    }
+    return s + acc + "; })";
 }
 
 auto Emitter::emit_enum_check(Type* dest, const string& e) -> string {
