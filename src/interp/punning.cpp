@@ -171,6 +171,14 @@ bool decode(Value& v, const Type* t, const uint8_t* in) {
 
 } // namespace
 
+bool encode_value(const Value& v, const Type* t, uint8_t* out) {
+    return encode(v, t, out);
+}
+
+bool decode_value(Value& v, const Type* t, const uint8_t* in) {
+    return decode(v, t, in);
+}
+
 uint64_t float_to_bits(double f, TypeKind k) {
     uint64_t bits = 0;
     if (k == TypeKind::F16) {

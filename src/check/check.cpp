@@ -42,6 +42,89 @@ auto Checker::mark_local(Node* n) -> void {
     }
 }
 
+// A constant expression (§6.4): literals; `sizeof`, `alignof`, `offsetof`, and the `luce`
+// facts; operators and casts on constants; array, tuple, and struct literals of constants;
+// enum cases; the address of a global or a function; top-level `let` names.
+auto Checker::is_constant_expr(Node* n) -> bool {
+    if (n == nullptr) {
+        return false;
+    }
+    switch (n->kind) {
+    case NodeKind::Literal:
+        return true;
+    case NodeKind::Group:
+        return is_constant_expr(n->left);
+    case NodeKind::Unary:
+        if (n->op == TokenKind::Amp) {
+            return n->left != nullptr && n->left->kind == NodeKind::Name && names_a_global(n->left);
+        }
+        return is_constant_expr(n->left);
+    case NodeKind::Binary:
+        return is_constant_expr(n->left) && is_constant_expr(n->right);
+    case NodeKind::Cast:
+        return is_constant_expr(n->left);
+    case NodeKind::Conditional:
+        return is_constant_expr(n->type) && is_constant_expr(n->left) && is_constant_expr(n->right);
+    case NodeKind::ArrayLit:
+    case NodeKind::Tuple:
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            if (!is_constant_expr(e)) {
+                return false;
+            }
+        }
+        return true;
+    case NodeKind::CaseValue:
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            if (!is_constant_expr(a->left)) {
+                return false;
+            }
+        }
+        return true;
+    case NodeKind::Name:
+        return names_a_global(n) || (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase);
+    case NodeKind::Member: {
+        if (n->left != nullptr && n->left->kind == NodeKind::Name && n->left->text == "luce") {
+            return true;
+        }
+        Node* d = n->resolved;
+        return d != nullptr && (d->kind == NodeKind::Const || d->kind == NodeKind::EnumCase ||
+                                d->kind == NodeKind::Func);
+    }
+    case NodeKind::Call: {
+        Node* callee = n->left;
+        if (callee != nullptr && callee->kind == NodeKind::Name &&
+            (callee->text == "sizeof" || callee->text == "alignof" || callee->text == "offsetof")) {
+            return true;
+        }
+        // a struct construction, a payload case, or `ErrorCode.package` from constants
+        const bool builds = n->resolved == nullptr ||
+                            n->resolved->kind == NodeKind::Struct || n->resolved->kind == NodeKind::EnumCase;
+        if (!builds) {
+            return false;
+        }
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            if (!is_constant_expr(a->left)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+// `&global` and a function name are constant addresses (§6.4); so is a top-level `let`.
+auto Checker::names_a_global(Node* n) -> bool {
+    Node* d = n != nullptr ? n->resolved : nullptr;
+    if (d == nullptr && n != nullptr && n->kind == NodeKind::Name) {
+        Binding* b = lookup(n->text);
+        d = b != nullptr ? b->decl : nullptr;
+    }
+    return d != nullptr && (d->kind == NodeKind::Global || d->kind == NodeKind::Const ||
+                            d->kind == NodeKind::Func);
+}
+
 auto Checker::is_local(Node* n) -> bool {
     return n != nullptr && (n->flags & FlagLocal) != 0;
 }
@@ -643,6 +726,9 @@ auto Checker::collect_module(Node* mod) -> void {
                 in_top_const = d->kind == NodeKind::Const;
                 Type* init = check_expr(d->left, t);
                 in_top_const = saved_const;
+                if (!is_constant_expr(d->left)) {
+                    fail_n(d->left, "lucb.check.type", "a top-level initialiser is a constant expression");
+                }
                 if (t == nullptr) {
                     if (init != nullptr && init->kind == TypeKind::UntypedInt) {
                         init = coerce(d->left, init, t_i64());
@@ -1056,6 +1142,9 @@ auto Checker::check_module(Node* mod) -> void {
             check_test(d);
         } else if (d->kind == NodeKind::Assert) {
             check_assert(d);
+            if (d->body != nullptr && !is_constant_expr(d->body->left)) {
+                fail_n(d->body->left, "lucb.check.type", "a module-level `assert` needs a constant condition");
+            }
         } else if (d->kind == NodeKind::Asm) {
             check_asm(d);
         }

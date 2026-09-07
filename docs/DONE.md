@@ -1,7 +1,22 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.19**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.20**, the seed `luce-base` is written against.
+
+## 0.20: what chapters 6 and 7 of the conformance suite found
+
+- a top-level initialiser and a module-level `assert` need constant expressions
+  (`is_constant_expr`); `luce.file` is the path the compiler was given, and
+  `luce.function` names `main` too;
+- the escape rule covers stores into globals and through pointers, and an error
+  message built from a local buffer;
+- `&5` is refused; unary `-` on an untyped group takes the context's type; `1 +? 2`
+  under a `u8?` adds bytes; checked arithmetic is refused on atomics; unions have
+  no equality; `x == .case` takes the enum from the other operand;
+- `(Kind)n` and `(func(i64) -> i64)p` parse as casts;
+- the interpreter sign-extends implicit widenings, compares arrays element by
+  element, and models `memory.read[T]` and `memory.write[T]` over a byte buffer
+  by spreading the bytes across its cells.
 
 ## 0.19: what chapter 5 of the conformance suite found
 

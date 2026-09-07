@@ -306,6 +306,13 @@ auto Interp::show(const Value& v) -> string {
 
 auto Interp::eval(Node* n) -> Value {
     Value v = eval_uncast(n);
+    // an implicit widening (§7.5) extends the value to the wider type it was coerced to:
+    // sign-extended when signed, so `let big: i64 = small` keeps `-5`
+    if (n != nullptr && is_int(n->ty) && v.type != nullptr && is_int(v.type) &&
+        int_bits(v.type) < int_bits(n->ty) && v.kind != TypeKind::Optional) {
+        v = is_signed_int(v.type) ? v_int(n->ty, static_cast<uint64_t>(as_s(v, v.type)))
+                                  : v_int(n->ty, as_u(v, v.type));
+    }
     if (n != nullptr && is_opt(n->ty) && v.kind != TypeKind::Optional) {
         v.present = true;
         v.kind = TypeKind::Optional;
@@ -562,8 +569,10 @@ auto Interp::eval_member(Node* n) -> Value {
             return v;
         }
         if (lt->name == "luce") {
-            string file = module != nullptr && !module->text.empty() ? string(module->text)
-                                                                     : string("t.lucb");
+            // `luce.file` is the path the compiler was given (§6.4)
+            string file = module != nullptr && module->left != nullptr && !module->left->text.empty()
+                              ? string(module->left->text)
+                              : (module != nullptr && !module->text.empty() ? string(module->text) : string("t.lucb"));
             if (n->text == "file") {
                 strings.push_back(file);
                 return v_str(strings.back());

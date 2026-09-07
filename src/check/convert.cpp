@@ -311,7 +311,8 @@ auto Checker::check_cast(Node* n, bool checked) -> Type* {
         return t_error();
     }
     // a reinterpreting cast of a local address keeps the escape taint of §6.6
-    if (n->left != nullptr && is_local(n->left) &&
+    const bool local_array = n->left != nullptr && is_array(src) && place_is_local(n->left);
+    if (n->left != nullptr && (is_local(n->left) || local_array) &&
         (is_ptr(dest) || is_span(dest) || (dest != nullptr && dest->kind == TypeKind::Str))) {
         mark_local(n);
     }

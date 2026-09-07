@@ -119,6 +119,13 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
     if (!at(TokenKind::LParen)) {
         return false;
     }
+    if (peek_kind(pos + 1) == TokenKind::KwFunc) {
+        // `(func(i64) -> i64)p`: a parenthesised function type is a cast (§7.5)
+        int close = find_match(pos, TokenKind::LParen, TokenKind::RParen);
+        TokenKind operand = close > 0 ? peek_kind(close + 1) : TokenKind::EndOfFile;
+        return operand == TokenKind::Name || operand == TokenKind::LParen ||
+               operand == TokenKind::Amp || operand == TokenKind::Star || operand == TokenKind::KwSelf;
+    }
     int i = pos + 1;
     while (peek_kind(i) == TokenKind::KwConst || peek_kind(i) == TokenKind::KwVolatile) {
         i++;
@@ -161,9 +168,8 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         operand == TokenKind::StringLit || operand == TokenKind::BytesLit ||
         operand == TokenKind::KwSelf || operand == TokenKind::KwTrue ||
         operand == TokenKind::KwFalse) {
-        if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {
-            return false;
-        }
+        // `(Kind)n` casts to an integer-backed enum (§10.3); `(x) y` means nothing else,
+        // while `(Name)(x)` stays a call
         return true;
     }
     if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {

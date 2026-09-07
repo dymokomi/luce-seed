@@ -26,6 +26,21 @@
 
 namespace lucb {
 
+// `&buffer` addresses an array value; a `memory.read` or `memory.write` there starts at its
+// first element, the first byte of the buffer it stands for.
+static Value* first_cell(Value* at) {
+    while (at != nullptr && at->kind == TypeKind::Array) {
+        if (at->ptr != nullptr) {
+            at = at->ptr;
+        } else if (!at->fields.empty()) {
+            at = &at->fields[0];
+        } else {
+            break;
+        }
+    }
+    return at;
+}
+
 // A fallible result already failed, for a callee the oracle cannot run.
 static Value fail_run(Type* ty) {
     Value e;
@@ -394,6 +409,23 @@ auto Interp::eval_call(Node* n) -> Value {
                 }
                 Type* t = n->type != nullptr ? n->type->ty : n->ty;
                 if (addr.ptr != nullptr) {
+                    // a value wider than the cell it starts at is gathered from the cells
+                    // that follow, as the bytes of a `u8` buffer would be (§7.7)
+                    Value* cell = first_cell(addr.ptr);
+                    const int width = type_size(t);
+                    const int cell_width = cell->type != nullptr ? type_size(cell->type) : width;
+                    if (cell->type != nullptr && is_int(cell->type) && cell_width > 0 && cell_width < width) {
+                        vector<uint8_t> bytes(static_cast<size_t>(width), 0);
+                        for (int k = 0; k * cell_width < width; k++) {
+                            encode_value(cell[k], cell[k].type, bytes.data() + k * cell_width);
+                        }
+                        Value out;
+                        out.type = t;
+                        out.kind = t->kind;
+                        if (decode_value(out, t, bytes.data())) {
+                            return out;
+                        }
+                    }
                     Value v = *addr.ptr;
                     v.type = t;
                     if (t != nullptr) {
@@ -416,6 +448,20 @@ auto Interp::eval_call(Node* n) -> Value {
                     val.type = t;
                     if (t != nullptr) {
                         val.kind = t->kind;
+                    }
+                    // a value wider than the cell it lands on spreads its bytes across the
+                    // cells that follow, as it would over a `u8` buffer (§7.7)
+                    Value* cell = first_cell(addr.ptr);
+                    const int width = t != nullptr ? type_size(t) : 0;
+                    const int cell_width = cell->type != nullptr ? type_size(cell->type) : width;
+                    if (t != nullptr && cell->type != nullptr && is_int(cell->type) && cell_width > 0 && cell_width < width) {
+                        vector<uint8_t> bytes(static_cast<size_t>(width), 0);
+                        if (encode_value(val, t, bytes.data())) {
+                            for (int k = 0; k * cell_width < width; k++) {
+                                decode_value(cell[k], cell[k].type, bytes.data() + k * cell_width);
+                            }
+                            return v_unit();
+                        }
                     }
                     *addr.ptr = val;
                 }

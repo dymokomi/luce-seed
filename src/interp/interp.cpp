@@ -273,6 +273,7 @@ int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string
         }
         return 1;
     }
+    ip.current_fn = main_fn; // `luce.function` inside `main` names it
     vector<Value> argv;
     for (size_t i = 0; i < args.size(); i++) {
         argv.push_back(v_str(args[i]));

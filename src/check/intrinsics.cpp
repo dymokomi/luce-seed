@@ -377,9 +377,14 @@ auto Checker::check_error(Node* n) -> Type* {
             code->kind != TypeKind::UntypedInt) {
             fail_n(n->body, "lucb.check.type", "`error` code must be `ErrorCode`");
         }
-        Type* msg = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_str());
+        Node* message = n->body->next != nullptr ? n->body->next->left : nullptr;
+        Type* msg = check_expr(message, t_str());
         if (!type_eq(msg, t_str())) {
             fail_n(n, "lucb.check.type", "`error` message must be `str`");
+        }
+        if (is_local(message)) {
+            // §6.6: the message outlives the frame that raised the error
+            fail_n(message, "lucb.check.escape", "an error message must not name a local");
         }
     }
     return t_never();

@@ -134,11 +134,12 @@ auto Interp::values_equal(const Value& a, const Value& b, Type* t) -> bool {
         return true;
     }
     if (k == TypeKind::Array && t != nullptr) {
-        if (a.fields.size() != b.fields.size()) {
-            return false;
-        }
-        for (size_t i = 0; i < a.fields.size(); i++) {
-            if (!values_equal(a.fields[i], b.fields[i], t->elem)) {
+        // an array value keeps its elements in storage (`ptr`) or inline (`fields`)
+        const size_t n = static_cast<size_t>(t->length);
+        for (size_t i = 0; i < n; i++) {
+            const Value* x = a.ptr != nullptr ? a.ptr + i : (i < a.fields.size() ? &a.fields[i] : nullptr);
+            const Value* y = b.ptr != nullptr ? b.ptr + i : (i < b.fields.size() ? &b.fields[i] : nullptr);
+            if (x == nullptr || y == nullptr || !values_equal(*x, *y, t->elem)) {
                 return false;
             }
         }

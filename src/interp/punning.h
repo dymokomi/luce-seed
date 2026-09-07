@@ -22,6 +22,11 @@ namespace lucb {
 // reached through this function.
 Value* union_member(Value& u, int index);
 
+// A value's bytes in the target's layout, and a value from them: what `memory.read[T]` and
+// `memory.write[T]` move across cells narrower than `T`.
+bool encode_value(const Value& v, const Type* t, uint8_t* out);
+bool decode_value(Value& v, const Type* t, const uint8_t* in);
+
 // The IEEE bits of `f` at the width of the float type `t`, and the float those bits spell.
 uint64_t float_to_bits(double f, TypeKind k);
 double float_from_bits(uint64_t bits, TypeKind k);

@@ -403,6 +403,11 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
             inner = coerce(n->left, inner, want);
             n->left->ty = inner;
         }
+        if (inner != nullptr && inner->kind == TypeKind::UntypedInt) {
+            // `-(3 * 4)`: an untyped expression takes the context's signed type, else `i64`
+            inner = coerce(n->left, inner, is_signed_int(dest) ? dest : t_i64());
+            n->left->ty = inner;
+        }
         if (is_unsigned_int(inner)) {
             fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
             return t_error();
@@ -429,6 +434,10 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         return inner->elem;
     }
     if (n->op == TokenKind::Amp) {
+        if (n->left != nullptr && n->left->kind == NodeKind::Literal) {
+            fail_n(n, "lucb.check.type", "cannot take the address of a literal");
+            return t_error();
+        }
         Type* inner = check_expr(n->left, nullptr);
         bool mut = is_mut_place(n->left);
         Type* p = intern_ptr(inner, !mut, false, false);
@@ -614,11 +623,18 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
                       n->right->op == TokenKind::KwNone;
     bool none_left = n->left != nullptr && n->left->kind == NodeKind::Literal &&
                      n->left->op == TokenKind::KwNone;
-    // context chooses a float literal's type (§7.1): `let x: f16 = 1.0 / 3.0` divides halves
-    Type* hint = is_float(expected) ? expected : nullptr;
-    Type* L = none_left ? nullptr : check_expr(n->left, hint);
-    Type* R = none_right ? check_expr(n->right, L) : check_expr(n->right, hint);
-    if (none_left) {
+    // context chooses a float literal's type (§7.1): `let x: f16 = 1.0 / 3.0` divides halves;
+    // a case value takes the enum the context names: `let both: Flag = .read | .write`
+    Type* hint = is_float(expected) || is_int_enum(expected) ? expected : nullptr;
+    if (is_checked_arith(op) && is_opt(expected) && is_int(expected->elem)) {
+        hint = expected->elem; // `let fits: u8? = 1 +? 2` adds bytes
+    }
+    // `x == .quiet`: a bare case value takes the enum the other operand has
+    const bool case_right = n->right != nullptr && n->right->kind == NodeKind::CaseValue;
+    const bool case_left = n->left != nullptr && n->left->kind == NodeKind::CaseValue && !case_right;
+    Type* L = none_left || case_left ? nullptr : check_expr(n->left, hint);
+    Type* R = none_right || case_right ? check_expr(n->right, L) : check_expr(n->right, hint);
+    if (none_left || case_left) {
         L = check_expr(n->left, R);
     }
     if (is_atomic(L)) {
@@ -706,6 +722,10 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         if ((L != nullptr && L->kind == TypeKind::Interface) ||
             (R != nullptr && R->kind == TypeKind::Interface)) {
             fail_n(n, "lucb.check.type", "interface views cannot be compared");
+            return t_bool();
+        }
+        if ((L != nullptr && L->kind == TypeKind::Union) || (R != nullptr && R->kind == TypeKind::Union)) {
+            fail_n(n, "lucb.check.type", "unions have no equality (§7.4)");
             return t_bool();
         }
         // an optional against a plain value of its element type: the value converts (§5.8)
@@ -819,6 +839,11 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         (void)expected;
         if (op == TokenKind::PlusQuestion || op == TokenKind::MinusQuestion ||
             op == TokenKind::StarQuestion) {
+            if (is_atomic(n->left->ty) || is_atomic(n->right->ty)) {
+                // checked arithmetic does not apply to atomics (§15.1)
+                fail_n(n, "lucb.check.type", "checked arithmetic does not apply to an atomic; write a `cas` loop");
+                return t_error();
+            }
             return intern_opt(u);
         }
         return u;

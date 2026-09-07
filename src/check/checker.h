@@ -243,6 +243,8 @@ struct Checker {
     Type* check_float_bits(Node* n, Node* obj);
     Type* check_float_from_bits(Node* n, Node* obj);
     void enter_loop(Node* n);
+    bool is_constant_expr(Node* n);
+    bool names_a_global(Node* n);
     Type* bits_integer(Type* t);
     bool is_local(Node* n);
     void fail(Span span, const char* code, const string& message);

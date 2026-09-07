@@ -175,6 +175,11 @@ auto Checker::check_stmt(Node* n) -> void {
                 !can_ptr_convert(rt, dest, n->right)) {
                 fail_n(n, "lucb.check.type", "assignment type mismatch");
             }
+            const bool view = is_ptr(dest) || is_span(dest) || (dest != nullptr && dest->kind == TypeKind::Str);
+            if (view && is_local(n->right) && !place_is_local(n->left)) {
+                // §6.6: a local's address may not be stored in a global or through a pointer
+                fail_n(n->right, "lucb.check.escape", "this pointer or view must not be stored where it outlives the function");
+            }
         } else {
             Type* rt = check_expr(n->right, dest);
             if (is_atomic(lt)) {
