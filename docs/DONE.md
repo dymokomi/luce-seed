@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.22**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.23**, the seed `luce-base` is written against.
+
+## 0.23: what chapter 11 of the conformance suite found
+
+- a module-level `assert` is decided at compile time (`const_bool`): a false one
+  is a compile error naming its message, as C's `static_assert`;
+- `format` on a local array yields a local view, and `try` keeps the mark, so a
+  message formatted on a local buffer is refused wherever it reaches `error`.
 
 ## 0.22: what chapter 10 of the conformance suite found
 

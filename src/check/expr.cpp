@@ -347,6 +347,9 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
             fail_n(n, "lucb.check.type", "`try` is only valid in a fallible function");
             return t_error();
         }
+        if (is_local(n->left)) {
+            mark_local(n); // the value still views the local it came from (§6.6)
+        }
         return inner->elem != nullptr ? inner->elem : t_unit();
     }
     if (n->op == TokenKind::KwNot) {

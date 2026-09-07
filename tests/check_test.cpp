@@ -1092,3 +1092,20 @@ TEST(check_catch_handler_terminates) {
     CHECK(check_ok("func g() -> !:\n    return\n"
                    "pub func answer() -> i64:\n    g() catch e:\n        discard(e)\n    return 1\n"));
 }
+
+// §11.6: a module-level `assert` is decided at compile time
+TEST(check_module_assert_decided) {
+    CHECK(check_ok("assert(sizeof(i64) == 8, \"a word\")\npub func answer() -> i64:\n    return 0\n"));
+    CHECK(check_has("assert(sizeof(i64) == 4, \"a word\")\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.assert"));
+    CHECK(check_has("assert(not (1 < 2 and true))\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.assert"));
+}
+
+// §11.3, §6.6: a message formatted on a local buffer does not outlive the function, even through a `let`
+TEST(check_error_message_from_local_through_let) {
+    CHECK(check_has("let code = ErrorCode.package(1)\n"
+                    "func fail(n: i64) -> !:\n    var buffer: u8[64]\n    let text = try format(buffer, f\"bad {n}\")\n    error(code, text)\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.escape"));
+}

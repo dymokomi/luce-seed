@@ -264,6 +264,7 @@ struct Checker {
     bool is_core_name(string_view name);
     void check_declared_name(Node* n, string_view name);
     bool const_u64(Node* n, uint64_t* out);
+    bool const_bool(Node* n, bool* out);
     Type* resolve_type(Node* n);
     Node* struct_member(Node* st, string_view name, NodeKind kind);
     Node* enum_case(Node* en, string_view name);

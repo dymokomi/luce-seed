@@ -343,6 +343,59 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
     return false;
 }
 
+// A constant condition's truth (§11.6): the literals, `not`, `and`, `or`, and comparisons of
+// constant integers, signed when either operand's type is.
+auto Checker::const_bool(Node* n, bool* out) -> bool {
+    if (n == nullptr || out == nullptr) {
+        return false;
+    }
+    if (n->kind == NodeKind::Literal && (n->op == TokenKind::KwTrue || n->op == TokenKind::KwFalse)) {
+        *out = n->op == TokenKind::KwTrue;
+        return true;
+    }
+    if (n->kind == NodeKind::Group) {
+        return const_bool(n->left, out);
+    }
+    if (n->kind == NodeKind::Unary && n->op == TokenKind::KwNot) {
+        bool inner = false;
+        if (!const_bool(n->left, &inner)) {
+            return false;
+        }
+        *out = !inner;
+        return true;
+    }
+    if (n->kind != NodeKind::Binary) {
+        return false;
+    }
+    if (n->op == TokenKind::KwAnd || n->op == TokenKind::KwOr) {
+        bool a = false;
+        bool b = false;
+        if (!const_bool(n->left, &a) || !const_bool(n->right, &b)) {
+            return false;
+        }
+        *out = n->op == TokenKind::KwAnd ? (a && b) : (a || b);
+        return true;
+    }
+    uint64_t a = 0;
+    uint64_t b = 0;
+    if (!const_u64(n->left, &a) || !const_u64(n->right, &b)) {
+        return false;
+    }
+    const bool is_signed = (n->left != nullptr && is_signed_int(n->left->ty)) ||
+                           (n->right != nullptr && is_signed_int(n->right->ty));
+    const int64_t sa = static_cast<int64_t>(a);
+    const int64_t sb = static_cast<int64_t>(b);
+    switch (n->op) {
+    case TokenKind::EqEq: *out = a == b; return true;
+    case TokenKind::NotEq: *out = a != b; return true;
+    case TokenKind::Lt: *out = is_signed ? sa < sb : a < b; return true;
+    case TokenKind::LtEq: *out = is_signed ? sa <= sb : a <= b; return true;
+    case TokenKind::Gt: *out = is_signed ? sa > sb : a > b; return true;
+    case TokenKind::GtEq: *out = is_signed ? sa >= sb : a >= b; return true;
+    default: return false;
+    }
+}
+
 auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
     if (is_generic_decl(fn)) {
         fail_n(fn, "lucb.check.unsupported", "a generic cannot be `extern` or `export`");
@@ -1264,7 +1317,14 @@ auto Checker::check_module(Node* mod) -> void {
             check_test(d);
         } else if (d->kind == NodeKind::Assert) {
             check_assert(d);
-            if (d->body != nullptr && !is_constant_expr(d->body->left)) {
+            bool holds = true;
+            if (d->body != nullptr && const_bool(d->body->left, &holds) && !holds) {
+                // C's `static_assert`: the condition is decided here (§11.6)
+                Node* message = d->body->next != nullptr ? d->body->next->left : nullptr;
+                string text = message != nullptr && message->kind == NodeKind::Literal
+                                  ? ": " + string(message->text) : "";
+                fail_n(d->body->left, "lucb.check.assert", "a module-level `assert` failed" + text);
+            } else if (d->body != nullptr && !is_constant_expr(d->body->left)) {
                 fail_n(d->body->left, "lucb.check.type", "a module-level `assert` needs a constant condition");
             }
         } else if (d->kind == NodeKind::Asm) {

@@ -395,6 +395,12 @@ auto Checker::check_format(Node* n) -> Type* {
     if (msg != nullptr && msg->kind != TypeKind::Fmt && msg->kind != TypeKind::Str) {
         fail_n(n, "lucb.check.type", "`format` needs a formatted string or `str`");
     }
+    // the text views the buffer: a local array, or a span derived from one, makes the result
+    // local (§6.6); a span parameter views the caller's memory
+    Node* buffer = n->body->left;
+    if (is_local(buffer) || (is_array(buffer->ty) && place_is_local(buffer))) {
+        mark_local(n);
+    }
     return intern_fail(t_str());
 }
 
