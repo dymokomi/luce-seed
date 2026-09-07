@@ -239,7 +239,9 @@ auto Checker::satisfies_bounds(Type* t, Node* g, Node* at) -> bool {
         if (is_ptr(t)) {
             st = t->elem != nullptr ? t->elem->decl : nullptr;
         }
+        const bool display_bound = iface != nullptr && iface->decl != nullptr && iface->decl->text == "Display";
         if (!struct_implements(st, iface) &&
+            !(display_bound && is_display(t)) && // the compiler supplies Display for scalars (§14.4)
             !(t != nullptr && iface != nullptr && t->kind == TypeKind::Interface &&
               t->decl == iface->decl)) {
             fail_n(at, "lucb.check.type",
@@ -307,11 +309,20 @@ auto Checker::unify_into(Type* pat, Type* got, Node* generic, vector<Type*>& inf
         unify_into(pat->elem, got->elem, generic, inf, at);
         return;
     }
-    if (pat->kind == TypeKind::Struct && got->kind == TypeKind::Struct && pat->decl == got->decl &&
+    if (pat->kind == TypeKind::Struct && got->kind == TypeKind::Struct &&
+        generic_origin(pat->decl) == generic_origin(got->decl) &&
         pat->ntargs == got->ntargs && pat->args != nullptr && got->args != nullptr) {
         for (int i = 0; i < pat->ntargs; i++) {
             unify_into(pat->args[i], got->args[i], generic, inf, at);
         }
+        return;
+    }
+    if (is_func(pat) && is_func(got) && pat->ntargs == got->ntargs) {
+        // a function value's parameters and result carry type arguments too
+        for (int i = 0; i < pat->ntargs; i++) {
+            unify_into(pat->args[i], got->args[i], generic, inf, at);
+        }
+        unify_into(pat->elem, got->elem, generic, inf, at);
     }
 }
 
@@ -393,6 +404,7 @@ auto Checker::instantiate_func(Node* fn, const vector<Type*>& args, Node* owner)
     if (fn == nullptr) {
         return nullptr;
     }
+    fn = generic_origin(fn);
     if (is_identity_args(fn, args)) {
         return fn;
     }
@@ -400,8 +412,8 @@ auto Checker::instantiate_func(Node* fn, const vector<Type*>& args, Node* owner)
     if (existing != nullptr) {
         return existing->clone;
     }
-    if (inst_depth > 32) {
-        fail_n(fn, "lucb.check.type", "generic instantiation is too deep");
+    if (inst_depth > k_max_instantiation_depth) {
+        fail_n(fn, "lucb.check.type", "an infinite chain of instantiations of `" + string(fn->text) + "`");
         return fn;
     }
     Node* clone = clone_node(fn);
@@ -414,26 +426,60 @@ auto Checker::instantiate_func(Node* fn, const vector<Type*>& args, Node* owner)
     insts.push_back(in);
     pending_clones.push_back(clone);
     inst_depth++;
-    push_scope();
+    // the clone is checked in its own module's top-level scope, never the caller's, whose
+    // locals would otherwise shadow the clone's parameters
+    Node* home = module_of(fn);
+    if (home == nullptr) {
+        home = current_module;
+    }
+    ScopeSwap outer = enter_module_scope(home);
     int i = 0;
     for (Node* g = fn->left; g != nullptr; g = g->next) {
         if (g->kind != NodeKind::GenericParam) {
             continue;
         }
         Type* a = i < static_cast<int>(args.size()) ? args[static_cast<size_t>(i)] : t_error();
-        bind(g->text, a, false, nullptr);
+        bind_type_argument(g->text, a);
         i++;
     }
     check_func(clone, owner);
-    pop_scope();
+    leave_module_scope(outer);
     inst_depth--;
     return clone;
+}
+
+// The scope an instantiation is checked in: the declaring module's top level, with its
+// imports and names, in place of whatever scope the use site had.
+auto Checker::enter_module_scope(Node* home) -> ScopeSwap {
+    ScopeSwap saved;
+    saved.scope.swap(scope);
+    saved.index.swap(scope_index);
+    saved.depth = depth;
+    saved.module = current_module;
+    depth = 0;
+    current_module = home;
+    push_scope();
+    bind_memory();
+    bind_imports(home);
+    bind_module_names(home);
+    push_scope();
+    return saved;
+}
+
+auto Checker::leave_module_scope(ScopeSwap& saved) -> void {
+    pop_scope();
+    pop_scope();
+    scope.swap(saved.scope);
+    scope_index.swap(saved.index);
+    depth = saved.depth;
+    current_module = saved.module;
 }
 
 auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) -> Type* {
     if (st == nullptr) {
         return t_error();
     }
+    st = generic_origin(st);
     if (is_identity_args(st, args)) {
         return st->ty != nullptr ? st->ty : t_error();
     }
@@ -441,28 +487,17 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
     if (existing != nullptr && existing->type != nullptr) {
         return existing->type;
     }
-    if (inst_depth > 32) {
-        fail_n(at != nullptr ? at : st, "lucb.check.type", "generic instantiation is too deep");
+    if (inst_depth > k_max_instantiation_depth) {
+        fail_n(at != nullptr ? at : st, "lucb.check.type", "an infinite chain of instantiations of `" + string(st->text) + "`");
         return t_error();
     }
-    // An imported generic is instantiated in its own module's scope, so its
-    // fields and methods see the names its author saw, not the importer's.
+    // A generic is instantiated in its own module's top-level scope, so its fields and
+    // methods see the names its author saw, never the use site's locals.
     Node* home = module_of(st);
-    bool foreign = home != nullptr && home != current_module;
-    vector<Binding> saved_scope;
-    std::unordered_map<string_view, int> saved_index;
-    int saved_depth = depth;
-    Node* saved_module = current_module;
-    if (foreign) {
-        saved_scope.swap(scope);
-        saved_index.swap(scope_index);
-        depth = 0;
-        current_module = home;
-        push_scope();
-        bind_memory();
-        bind_imports(home);
-        bind_module_names(home);
+    if (home == nullptr) {
+        home = current_module;
     }
+    ScopeSwap outer = enter_module_scope(home);
     Node* clone = clone_node(st);
     clone->left = nullptr;
     clone->text = keep(mangle_inst(st->text, args));
@@ -486,14 +521,13 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
     insts.push_back(in);
     pending_clones.push_back(clone);
     inst_depth++;
-    push_scope();
     int i = 0;
     for (Node* g = st->left; g != nullptr; g = g->next) {
         if (g->kind != NodeKind::GenericParam) {
             continue;
         }
         Type* a = i < static_cast<int>(args.size()) ? args[static_cast<size_t>(i)] : t_error();
-        bind(g->text, a, false, nullptr);
+        bind_type_argument(g->text, a);
         i++;
     }
     for (Node* m = clone->body; m != nullptr; m = m->next) {
@@ -507,15 +541,8 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
             check_func(m, clone);
         }
     }
-    pop_scope();
     inst_depth--;
-    if (foreign) {
-        pop_scope();
-        scope.swap(saved_scope);
-        scope_index.swap(saved_index);
-        depth = saved_depth;
-        current_module = saved_module;
-    }
+    leave_module_scope(outer);
     return t;
 }
 
@@ -598,16 +625,22 @@ auto Checker::check_generic_ctor(Node* n, Node* st) -> Type* {
     if (!finish_inferred(st, inf, n)) {
         return t_error();
     }
-    if (checking_generic_template) {
-        n->resolved = st;
-        return subst_type(st->ty, st, inf);
-    }
     Type* ty = instantiate_struct(st, inf, n);
     n->resolved = ty != nullptr ? ty->decl : st;
     if (n->body != nullptr && ty != nullptr && ty->decl != nullptr) {
         check_ctor(n, ty->decl);
     }
     return ty;
+}
+
+// The generic a clone came from, or the declaration itself when it is no clone.
+auto Checker::generic_origin(Node* decl) -> Node* {
+    for (const Inst& in : insts) {
+        if (in.clone == decl) {
+            return in.generic;
+        }
+    }
+    return decl;
 }
 
 } // namespace lucb

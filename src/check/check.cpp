@@ -168,6 +168,19 @@ auto Checker::lookup(string_view name) -> Binding* {
     return b;
 }
 
+// A type parameter's binding for an instantiation: no shadow check, since `Pair[B, A]` inside
+// the template `Pair[A, B]` rebinds the same names.
+auto Checker::bind_type_argument(string_view name, Type* type) -> void {
+    Binding b;
+    b.name = name;
+    b.type = type;
+    b.depth = depth;
+    auto it = scope_index.find(name);
+    b.shadowed = it == scope_index.end() ? -1 : it->second;
+    scope.push_back(b);
+    scope_index[name] = static_cast<int>(scope.size()) - 1;
+}
+
 auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src) -> bool {
     if (import_src == nullptr && decl != nullptr && (decl->flags & FlagBuiltin) == 0) {
         check_declared_name(decl, name);
@@ -877,6 +890,14 @@ auto Checker::collect_module(Node* mod) -> void {
             if (g) {
                 push_scope();
                 bind_generic_params(d);
+                // a generic's fields are typed before any signature names an instance of it:
+                // a method returning `Pair[B, A]` instantiates, and the instance's methods
+                // may construct the template itself, whose fields must be typed by then
+                for (Node* m = d->body; m != nullptr; m = m->next) {
+                    if (m->kind == NodeKind::Field) {
+                        m->ty = resolve_type(m->type);
+                    }
+                }
             }
             for (Node* m = d->body; m != nullptr; m = m->next) {
                 if (m->kind == NodeKind::Func) {

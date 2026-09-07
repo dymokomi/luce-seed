@@ -36,6 +36,18 @@ struct Binding {
     bool used = false; // some expression read or assigned the name
 };
 
+// A use site's scope, set aside while an instantiation is checked in its module's own.
+struct ScopeSwap {
+    vector<Binding> scope;
+    std::unordered_map<string_view, int> index;
+    int depth = 0;
+    Node* module = nullptr;
+};
+
+// An instantiation nested inside instantiations deeper than this is an infinite chain
+// (§13.1): `grow(Pair[T, T](...))` inside `grow[T]` never ends.
+constexpr int k_max_instantiation_depth = 16;
+
 struct Checker {
     Arena* arena = nullptr;
     DiagnosticBag* diag = nullptr;
@@ -265,6 +277,10 @@ struct Checker {
     void check_declared_name(Node* n, string_view name);
     bool const_u64(Node* n, uint64_t* out);
     bool const_bool(Node* n, bool* out);
+    void bind_type_argument(string_view name, Type* type);
+    Node* generic_origin(Node* decl);
+    ScopeSwap enter_module_scope(Node* home);
+    void leave_module_scope(ScopeSwap& saved);
     Type* resolve_type(Node* n);
     Node* struct_member(Node* st, string_view name, NodeKind kind);
     Node* enum_case(Node* en, string_view name);

@@ -1130,3 +1130,36 @@ TEST(check_alloc_paren_type) {
     CHECK(check_ok("pub func answer() -> i64!:\n    let p = try alloc (i64*)[4]\n    free(p)\n"
                    "    let raw = try alloc(16, 8)\n    free(raw)\n    return 0\n"));
 }
+
+// §13.1: a generic's method instantiates its own generic with its parameters permuted
+TEST(check_generic_self_instantiation_permuted) {
+    CHECK(check_ok("struct Pair[A, B]:\n    pub let first: A\n    pub let second: B\n"
+                   "    func swapped() -> Pair[B, A]:\n        return Pair[B, A](first = self.second, second = self.first)\n"
+                   "pub func answer() -> i64:\n    let p = Pair[i64, str](first = 1, second = \"one\")\n    let q = p.swapped()\n    return q.second\n"));
+}
+
+// §13.1: an instantiation is checked in its module's scope, not among the caller's locals
+TEST(check_instantiation_ignores_caller_locals) {
+    CHECK(check_ok("func swap[T](a: T*, b: T*):\n    let held = *a\n    *a = *b\n    *b = held\n"
+                   "pub func answer() -> i64:\n    var a: i64 = 1\n    var b: i64 = 2\n    swap(&a, &b)\n    return b\n"));
+}
+
+// §13.1: a type argument is inferred through a function-typed argument
+TEST(check_inference_through_function_type) {
+    CHECK(check_ok("func apply[T, R](value: T, f: func(T) -> R) -> R:\n    return f(value)\n"
+                   "func double(n: i64) -> i64:\n    return n * 2\n"
+                   "pub func answer() -> i64:\n    return apply(21, double)\n"));
+}
+
+// §13.1: an infinite chain of instantiations is rejected; a type parameter has no zero value
+TEST(check_generic_limits) {
+    CHECK(check_has("struct Pair[A, B]:\n    var first: A\n    var second: B\n"
+                    "func grow[T](depth: T) -> i64:\n    return grow(Pair[T, T](first = depth, second = depth))\n"
+                    "pub func answer() -> i64:\n    return grow(1)\n",
+                    "lucb.check.type"));
+    CHECK(check_has("func zero[T]() -> T:\n    var v: T\n    return v\npub func answer() -> i64:\n    return zero[i64]()\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("from luce import Comparable\nfrom luce import Display\n"
+                   "func largest[T: Comparable & Display](a: T, b: T) -> T:\n    if a.compare(b) >= 0:\n        print(f\"{a}\")\n        return a\n    return b\n"
+                   "pub func answer() -> i64:\n    return largest(3, 9)\n"));
+}

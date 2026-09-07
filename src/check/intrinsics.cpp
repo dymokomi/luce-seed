@@ -136,6 +136,11 @@ auto Checker::is_display(Type* t) -> bool {
     if (t == nullptr) {
         return false;
     }
+    if (t->kind == TypeKind::Param) {
+        // a parameter bound by `Display` formats; the instantiation supplies the how (§13.1)
+        return (t->bounds & BoundIface) != 0 && t->elem != nullptr && t->elem->decl != nullptr &&
+               t->elem->decl->text == "Display";
+    }
     return is_int(t) || is_float(t) || t->kind == TypeKind::Bool || t->kind == TypeKind::Str ||
            t->kind == TypeKind::Char || is_ptr(t) || t->kind == TypeKind::Fmt;
 }

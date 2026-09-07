@@ -998,7 +998,8 @@ auto Checker::check_method_call(Node* n) -> Type* {
         return check_func_call(n, method, obj);
     }
     if (recv != nullptr && recv->kind == TypeKind::Param && (recv->bounds & BoundIface) != 0 &&
-        recv->elem != nullptr && recv->elem->decl != nullptr) {
+        recv->elem != nullptr && recv->elem->decl != nullptr &&
+        !(mem->text == "compare" && (recv->bounds & BoundComparable) != 0)) {
         Node* method = struct_member(recv->elem->decl, mem->text, NodeKind::Func);
         if (method == nullptr) {
             fail_n(n, "lucb.check.name", "no method `" + string(mem->text) + "`");

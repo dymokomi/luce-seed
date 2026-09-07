@@ -886,6 +886,9 @@ auto Checker::check_else(Node* n, Type* expected) -> Type* {
 
 auto Checker::check_catch(Node* n, Type* expected) -> Type* {
     Type* left = check_expr(n->left, nullptr);
+    if (is_local(n->left)) {
+        mark_local(n);
+    }
     if (!is_fail(left)) {
         fail_n(n, "lucb.check.type", "`catch` needs a fallible expression");
         return t_error();

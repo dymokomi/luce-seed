@@ -812,8 +812,7 @@ bool is_zeroable(const Type* t) {
         }
         return t->ntargs > 0;
     }
-    if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator ||
-        t->kind == TypeKind::Param) {
+    if (is_opt(t) || t->kind == TypeKind::ErrorVal || t->kind == TypeKind::Allocator) {
         return true;
     }
     if (is_int_enum(t) && t->decl != nullptr) {

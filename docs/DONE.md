@@ -1,7 +1,23 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.27**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.28**, the seed `luce-base` is written against.
+
+## 0.28: what chapter 13 of the conformance suite found
+
+- an instantiation is checked in its module's top-level scope (`enter_module_scope`),
+  never among the use site's locals, which shadowed its parameters;
+- a generic built inside a template is an instance too (`Pair[B, A]` inside
+  `Pair[A, B]`), an instance of a clone is an instance of the clone's generic
+  (`generic_origin`), and a generic's fields are typed before any signature names
+  an instance of it;
+- inference sees through function-typed arguments and matches an instance
+  against its generic;
+- `compare` under a `Comparable` bound comes before an interface bound's
+  methods; a parameter bound by `Display` formats, and a scalar satisfies
+  `Display`;
+- a type parameter has no zero value: `var v: T` and `new T[n]` are refused;
+- an instantiation nested deeper than sixteen is an infinite chain.
 
 ## 0.27: what chapter 12 of the conformance suite found
 

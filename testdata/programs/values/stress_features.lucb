@@ -12,11 +12,11 @@ struct Stack[T]:
     var allocator: Allocator
 
     static func create() -> Stack[T]!:
-        return Stack[T](data = try new T[4], count = 0, allocator = memory.allocator)
+        return Stack[T](data = try alloc T[4], count = 0, allocator = memory.allocator)
 
     mutating func push(value: T) -> !:
         if self.count == self.data.length:
-            let grown = try new T[self.data.length * 2]
+            let grown = try alloc T[self.data.length * 2]
             memory.copy(grown, self.data, self.count)
             free(self.data)
             self.data = grown
