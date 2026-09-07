@@ -831,6 +831,22 @@ auto Checker::bind_imports(Node* mod) -> void {
                 d->resolved = other;
             }
         }
+        if (other == nullptr) {
+            // a standard module this seed keeps as a builtin: `import io` is what binds `io`,
+            // and `from io import stdout` reads the builtin module's members
+            const BuiltinBinding* builtin = builtin_module(d->text);
+            if (builtin != nullptr) {
+                other = builtin->decl;
+                d->resolved = other;
+                if (d->kind == NodeKind::Import) {
+                    string alias = d->left != nullptr && !d->left->text.empty()
+                                       ? string(d->left->text)
+                                       : string(d->text);
+                    bind(keep(alias), builtin->type, false, builtin->decl, d);
+                    continue;
+                }
+            }
+        }
         if (other == nullptr && is_std_module(d->text)) {
             // a standard module this seed keeps as builtins (`c`, `luce`): the import is what
             // luce-base requires; every name it could bring in is in scope already

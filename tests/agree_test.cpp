@@ -609,7 +609,7 @@ TEST(agree_location_default) {
 }
 
 TEST(agree_io_stderr) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
+    CHECK(agrees("import io\n" "pub func answer() -> i64!:\n"
                  "    let n = try io.stderr().write(\"e\".bytes)\n"
                  "    return i64(n)\n"));
 }
@@ -619,7 +619,7 @@ TEST(agree_files_roundtrip) {
     lucb::ScratchDir dir;
     CHECK(dir.ok());
     std::string path = dir.path + "/roundtrip.txt";
-    std::string program = "pub func answer() -> i64!:\n"
+    std::string program = "import files\n" "pub func answer() -> i64!:\n"
                           "    try files.write(\"" + path + "\", \"hi\".bytes)\n"
                           "    let b = try files.read(\"" + path + "\")\n"
                           "    return i64(b.length)\n";
@@ -760,7 +760,7 @@ TEST(agree_fixed_exhausted) {
 }
 
 TEST(agree_memory_heap) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64!:\n"
                  "    memory.allocator = memory.heap\n"
                  "    let p = try new i64\n"
                  "    *p = i64(memory.exhausted)\n"
@@ -883,7 +883,7 @@ TEST(agree_volatile_store) {
 }
 
 TEST(agree_thread_spawn) {
-    CHECK(agrees("func run(context: void*):\n"
+    CHECK(agrees("import thread\n" "func run(context: void*):\n"
                  "    let p = (i64*)context\n"
                  "    *p = 40\n"
                  "pub func answer() -> i64!:\n"
@@ -912,7 +912,7 @@ TEST(agree_atomic_wait) {
 }
 
 TEST(agree_thread_current) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import thread\n" "pub func answer() -> i64:\n"
                  "    thread.pause()\n"
                  "    thread.yield()\n"
                  "    thread.sleep(0)\n"
@@ -923,7 +923,7 @@ TEST(agree_thread_current) {
 }
 
 TEST(agree_sync_mutex) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import sync\n" "pub func answer() -> i64:\n"
                  "    var lock: sync.Mutex\n"
                  "    if not lock.try():\n"
                  "        return 0\n"
@@ -936,7 +936,7 @@ TEST(agree_sync_mutex) {
 }
 
 TEST(agree_sync_once) {
-    CHECK(agrees("var n: i64 = 0\n"
+    CHECK(agrees("import sync\n" "var n: i64 = 0\n"
                  "func bump():\n"
                  "    n += 1\n"
                  "pub func answer() -> i64:\n"
@@ -947,7 +947,7 @@ TEST(agree_sync_once) {
 }
 
 TEST(agree_sync_cond) {
-    CHECK(agrees("struct Ctx:\n"
+    CHECK(agrees("import thread\nimport sync\n" "struct Ctx:\n"
                  "    var mu: sync.Mutex\n"
                  "    var cv: sync.Condition\n"
                  "    var done: i64\n"
@@ -969,7 +969,7 @@ TEST(agree_sync_cond) {
 }
 
 TEST(agree_sync_sem) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import sync\n" "pub func answer() -> i64:\n"
                  "    var sem: sync.Semaphore\n"
                  "    sem.release()\n"
                  "    sem.release()\n"
@@ -1021,7 +1021,7 @@ TEST(agree_generic_span) {
 }
 
 TEST(agree_user_arena) {
-    CHECK(agrees("pub struct Arena: Allocator:\n"
+    CHECK(agrees("import memory\n" "pub struct Arena: Allocator:\n"
                  "    var parent: Allocator\n"
                  "    var block: u8[]\n"
                  "    var used: usize\n"
@@ -1059,7 +1059,7 @@ TEST(agree_user_arena) {
 }
 
 TEST(agree_memory_copy) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64:\n"
                  "    var dst: u8[4] = [0, 0, 0, 0]\n"
                  "    var src: u8[4] = [1, 2, 3, 4]\n"
                  "    memory.copy(dst, src, 4)\n"
@@ -1067,28 +1067,28 @@ TEST(agree_memory_copy) {
 }
 
 TEST(agree_memory_set) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64:\n"
                  "    var b: u8[3] = [0, 0, 0]\n"
                  "    memory.set(b, 7)\n"
                  "    return i64(b[0]) + i64(b[2])\n"));
 }
 
 TEST(agree_memory_move) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64:\n"
                  "    var b: u8[4] = [1, 2, 3, 4]\n"
                  "    memory.move(b[1..], b[0..<3], 3)\n"
                  "    return i64(b[0]) + i64(b[1]) + i64(b[3])\n"));
 }
 
 TEST(agree_memory_read_write) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64:\n"
                  "    var n: i64 = 0\n"
                  "    memory.write[i64]((void*)(&n), 42)\n"
                  "    return memory.read[i64]((void*)(&n))\n"));
 }
 
 TEST(agree_memory_grow) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64!:\n"
                  "    let b = try alloc u8[2]\n"
                  "    b[0] = 9\n"
                  "    let g = try memory.grow(b, 8)\n"
@@ -1096,7 +1096,7 @@ TEST(agree_memory_grow) {
 }
 
 TEST(agree_memory_grow_fixed) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
+    CHECK(agrees("import memory\n" "pub func answer() -> i64!:\n"
                  "    var buf: u8[16]\n"
                  "    var fb = FixedBuffer.over(buf)\n"
                  "    with fb:\n"
@@ -1132,14 +1132,14 @@ TEST(agree_str_cstr) {
 }
 
 TEST(agree_files_list_missing) {
-    CHECK(agrees("pub func answer() -> i64!:\n"
+    CHECK(agrees("import files\n" "pub func answer() -> i64!:\n"
                  "    let names = files.list(\"/no/such/lucb_dir\") catch:\n"
                  "        return 1\n"
                  "    return i64(names.length)\n"));
 }
 
 TEST(agree_process_run) {
-    CHECK(agrees("import c\npub func answer() -> i64!:\n"
+    CHECK(agrees("import process\n" "import c\npub func answer() -> i64!:\n"
                  "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                  "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
                  "    if out == \"out\" and err == \"err\":\n"

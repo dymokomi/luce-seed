@@ -1,0 +1,12 @@
+# answer: 17
+## `for character in text` walks Unicode scalars, not bytes (§5.5): the accented, the
+## dashed, the ideographs, and the emoji each count once.
+pub func answer() -> i64:
+    let text = "naïve — 日本 🚀"
+    var scalars: i64 = 0
+    var wide: i64 = 0
+    for ch in text:
+        scalars += 1
+        if u32(ch) > 127:
+            wide += 1
+    return scalars + wide + i64(text.length) - 22

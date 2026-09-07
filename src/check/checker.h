@@ -81,9 +81,12 @@ struct Checker {
         const char* name;
         Type* type;
         Node* decl;
+        bool is_module; // a standard module: bound only where a module imports it (§3.5)
     };
     vector<BuiltinBinding> builtin_bindings; // replayed for every module after the first
     void bind_builtin(const char* name, Type* type, Node* decl);
+    void bind_builtin_module(const char* name, Type* type, Node* decl);
+    const BuiltinBinding* builtin_module(string_view name) const;
     Node* memory_mod = nullptr;
     Node* fixed_decl = nullptr;
     Node* current_module = nullptr;
@@ -237,6 +240,7 @@ struct Checker {
     void propagate_untyped(Node* n, Type* dest);
     Type* check_float_bits(Node* n, Node* obj);
     Type* check_float_from_bits(Node* n, Node* obj);
+    void enter_loop(Node* n);
     Type* bits_integer(Type* t);
     bool is_local(Node* n);
     void fail(Span span, const char* code, const string& message);

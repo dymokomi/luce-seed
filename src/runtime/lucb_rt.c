@@ -194,6 +194,31 @@ int lb_fmtbuf_bool(lb_fmtbuf* b, bool v) {
     return lb_fmtbuf_put(b, s, v ? 4 : 5);
 }
 
+size_t lb_utf8_encode(uint32_t cp, char out[4]) {
+    size_t n = 0;
+    if (cp < 0x80) {
+        out[n++] = (char)cp;
+    } else if (cp < 0x800) {
+        out[n++] = (char)(0xC0 | (cp >> 6));
+        out[n++] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out[n++] = (char)(0xE0 | (cp >> 12));
+        out[n++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[n++] = (char)(0x80 | (cp & 0x3F));
+    } else {
+        out[n++] = (char)(0xF0 | (cp >> 18));
+        out[n++] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[n++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[n++] = (char)(0x80 | (cp & 0x3F));
+    }
+    return n;
+}
+
+int lb_fmtbuf_char(lb_fmtbuf* b, uint32_t cp) {
+    char out[4];
+    return lb_fmtbuf_put(b, out, lb_utf8_encode(cp, out));
+}
+
 lb_str lb_fmtbuf_finish(lb_fmtbuf* b) {
     lb_str s;
     s.data = "";
@@ -511,6 +536,31 @@ int lb_utf8_ok(const char* s, size_t n) {
         i += w;
     }
     return 1;
+}
+
+uint32_t lb_utf8_scalar(const char* s, size_t n, size_t i, size_t* width) {
+    const unsigned char* b = (const unsigned char*)s;
+    unsigned char c = b[i];
+    size_t w = 1;
+    uint32_t cp = c;
+    if (c >= 0xF0) {
+        w = 4;
+        cp = c & 0x07u;
+    } else if (c >= 0xE0) {
+        w = 3;
+        cp = c & 0x0Fu;
+    } else if (c >= 0xC0) {
+        w = 2;
+        cp = c & 0x1Fu;
+    }
+    if (i + w > n) {
+        w = n - i;
+    }
+    for (size_t k = 1; k < w; k++) {
+        cp = (cp << 6) | (b[i + k] & 0x3Fu);
+    }
+    *width = w;
+    return cp;
 }
 
 void lb_check_utf8(const char* s, size_t n) {

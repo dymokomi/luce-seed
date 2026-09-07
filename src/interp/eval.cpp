@@ -254,9 +254,33 @@ auto Interp::decode_string(string_view text) -> string {
     return string(text);
 }
 
+// The UTF-8 spelling of one scalar: how a `char` displays (§14.4).
+static string utf8_of(uint32_t cp) {
+    string out;
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+    return out;
+}
+
 auto Interp::show(const Value& v) -> string {
     if (v.kind == TypeKind::Bool) {
         return v.b ? "true" : "false";
+    }
+    if (v.kind == TypeKind::Char || (v.type != nullptr && v.type->kind == TypeKind::Char)) {
+        return utf8_of(static_cast<uint32_t>(as_u(v, v.type)));
     }
     if (v.kind == TypeKind::Str) {
         return decode_string(v.str);
@@ -311,6 +335,15 @@ auto Interp::eval_uncast(Node* n) -> Value {
                 v.kind = TypeKind::Optional;
             }
             return v;
+        }
+        if (n->op == TokenKind::BytesLit) {
+            // `b"..."`: static bytes, an array of `u8` (§4.4)
+            string d = decode_string_literal(n->text);
+            vector<Value> elems;
+            for (size_t i = 0; i < d.size(); i++) {
+                elems.push_back(v_int(n->ty != nullptr ? n->ty->elem : nullptr, static_cast<unsigned char>(d[i])));
+            }
+            return make_array(n->ty, std::move(elems));
         }
         if (n->op == TokenKind::StringLit) {
             auto it = literal_text.find(n);

@@ -487,6 +487,17 @@ auto Emitter::emit_literal(Node* n) -> string {
         snprintf(buf, sizeof(buf), "%zu", d.size());
         return "((lb_str){" + c_escape(d) + ", " + buf + "})";
     }
+    if (n->op == TokenKind::BytesLit) {
+        // `b"..."`: an array of `u8`, spelled byte by byte
+        string d = decode_lit(n->text);
+        string s = "((" + c_type(n->ty) + "){{";
+        for (size_t i = 0; i < d.size(); i++) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%s%u", i == 0 ? "" : ", ", static_cast<unsigned char>(d[i]));
+            s += buf;
+        }
+        return s + "}})";
+    }
     if (n->op == TokenKind::KwNone) {
         if (is_opt(n->ty)) {
             return none_opt(n->ty);

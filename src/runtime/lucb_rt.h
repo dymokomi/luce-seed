@@ -243,6 +243,9 @@ int lb_fmtbuf_i64(lb_fmtbuf* b, int64_t v);
 int lb_fmtbuf_u64(lb_fmtbuf* b, uint64_t v);
 int lb_fmtbuf_f64(lb_fmtbuf* b, double v);
 int lb_fmtbuf_bool(lb_fmtbuf* b, bool v);
+// The UTF-8 bytes of one scalar, and their count: how a `char` displays (§14.4).
+size_t lb_utf8_encode(uint32_t cp, char out[4]);
+int lb_fmtbuf_char(lb_fmtbuf* b, uint32_t cp);
 lb_str lb_fmtbuf_finish(lb_fmtbuf* b);
 
 typedef struct lb_alloc {
@@ -282,6 +285,8 @@ bool lb_resize_call(lb_iface a, lb_span block, size_t size);
 void lb_release_call(lb_iface a, lb_span block);
 
 int lb_utf8_ok(const char* s, size_t n);
+// The scalar starting at byte `i` of the valid UTF-8 text `s`, and its width in `*width`.
+uint32_t lb_utf8_scalar(const char* s, size_t n, size_t i, size_t* width);
 int lb_files_list(lb_iface a, const char* path, lb_span* out);
 int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err);

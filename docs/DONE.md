@@ -1,7 +1,25 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.17**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.18**, the seed `luce-base` is written against.
+
+## 0.18: what the conformance suite found in chapters 3 and 4
+
+luce-base grew a conformance suite, one positive and one negative program per
+point of the specification, and its first two chapters found these gaps here:
+
+- a standard module's name binds only where it is imported (§3.5): `io`,
+  `memory`, `files`, `process`, `thread`, `sync`, and `atomic` are bound by
+  `import`, so a local named `io` is ordinary elsewhere (`builtin_module`);
+- a loop label may not take a core name (`enter_loop`);
+- `for character in text` walks Unicode scalars, not bytes (§5.5), in the
+  interpreter and the C (`lb_utf8_scalar`);
+- byte literals `b"..."` exist: `u8[N]` static data with `\xNN` escapes (§4.4);
+- a `char` displays as itself in UTF-8 (§14.4), in every print path
+  (`lb_utf8_encode`, `lb_fmtbuf_char`).
+
+`testdata/programs/text/{iterate_scalars,byte_literal,char_display}` pin them,
+and the unit tests now import what they use.
 
 ## 0.17: `f16`, and a parse that forgets the last one
 

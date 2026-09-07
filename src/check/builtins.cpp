@@ -41,8 +41,23 @@ auto Checker::syn_method(const char* name, Type* result, bool mutating) -> Node*
 // module is the same type as a `Writer` in another; later modules replay the
 // recorded bindings.
 auto Checker::bind_builtin(const char* name, Type* type, Node* decl) -> void {
-    builtin_bindings.push_back(BuiltinBinding{name, type, decl});
+    builtin_bindings.push_back(BuiltinBinding{name, type, decl, false});
     bind(name, type, false, decl);
+}
+
+// A standard module this seed keeps as a builtin. Its name binds only where a module imports
+// it (§3.5), so a local named `io` is ordinary elsewhere; `bind_imports` looks it up here.
+auto Checker::bind_builtin_module(const char* name, Type* type, Node* decl) -> void {
+    builtin_bindings.push_back(BuiltinBinding{name, type, decl, true});
+}
+
+auto Checker::builtin_module(string_view name) const -> const BuiltinBinding* {
+    for (const BuiltinBinding& b : builtin_bindings) {
+        if (b.is_module && name == b.name) {
+            return &b;
+        }
+    }
+    return nullptr;
 }
 
 // Every text a parsed tree views into `source` copied into the arena, so the tree stays
@@ -100,8 +115,10 @@ auto Checker::append_builtin_text(Node* module, const char* text) -> void {
 auto Checker::bind_memory() -> void {
     if (!builtin_bindings.empty()) {
         for (size_t i = 0; i < builtin_bindings.size(); i++) {
-            bind(builtin_bindings[i].name, builtin_bindings[i].type, false,
-                 builtin_bindings[i].decl);
+            if (!builtin_bindings[i].is_module) {
+                bind(builtin_bindings[i].name, builtin_bindings[i].type, false,
+                     builtin_bindings[i].decl);
+            }
         }
         return;
     }
@@ -236,7 +253,7 @@ auto Checker::bind_memory() -> void {
     bind_builtin("Allocator", ty_alloc, nullptr);
     bind_builtin("CAllocator", ty_alloc, nullptr);
     bind_builtin("FixedBuffer", ty_fixed, fb);
-    bind_builtin("memory", mt, mem);
+    bind_builtin_module("memory", mt, mem);
 
     if (ty_fmt == nullptr) {
         ty_fmt = make_type(TypeKind::Fmt, "fmt");
@@ -294,7 +311,7 @@ auto Checker::bind_memory() -> void {
     io->body = io_out;
     Type* io_t = make_type(TypeKind::Module, "io");
     io_t->decl = io;
-    bind_builtin("io", io_t, io);
+    bind_builtin_module("io", io_t, io);
 
     Node* f_read = syn_node(NodeKind::Func, "read");
     f_read->flags |= FlagFallible;
@@ -326,7 +343,7 @@ auto Checker::bind_memory() -> void {
     files->body = f_read;
     Type* files_t = make_type(TypeKind::Module, "files");
     files_t->decl = files;
-    bind_builtin("files", files_t, files);
+    bind_builtin_module("files", files_t, files);
 
     Node* p_run = syn_node(NodeKind::Func, "run");
     p_run->flags |= FlagFallible;
@@ -342,7 +359,7 @@ auto Checker::bind_memory() -> void {
     process->body = p_run;
     Type* process_t = make_type(TypeKind::Module, "process");
     process_t->decl = process;
-    bind_builtin("process", process_t, process);
+    bind_builtin_module("process", process_t, process);
 
     Node* c_in = syn_node(NodeKind::Func, "stdin");
     c_in->ty = intern_ptr(ty_void, false, false, false);
@@ -393,7 +410,7 @@ auto Checker::bind_memory() -> void {
     amod->body = fence;
     Type* amt = make_type(TypeKind::Module, "atomic");
     amt->decl = amod;
-    bind_builtin("atomic", amt, amod);
+    bind_builtin_module("atomic", amt, amod);
 
     Node* hid = syn_node(NodeKind::Field, "id");
     hid->ty = ty_usize;
@@ -449,7 +466,7 @@ auto Checker::bind_memory() -> void {
     tmod->body = spawn;
     Type* tt = make_type(TypeKind::Module, "thread");
     tt->decl = tmod;
-    bind_builtin("thread", tt, tmod);
+    bind_builtin_module("thread", tt, tmod);
 
     Node* m_lock = syn_method("lock", t_unit(), true);
     Node* m_unlock = syn_method("unlock", t_unit(), true);
@@ -499,7 +516,7 @@ auto Checker::bind_memory() -> void {
     smod->body = mu;
     Type* st = make_type(TypeKind::Module, "sync");
     st->decl = smod;
-    bind_builtin("sync", st, smod);
+    bind_builtin_module("sync", st, smod);
     // the protocols `for` consumes and formatting calls (§8.3, §14.4), as Base text, once
     // every name they mention is bound
     Binding* lb = lookup("luce");

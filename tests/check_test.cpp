@@ -88,6 +88,18 @@ TEST(check_unknown_name) {
     CHECK(check_has("pub func answer() -> i64:\n    return missing\n", "lucb.check.name"));
 }
 
+// A standard module's name binds only where it is imported (§3.5): a local named `io` is
+// ordinary in a module that does not import `io`.
+TEST(check_standard_module_name_is_free_until_imported) {
+    CHECK(check_ok("pub func answer() -> i64:\n    var io = 40\n    io += 2\n    return io\n"));
+    CHECK(check_has("pub func answer() -> i64:\n    let w = io.stdout()\n    return 42\n", "lucb.check.name"));
+}
+
+TEST(check_label_cannot_take_a_core_name) {
+    CHECK(check_has("pub func answer() -> i64:\n    print: for i in 0..<2:\n        break print\n    return 42\n", "lucb.check.shadow"));
+    CHECK(check_ok("pub func answer() -> i64:\n    outer: for i in 0..<2:\n        break outer\n    return 42\n"));
+}
+
 TEST(check_mutating_needs_var) {
     CHECK(check_has("struct Point:\n"
                     "    var x: i64\n"
@@ -493,7 +505,7 @@ TEST(check_new_ok) {
 }
 
 TEST(check_sync_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
+    CHECK(check_ok("import sync\n" "pub func answer() -> i64:\n"
                    "    var lock: sync.Mutex\n"
                    "    lock.lock()\n"
                    "    lock.unlock()\n"
@@ -501,7 +513,7 @@ TEST(check_sync_ok) {
 }
 
 TEST(check_sync_mut) {
-    CHECK(check_has("pub func answer() -> i64:\n"
+    CHECK(check_has("import sync\n" "pub func answer() -> i64:\n"
                     "    let lock: sync.Mutex\n"
                     "    lock.lock()\n"
                     "    return 0\n",
@@ -829,7 +841,7 @@ TEST(check_arena_implements_ok) {
 }
 
 TEST(check_memory_copy_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
+    CHECK(check_ok("import memory\n" "pub func answer() -> i64:\n"
                    "    var dst: u8[4] = [0, 0, 0, 0]\n"
                    "    var src: u8[4] = [1, 2, 3, 4]\n"
                    "    memory.copy(dst, src, 4)\n"
@@ -844,7 +856,7 @@ TEST(check_memory_read_needs_type) {
 }
 
 TEST(check_memory_read_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
+    CHECK(check_ok("import memory\n" "pub func answer() -> i64:\n"
                    "    var n: i64 = 1\n"
                    "    return memory.read[i64]((void*)(&n))\n"));
 }
@@ -863,13 +875,13 @@ TEST(check_str_bytes_needs_try) {
 }
 
 TEST(check_files_list_ok) {
-    CHECK(check_ok("pub func answer() -> i64!:\n"
+    CHECK(check_ok("import files\n" "pub func answer() -> i64!:\n"
                    "    let names = try files.list(\".\")\n"
                    "    return i64(names.length)\n"));
 }
 
 TEST(check_process_run_ok) {
-    CHECK(check_ok("import c\npub func answer() -> i64!:\n"
+    CHECK(check_ok("import process\n" "import c\npub func answer() -> i64!:\n"
                    "    var args: c.str[1] = [\"\"]\n"
                    "    let (code, out, err) = try process.run(\"/bin/true\", args[0..<0])\n"
                    "    discard(out)\n"
@@ -939,7 +951,7 @@ TEST(check_hex_ok) {
 }
 
 TEST(check_process_shadow) {
-    CHECK(check_has("func process() -> i64:\n"
+    CHECK(check_has("import process\n" "func process() -> i64:\n"
                     "    return 1\n"
                     "pub func answer() -> i64:\n"
                     "    return process()\n",

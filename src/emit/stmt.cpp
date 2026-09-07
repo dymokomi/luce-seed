@@ -336,6 +336,9 @@ auto Emitter::emit_stmt(Node* n) -> void {
         string idx = ident("lb_i_", n->text);
         string len;
         string elem_e;
+        // `for character in text` walks the scalars of valid UTF-8 (§5.5)
+        string step = idx + "++";
+        string init = idx + " = 0";
         if (is_array(it)) {
             char nbuf[32];
             snprintf(nbuf, sizeof(nbuf), "%lluULL", static_cast<unsigned long long>(it->length));
@@ -343,7 +346,10 @@ auto Emitter::emit_stmt(Node* n) -> void {
             elem_e = seq + ".d[" + idx + "]";
         } else if (it != nullptr && it->kind == TypeKind::Str) {
             len = seq + ".length";
-            elem_e = "((const unsigned char*)" + seq + ".data)[" + idx + "]";
+            string width = idx + "_w";
+            init = idx + " = 0, " + width + " = 0";
+            step = idx + " += " + width;
+            elem_e = "lb_utf8_scalar(" + seq + ".data, " + seq + ".length, " + idx + ", &" + width + ")";
         } else {
             len = seq + ".length";
             string et =
@@ -366,7 +372,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
         Scope sc;
         sc.loop = true;
         scopes.push_back(sc);
-        line("for (size_t " + idx + " = 0; " + idx + " < " + len + "; " + idx + "++) {");
+        line("for (size_t " + init + "; " + idx + " < " + len + "; " + step + ") {");
         indent++;
         if (n->flags & FlagByPtr) {
             line(c_type(n->ty) + " " + ident("lb_", n->text) + " __attribute__((unused)) = &(" +

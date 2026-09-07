@@ -630,7 +630,7 @@ TEST(eval_field_default) {
 }
 
 TEST(eval_sync_once) {
-    EvalResult r = run("var n: i64 = 0\n"
+    EvalResult r = run("import sync\n" "var n: i64 = 0\n"
                        "func bump():\n"
                        "    n += 1\n"
                        "pub func answer() -> i64:\n"
@@ -753,7 +753,7 @@ TEST(eval_method_value) {
 }
 
 TEST(eval_memory_copy) {
-    EvalResult r = run("pub func answer() -> i64:\n"
+    EvalResult r = run("import memory\n" "pub func answer() -> i64:\n"
                        "    var dst: u8[4] = [0, 0, 0, 0]\n"
                        "    var src: u8[4] = [1, 2, 3, 4]\n"
                        "    memory.copy(dst, src, 4)\n"
@@ -763,7 +763,7 @@ TEST(eval_memory_copy) {
 }
 
 TEST(eval_memory_read_write) {
-    EvalResult r = run("pub func answer() -> i64:\n"
+    EvalResult r = run("import memory\n" "pub func answer() -> i64:\n"
                        "    var n: i64 = 0\n"
                        "    memory.write[i64]((void*)(&n), 42)\n"
                        "    return memory.read[i64]((void*)(&n))\n");
@@ -772,7 +772,7 @@ TEST(eval_memory_read_write) {
 }
 
 TEST(eval_memory_grow) {
-    EvalResult r = run("pub func answer() -> i64!:\n"
+    EvalResult r = run("import memory\n" "pub func answer() -> i64!:\n"
                        "    let b = try alloc u8[2]\n"
                        "    b[0] = 9\n"
                        "    let g = try memory.grow(b, 8)\n"
@@ -800,7 +800,7 @@ TEST(eval_str_invalid_utf8) {
 }
 
 TEST(eval_files_list) {
-    EvalResult r = run("pub func answer() -> i64!:\n"
+    EvalResult r = run("import files\n" "pub func answer() -> i64!:\n"
                        "    let names = try files.list(\"testdata/programs/values\")\n"
                        "    var found = 0\n"
                        "    for name in names:\n"
@@ -812,7 +812,7 @@ TEST(eval_files_list) {
 }
 
 TEST(eval_process_run) {
-    EvalResult r = run("import c\npub func answer() -> i64!:\n"
+    EvalResult r = run("import process\n" "import c\npub func answer() -> i64!:\n"
                        "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                        "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
                        "    if out == \"out\" and err == \"err\":\n"

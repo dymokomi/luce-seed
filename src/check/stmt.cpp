@@ -237,7 +237,7 @@ auto Checker::check_stmt(Node* n) -> void {
             }
             Type* payload =
                 is_opt(ot) ? ot->elem : intern_ptr(ot->elem, ot->is_const, ot->is_volatile, false);
-            loop_labels.push_back(n->label);
+            enter_loop(n);
             push_scope();
             if (let != nullptr) {
                 bind(let->text, payload, false, let);
@@ -250,7 +250,7 @@ auto Checker::check_stmt(Node* n) -> void {
             if (!type_eq(c, t_bool())) {
                 fail_n(n, "lucb.check.type", "a condition must be `bool`");
             }
-            loop_labels.push_back(n->label);
+            enter_loop(n);
             check_stmt(n->body);
             loop_labels.pop_back();
         }
@@ -344,7 +344,7 @@ auto Checker::check_stmt(Node* n) -> void {
             }
         }
         n->ty = elem;
-        loop_labels.push_back(n->label);
+        enter_loop(n);
         push_scope();
         bind(n->text, elem, false, n);
         check_stmt(n->body);
@@ -530,6 +530,15 @@ auto Checker::always_returns(Node* n) -> bool {
     default:
         return false;
     }
+}
+
+// A loop's label lives in its own namespace (§3.5), but the core names are refused there as
+// everywhere.
+auto Checker::enter_loop(Node* n) -> void {
+    if (!n->label.empty() && is_core_name(n->label)) {
+        fail_n(n, "lucb.check.shadow", "`" + string(n->label) + "` belongs to the language; a label cannot take it");
+    }
+    loop_labels.push_back(n->label);
 }
 
 } // namespace lucb

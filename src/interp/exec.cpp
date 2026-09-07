@@ -9,6 +9,7 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+#include "source/source.h"
 
 #include "support/literal.h"
 
@@ -332,15 +333,19 @@ auto Interp::exec(Node* n) -> void {
             len = static_cast<size_t>(it.type->length);
         }
         if (it.kind == TypeKind::Str) {
+            // `for character in text` walks the scalars of valid UTF-8 (§5.5)
             string d = decode_string(it.str);
             len = d.size();
-            for (size_t i = 0; i < len && !trapped && !returning; i++) {
+            for (size_t i = 0; i < len && !trapped && !returning;) {
+                char32_t scalar = 0;
+                const size_t width = utf8_next(d, i, scalar);
+                i += width > 0 ? width : 1;
                 Slot s;
                 s.name = n->text;
-                s.value = v_int(n->ty, static_cast<unsigned char>(d[static_cast<size_t>(i)]));
+                s.value = v_int(n->ty, static_cast<uint64_t>(scalar));
                 if (n->ty != nullptr && n->ty->kind == TypeKind::Char) {
                     s.value.kind = TypeKind::Char;
-                    s.value.u = static_cast<unsigned char>(d[i]);
+                    s.value.u = static_cast<uint64_t>(scalar);
                 }
                 frames.back().slots.push_back(s);
                 exec(n->body);

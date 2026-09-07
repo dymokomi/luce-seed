@@ -64,6 +64,9 @@ auto Emitter::emit_display_buf(const string& b, Node* v) -> string {
     if (t != nullptr && t->kind == TypeKind::Bool) {
         return "lb_fmtbuf_bool(&" + b + ", " + e + ")";
     }
+    if (t != nullptr && t->kind == TypeKind::Char) {
+        return "lb_fmtbuf_char(&" + b + ", (uint32_t)(" + e + "))";
+    }
     if (t != nullptr && (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
         return "lb_fmtbuf_put(&" + b + ", " + e + ".data, " + e + ".length)";
     }
@@ -184,6 +187,8 @@ auto Emitter::emit_print_formatted(Node* n) -> string {
             string e = emit_expr(p->left);
             if (t != nullptr && t->kind == TypeKind::Bool) {
                 s += "fputs((" + e + ") ? \"true\" : \"false\", stdout); ";
+            } else if (t != nullptr && t->kind == TypeKind::Char) {
+                s += "{ char _lb_cb[4]; fwrite(_lb_cb, 1, lb_utf8_encode((uint32_t)(" + e + "), _lb_cb), stdout); } ";
             } else if (t != nullptr && (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
                 s += "fwrite(" + e + ".data, 1, " + e + ".length, stdout); ";
             } else if (is_float(t)) {

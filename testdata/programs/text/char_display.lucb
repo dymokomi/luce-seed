@@ -1,0 +1,7 @@
+## A `char` displays as itself in UTF-8 (§14.4), an integer as its number.
+pub func main(arguments: str[]) -> i32:
+    let a = 'A'
+    let e = '\u{e9}'
+    let rocket = '\u{1F680}'
+    print(f"{a} {e} {rocket} {u32(e)}")
+    return 0

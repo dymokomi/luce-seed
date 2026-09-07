@@ -214,6 +214,10 @@ auto Checker::check_literal(Node* n, Type* expected) -> Type* {
         }
         return t_str();
     }
+    if (n->op == TokenKind::BytesLit) {
+        // `b"..."` is `u8[N]` static data, N the count after escapes (§4.4)
+        return intern_arr(ty_u8, decode_string_literal(n->text).size());
+    }
     if (n->op == TokenKind::CharLit) {
         uint32_t cp = 0;
         if (!parse_char_literal(n->text, &cp)) {
