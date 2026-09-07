@@ -295,6 +295,7 @@ struct Checker {
     Type* unify_int(Type* a, Type* b);
     Type* check_literal(Node* n, Type* expected);
     Type* check_name(Node* n, Type* expected = nullptr);
+    bool is_place_expr(Node* n);
     Type* check_self(Node* n);
     Type* check_unary(Node* n, Type* expected);
     Type* as_index_type(Node* n);

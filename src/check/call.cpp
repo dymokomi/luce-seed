@@ -1021,7 +1021,8 @@ auto Checker::check_method_call(Node* n) -> Type* {
         mem->resolved = nullptr;
         return intern_opt(recv->elem);
     }
-    if (mem->text == "compare" && comparable_type(recv)) {
+    if (mem->text == "compare" && comparable_type(recv) &&
+        !(recv != nullptr && recv->kind == TypeKind::Struct)) {
         if (count_args(n->body) != 1) {
             fail_n(n, "lucb.check.call", "`compare` takes one argument");
             return t_i64();

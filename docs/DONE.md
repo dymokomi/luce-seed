@@ -1,7 +1,19 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.28**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.29**, the seed `luce-base` is written against.
+
+## 0.29: what chapter 14 of the conformance suite found
+
+- `Writer?` keeps `none` in the null niche: `if let` unwraps it to the view and
+  `view == none` tests it;
+- a view is formed from a pointer, never from a value; `&` takes a place, so the
+  address of a temporary is refused;
+- `Comparable`, `Equatable`, and `Hashable` are nameable interfaces of the `luce`
+  module (`void*` in a builtin requirement stands for the conforming type); a
+  struct's own `compare` serves a `Comparable` bound; Equatable and Hashable
+  conformance written by hand is refused;
+- a requirement's `mutating` is part of its exact signature, both ways.
 
 ## 0.28: what chapter 13 of the conformance suite found
 

@@ -125,8 +125,11 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
         }
         if (conc != nullptr && conc->kind == TypeKind::Struct &&
             struct_implements(conc->decl, expected)) {
-            if (iface_has_mutating(expected) &&
-                ((from_ptr && got->is_const) || (n != nullptr && !from_ptr && !is_mut_place(n)))) {
+            if (!from_ptr) {
+                fail_n(n, "lucb.check.type", "an interface view is formed from a pointer: write `&value`");
+                return expected;
+            }
+            if (iface_has_mutating(expected) && got->is_const) {
                 fail_n(n, "lucb.check.mut", "a mutating interface view needs a `var` receiver");
             }
             return expected;

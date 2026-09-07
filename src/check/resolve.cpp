@@ -403,6 +403,9 @@ auto Checker::intern_func(Type** params, int n, Type* result, bool nullable) -> 
 }
 
 auto Checker::non_null(Type* t) -> Type* {
+    if (t != nullptr && t->kind == TypeKind::Interface) {
+        return intern_iface(t->decl, false); // `Writer?` unwrapped is the view (§14.3)
+    }
     if (is_func(t)) {
         return intern_func(t->args, t->ntargs, t->elem, false);
     }

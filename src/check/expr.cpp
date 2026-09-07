@@ -322,6 +322,27 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
     return b->type;
 }
 
+// A place: something with an address (§6.6): a name, `self`, a member, an element, a
+// dereference, or one of those in parentheses.
+auto Checker::is_place_expr(Node* n) -> bool {
+    if (n == nullptr) {
+        return false;
+    }
+    switch (n->kind) {
+    case NodeKind::Name:
+    case NodeKind::Self:
+    case NodeKind::Member:
+    case NodeKind::Index:
+        return true;
+    case NodeKind::Group:
+        return is_place_expr(n->left);
+    case NodeKind::Unary:
+        return n->op == TokenKind::Star;
+    default:
+        return false;
+    }
+}
+
 auto Checker::check_self(Node* n) -> Type* {
     Binding* b = lookup("self");
     if (b == nullptr) {
@@ -441,6 +462,10 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
     if (n->op == TokenKind::Amp) {
         if (n->left != nullptr && n->left->kind == NodeKind::Literal) {
             fail_n(n, "lucb.check.type", "cannot take the address of a literal");
+            return t_error();
+        }
+        if (!is_place_expr(n->left)) {
+            fail_n(n, "lucb.check.type", "cannot take the address of a temporary; bind it first");
             return t_error();
         }
         Type* inner = check_expr(n->left, nullptr);
@@ -724,6 +749,11 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         n->right->ty = R;
     }
     if (op == TokenKind::EqEq || op == TokenKind::NotEq) {
+        const bool against_none = (n->left != nullptr && n->left->kind == NodeKind::Literal && n->left->op == TokenKind::KwNone) ||
+                                  (n->right != nullptr && n->right->kind == NodeKind::Literal && n->right->op == TokenKind::KwNone);
+        if (against_none && ((L != nullptr && L->kind == TypeKind::Interface) || (R != nullptr && R->kind == TypeKind::Interface))) {
+            return t_bool(); // `view == none` asks whether the optional view holds one (§14.3)
+        }
         if ((L != nullptr && L->kind == TypeKind::Interface) ||
             (R != nullptr && R->kind == TypeKind::Interface)) {
             fail_n(n, "lucb.check.type", "interface views cannot be compared");

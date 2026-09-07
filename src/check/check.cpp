@@ -586,7 +586,10 @@ auto Checker::sig_matches(Node* impl, Node* req, Type* iface) -> bool {
     Node* rp = req->right;
     while (ip != nullptr && rp != nullptr) {
         Type* want = requirement_type(rp->ty, iface);
-        if (!type_eq(ip->ty, want) && !can_widen(ip->ty, want)) {
+        // `void*` in a builtin protocol's requirement stands for the conforming type (§14.4)
+        const bool self_slot = iface != nullptr && iface->decl != nullptr && (iface->decl->flags & FlagBuiltin) != 0 &&
+                               is_ptr(want) && want->elem != nullptr && want->elem->kind == TypeKind::Void;
+        if (!self_slot && !type_eq(ip->ty, want) && !can_widen(ip->ty, want)) {
             return false;
         }
         ip = ip->next;
@@ -628,8 +631,14 @@ auto Checker::check_implements(Node* st) -> void {
                            string(iface->decl->text) + "`");
                 continue;
             }
-            if ((req->flags & FlagMutating) != 0 && (impl->flags & FlagMutating) == 0) {
-                fail_n(impl, "lucb.check.mut", "`" + string(req->text) + "` must be `mutating`");
+            if (iface != nullptr && iface->decl != nullptr && (iface->decl->flags & FlagBuiltin) != 0 &&
+                (iface->decl->text == "Equatable" || iface->decl->text == "Hashable")) {
+                fail_n(st, "lucb.check.type", "`" + string(iface->decl->text) + "` is derived from the fields; it is not implemented by hand (§14.4)");
+                break;
+            }
+            if ((req->flags & FlagMutating) != (impl->flags & FlagMutating)) {
+                fail_n(impl, "lucb.check.mut", "`" + string(req->text) + "` must " +
+                       ((req->flags & FlagMutating) != 0 ? "be `mutating`" : "not be `mutating`") + ", as the interface declares");
             }
             if (!sig_matches(impl, req, iface)) {
                 fail_n(impl, "lucb.check.type",

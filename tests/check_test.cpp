@@ -1163,3 +1163,35 @@ TEST(check_generic_limits) {
                    "func largest[T: Comparable & Display](a: T, b: T) -> T:\n    if a.compare(b) >= 0:\n        print(f\"{a}\")\n        return a\n    return b\n"
                    "pub func answer() -> i64:\n    return largest(3, 9)\n"));
 }
+
+// §14.3: `Shape?` uses the null niche; `if let` unwraps it to the view; `== none` tests it
+TEST(check_nullable_view) {
+    CHECK(check_ok("interface Shape:\n    func area() -> f64\n"
+                   "struct Square: Shape:\n    var side: f64\n    func area() -> f64:\n        return self.side\n"
+                   "func pick(q: Square*, want: bool) -> Shape?:\n    if want:\n        return q\n    return none\n"
+                   "pub func answer() -> i64:\n    var q = Square(side = 2.0)\n    let s = pick(&q, true)\n"
+                   "    if let v = s:\n        return (i64)v.area() + (1 if pick(&q, false) == none else 0)\n    return 0\n"));
+}
+
+// §14.3: a view is formed from a pointer, never a value; `&` needs a place
+TEST(check_view_formation_rules) {
+    CHECK(check_has("interface Shape:\n    func area() -> f64\n"
+                    "struct Square: Shape:\n    var side: f64\n    func area() -> f64:\n        return self.side\n"
+                    "pub func answer() -> i64:\n    var q = Square(side = 2.0)\n    let v: Shape = q\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("struct Square:\n    var side: f64\n"
+                    "pub func answer() -> i64:\n    let p = &Square(side = 2.0)\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+// §14.4: a struct's `compare` serves a Comparable bound; Equatable is never written by hand
+TEST(check_comparable_struct_and_derived_protocols) {
+    CHECK(check_ok("from luce import Comparable\n"
+                   "struct V: Comparable:\n    var n: i64\n    func compare(other: V) -> i64:\n        return self.n - other.n\n"
+                   "func newest[T: Comparable](a: T, b: T) -> T:\n    return a if a.compare(b) >= 0 else b\n"
+                   "pub func answer() -> i64:\n    return newest(V(n = 1), V(n = 2)).n\n"));
+    CHECK(check_has("from luce import Equatable\n"
+                    "struct P: Equatable:\n    var x: i64\n    func equals(other: P) -> bool:\n        return true\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+}

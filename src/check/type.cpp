@@ -244,8 +244,9 @@ bool is_float(const Type* t) {
     return t != nullptr && is_float_kind(t->kind);
 }
 
+// `T*?`, `(func(...) -> R)?`, and `Writer?` keep `none` in the null niche (§5.8, §14.3).
 bool is_null_niche(const Type* t) {
-    return t != nullptr && (is_ptr(t) || is_func(t)) && t->is_nullable;
+    return t != nullptr && (is_ptr(t) || is_func(t) || t->kind == TypeKind::Interface) && t->is_nullable;
 }
 
 bool is_float_kind(TypeKind k) {

@@ -894,3 +894,13 @@ TEST(eval_free_releases_through_the_allocator) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 40000);
 }
+
+// §14.4: `newest` over a struct dispatches to its own `compare`
+TEST(eval_struct_compare_under_bound) {
+    EvalResult r = run("from luce import Comparable\n"
+                       "struct V: Comparable:\n    var n: i64\n    func compare(other: V) -> i64:\n        return self.n - other.n\n"
+                       "func newest[T: Comparable](a: T, b: T) -> T:\n    return a if a.compare(b) >= 0 else b\n"
+                       "pub func answer() -> i64:\n    return newest(V(n = 1), V(n = 2)).n\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2);
+}

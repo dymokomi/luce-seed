@@ -527,7 +527,16 @@ auto Checker::bind_memory() -> void {
                             "pub interface Iterable[T, I: Iterator[T]]:\n"
                             "    func iterator() -> I\n"
                             "pub interface Display:\n"
-                            "    func display(sink: Writer) -> !\n");
+                            "    func display(sink: Writer) -> !\n"
+                            // the derived protocols (§14.4): `void*` stands for the conforming
+                            // type in a requirement; Equatable and Hashable are never written
+                            // by hand, and their requirements are unwritable on purpose
+                            "pub interface Comparable:\n"
+                            "    func compare(other: void*) -> i64\n"
+                            "pub interface Equatable:\n"
+                            "    func equals(other: void*) -> bool\n"
+                            "pub interface Hashable:\n"
+                            "    func hashed() -> u64\n");
     }
 }
 
