@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.34**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.35**, the seed `luce-base` is written against.
+
+## 0.35: constants across modules, pointers in the interpreter
+
+- an array length names a constant of an imported module, `i32[base.NCmp]`, and that
+  constant's initialiser may name constants of its own module (§6.4, §16.3);
+- the interpreter indexes a pointer value, `(p + n)[i]`, and addresses the bytes of a
+  `str`, `&text.bytes[0]`.
 
 ## 0.34: what porting QBE found
 

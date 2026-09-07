@@ -209,9 +209,40 @@ auto Interp::lvalue(Node* n) -> Value* {
         return p.ptr;
     }
     if (n->kind == NodeKind::Index) {
+        Type* owner_type = n->left != nullptr ? n->left->ty : nullptr;
+        if (is_ptr(owner_type)) {
+            // `p[i]` on a pointer value, `(p + n)[i]` included: element-scaled from the pointer
+            Value p = eval(n->left);
+            Value idxv = eval(n->body);
+            if (trapped) {
+                return nullptr;
+            }
+            if (p.ptr == nullptr) {
+                fail("null pointer");
+                return nullptr;
+            }
+            size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
+            return p.ptr + static_cast<ptrdiff_t>(i);
+        }
         Value* base = lvalue(n->left);
         Value idxv = eval(n->body);
-        if (trapped || base == nullptr) {
+        if (trapped) {
+            return nullptr;
+        }
+        if (base == nullptr && is_span(owner_type)) {
+            // `&text.bytes[i]`: a view that is not itself a place still addresses its elements
+            Value v = eval(n->left);
+            if (trapped) {
+                return nullptr;
+            }
+            size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
+            if (v.kind != TypeKind::Span || v.ptr == nullptr || i >= v.length) {
+                fail("index out of bounds");
+                return nullptr;
+            }
+            return v.ptr + static_cast<ptrdiff_t>(i);
+        }
+        if (base == nullptr) {
             return nullptr;
         }
         size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));

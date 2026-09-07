@@ -367,10 +367,27 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
         }
     }
     if (n->kind == NodeKind::Name) {
-        Binding* b = lookup(n->text);
-        Node* d = b != nullptr ? b->decl : nullptr;
+        // a name inside another module's initialiser was resolved when that module was checked
+        Node* d = n->resolved;
+        if (d == nullptr) {
+            Binding* b = lookup(n->text);
+            d = b != nullptr ? b->decl : nullptr;
+        }
         // only a top-level `let` is a constant (§6.3); a local is a value
         if (d != nullptr && (d->kind == NodeKind::Global || d->kind == NodeKind::Const) && d->left != nullptr) {
+            return const_u64(d->left, out);
+        }
+    }
+    if (n->kind == NodeKind::Member && n->left != nullptr && n->left->kind == NodeKind::Name) {
+        // `module.NAME`: a constant of an imported module (§6.4, §16.3)
+        Node* d = n->resolved;
+        if (d == nullptr) {
+            Binding* mb = lookup(n->left->text);
+            if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
+                d = pub_member(mb->type->decl, n->text);
+            }
+        }
+        if (d != nullptr && d->kind == NodeKind::Const && d->left != nullptr) {
             return const_u64(d->left, out);
         }
     }
