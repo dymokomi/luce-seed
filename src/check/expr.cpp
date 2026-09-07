@@ -910,6 +910,13 @@ auto Checker::check_else(Node* n, Type* expected) -> Type* {
         (void)fb;
         return inner;
     }
+    if (is_null_niche(left)) {
+        // `Writer?`: an interface view's optional keeps `none` in its null data word (§14.3)
+        Type* inner = non_null(left);
+        Type* fb = check_expr(n->right, expected != nullptr ? expected : inner);
+        (void)fb;
+        return inner;
+    }
     fail_n(n, "lucb.check.type", "`else` needs an optional");
     return t_error();
 }
@@ -1034,8 +1041,8 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                 if (!guarded) {
                     saw_some = true;
                 }
-                if (pat->body != nullptr && !pat->body->text.empty() && is_opt(scrut)) {
-                    bind_name(pat, pat->body->text, scrut->elem);
+                if (pat->body != nullptr && !pat->body->text.empty() && (is_opt(scrut) || is_null_niche(scrut))) {
+                    bind_name(pat, pat->body->text, is_opt(scrut) ? scrut->elem : non_null(scrut));
                 }
             } else if (is_enum(scrut) && scrut->decl != nullptr && !pat->text.empty() &&
                        pat->text != "_" && pat->left == nullptr) {

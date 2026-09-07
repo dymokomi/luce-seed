@@ -955,6 +955,16 @@ auto Interp::match_pat(Node* pat, const Value& scrut, Type* st) -> bool {
         return true;
     }
     if (pat->text == "some") {
+        if (is_null_niche(st) && (scrut.ptr != nullptr || scrut.fn != nullptr)) {
+            // a pointer, function, or interface view in its null niche: present when non-null
+            if (pat->body != nullptr && !pat->body->text.empty()) {
+                Slot s;
+                s.name = pat->body->text;
+                s.value = scrut;
+                frames.back().slots.push_back(s);
+            }
+            return true;
+        }
         if (scrut.kind == TypeKind::Optional && scrut.present) {
             if (pat->body != nullptr && !pat->body->text.empty()) {
                 Slot s;

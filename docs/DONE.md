@@ -1,7 +1,12 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.37**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.38**, the seed `luce-base` is written against.
+
+## 0.38: an interface view's optional everywhere
+
+- `Writer?` in `else`, `let ... else`, and `match .some(name)`: the view's null niche is
+  read wherever a pointer's would be (§14.3), in the checker and the interpreter.
 
 ## 0.37: constant conditions decide branches
 
