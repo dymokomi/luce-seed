@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.35**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.36**, the seed `luce-base` is written against.
+
+## 0.36: the math module as source, and three decisions
+
+- `math` is Base source carried in the binary (`std/math.lucb`, the same file as
+  luce-base's `src/std/math.lucb`): `import math` and `from math import sqrt` both
+  work, and the interpreter reaches the C library's mathematics for its bodies;
+  `f64.bits(...)` is a constant expression in the C output;
+- `(i32)flag` is 0 or 1 and `(bool)n` is `n != 0`, as in C (§7.5);
+- `&a[N]` is the one-past-the-end address (§7.7);
+- `(c.str)text` traps unless the byte after the text is NUL (§5.2).
 
 ## 0.35: constants across modules, pointers in the interpreter
 

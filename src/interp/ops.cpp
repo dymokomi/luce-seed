@@ -242,6 +242,20 @@ auto Interp::eval_format(Node* n) -> Value {
 }
 
 auto Interp::eval_unary(Node* n) -> Value {
+    if (n->op == TokenKind::Amp) {
+        // `&place`: the operand is a place, never read; `&a[N]` one past the end is admitted
+        at_end_ok = n->left != nullptr && n->left->kind == NodeKind::Index;
+        Value* p = lvalue(n->left);
+        at_end_ok = false;
+        Value v;
+        v.kind = TypeKind::Pointer;
+        v.type = n->ty;
+        v.ptr = p;
+        if (n->ty != nullptr && n->ty->kind == TypeKind::Interface) {
+            v.kind = TypeKind::Interface;
+        }
+        return v;
+    }
     Value x = eval(n->left);
     if (trapped) {
         return v_unit();
@@ -258,17 +272,6 @@ auto Interp::eval_unary(Node* n) -> Value {
     }
     if (n->op == TokenKind::KwNot) {
         return v_bool(!x.b);
-    }
-    if (n->op == TokenKind::Amp) {
-        Value* p = lvalue(n->left);
-        Value v;
-        v.kind = TypeKind::Pointer;
-        v.type = n->ty;
-        v.ptr = p;
-        if (n->ty != nullptr && n->ty->kind == TypeKind::Interface) {
-            v.kind = TypeKind::Interface;
-        }
-        return v;
     }
     if (n->op == TokenKind::Star) {
         if (x.ptr == nullptr) {
@@ -705,6 +708,12 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
     }
     if (is_int_enum(src) && is_int(dest)) {
         return v_int(dest, as_u(x, src->elem != nullptr ? src->elem : dest));
+    }
+    if (src != nullptr && src->kind == TypeKind::Bool && is_int(dest)) {
+        return v_int(dest, x.b ? 1 : 0);
+    }
+    if (is_int(src) && dest->kind == TypeKind::Bool) {
+        return v_bool(as_u(x, src) != 0);
     }
     if (src != nullptr && src->kind == TypeKind::ErrorCode && is_int(dest)) {
         return v_int(dest, x.u);

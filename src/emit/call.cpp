@@ -912,7 +912,8 @@ auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
         string in = emit_expr(n->body != nullptr ? n->body->left : nullptr);
         string it = bits_integer_c_name(n->ty);
         string ft = c_type_name(n->ty);
-        return "({ " + it + " _lb_b = (" + it + ")(" + in + "); " + ft + " _lb_f; __builtin_memcpy(&_lb_f, &_lb_b, sizeof _lb_f); _lb_f; })";
+        // a constant expression, so `f64.bits(...)` can initialise a global (§6.4)
+        return "__builtin_bit_cast(" + ft + ", (" + it + ")(" + in + "))";
     }
     string it = bits_integer_c_name(obj->ty);
     string ft = c_type_name(obj->ty);

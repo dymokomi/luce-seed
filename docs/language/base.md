@@ -510,7 +510,7 @@ Left to right, always: receiver then arguments, operands, array elements, interp
 | `%` | remainder with the sign of the dividend: `-7 % 2 == -1`, as in C |
 | unary `-` | sign; rejected on unsigned types (use `-%`) |
 
-Integer division by zero traps. `minimum_signed // -1` traps as overflow. Floor division and modulo are `math.floor(a, b)` and `math.mod(a, b)`. Constant folding uses the same rules as runtime. Float arithmetic is IEEE 754 with no contraction or reassociation.
+Integer division by zero traps. `minimum_signed // -1` traps as overflow. Floor division and modulo are `math.div_floor(a, b)` and `math.mod_floor(a, b)`. Constant folding uses the same rules as runtime. Float arithmetic is IEEE 754 with no contraction or reassociation.
 
 **Why trapping is the default.** C wraps unsigned arithmetic silently and leaves signed overflow undefined, and both are the source of most exploitable integer bugs. Base traps, because a trap reports the location of the overflow and a wrap does not, and the check is one predicted branch. Hashing, PRNGs, and checksums wrap on purpose and use the `%` operators; overflow-aware code uses `+?` and handles `none`.
 
@@ -540,9 +540,11 @@ Base has two conversion spellings with two meanings.
 | integer to a different signedness | reinterpretation of the bits |
 | float to integer | truncation toward zero, saturating to the destination's range; NaN becomes `0` |
 | integer to float, float to float | value conversion as in C |
-| `(u32)flag` | an integer-backed enum to its representation |
+| `(i32)flag` from `bool`, `(bool)n` | `0` or `1`; nonzero, as in C. The cast is written, since `bool` has no implicit numeric conversion (§5.1) |
+| `(u32)kind` | an integer-backed enum to its representation |
 | `(Kind)n` | an integer to an integer-backed enum with no check |
-| `(str)bytes`, `(c.str)text` | text reinterpretation with no check (§5.5) |
+| `(str)bytes` | text reinterpretation with no check (§5.5) |
+| `(c.str)text` | the text's data pointer, after a check that the byte following the text is NUL, since C's text ends at one; a view cut from the middle of longer text traps rather than reading past its end |
 | `(T*)p` from `U*`, `void*`, `const T*`, `const void*` | pointer conversion; removing `const` is permitted and explicit, and modifying an object that was declared `let` or `const` through the result is undefined as in C |
 | `(T*?)n` from `usize` | integer to pointer; nullable because zero is a valid integer |
 | `(usize)p` | pointer to integer |
@@ -580,7 +582,7 @@ decode[Header](data)
 | `p - q` | element difference as `isize`; same pointee type required |
 | `p == q`, `p < q` | address comparison (§5.3) |
 
-Pointer arithmetic is unchecked: producing a pointer outside the object `p` addresses, or one past its end, and using it, is undefined as in C. Spans cover the cases where a length is known.
+Pointer arithmetic is unchecked: producing a pointer outside the object `p` addresses, or one past its end, and using it, is undefined as in C. `&a[N]` on an array or span of length `N` is the one-past-the-end address, permitted for `&` alone; every other index is checked against the length. Spans cover the cases where a length is known.
 
 **Reading typed values from untyped memory.** Prefer declaring a struct for what is stored and casting once where the untyped memory enters; the cast-and-dereference form `*(Link*)block` is legal and is the last choice. When no struct fits, a header decoded from a buffer or a C structure walked by offsets, `memory.read[T](address: void*) -> T` and `memory.write[T](address: void*, value: T)` copy `sizeof(T)` bytes at the address with no alignment assumption. `memory.copy(to, from, count)`, `memory.move(to, from, count)` for overlapping ranges, and `memory.set(span, byte)` are `memcpy`, `memmove`, and `memset`.
 
@@ -1117,7 +1119,7 @@ These two lists are exhaustive for the language. A library may add checks; nothi
 
 **Defined and checked in every build:** integer overflow in `+`, `-`, `*`, `//`, `%` (trap); shift by the operand width or more (trap); division by zero and `minimum_signed // -1` (trap); indexing and slicing of arrays, spans, and `str` (trap); unwrapping every optional (trap through `else trap`, or a compile error without it); dereference of a bare pointer (cannot be null by type, with the one boundary check of §17.1); reading an uninitialised local (compile error, except after `---`); non-exhaustive `match` (compile error); converting an integer to an integer-backed enum with `T(n)` (trap); checked conversions `T(x)` (trap); float-to-integer casts (saturate); reads and writes through `volatile` (never elided or merged); every atomic operation; aliasing of compatible objects (no type-based aliasing rule, except where `noalias` is written); signed right shift (arithmetic); `<<` past the width (discards).
 
-**Undefined, exactly as in C, and the programmer's responsibility:** use after free and double free; freeing storage with an allocator other than the one that provided it; dereferencing a dangling pointer, including one the escape rule of §6.6 could not see; pointer arithmetic that leaves the object, including `p[i]` out of range; misaligned access after a `(T*)` cast; reading storage declared with `---`, or obtained from `alloc`, before writing it; reading a union member with an invariant after another member was written; modifying a `let` or `const` object through a cast; `(c.str)text` on text that is not NUL-terminated; `(str)bytes` on bytes that are not UTF-8; a `noalias` parameter that aliases; a data race on memory that is not `@T`; a `longjmp` through a Base frame; an `asm` block that violates its declared operands or options; a C callee that retains a lent pointer past the call; a C caller that violates a contract stated in an `extern` declaration.
+**Undefined, exactly as in C, and the programmer's responsibility:** use after free and double free; freeing storage with an allocator other than the one that provided it; dereferencing a dangling pointer, including one the escape rule of §6.6 could not see; pointer arithmetic that leaves the object, including `p[i]` out of range; misaligned access after a `(T*)` cast; reading storage declared with `---`, or obtained from `alloc`, before writing it; reading a union member with an invariant after another member was written; modifying a `let` or `const` object through a cast; `(str)bytes` on bytes that are not UTF-8; a `noalias` parameter that aliases; a data race on memory that is not `@T`; a `longjmp` through a Base frame; an `asm` block that violates its declared operands or options; a C callee that retains a lent pointer past the call; a C caller that violates a contract stated in an `extern` declaration.
 
 **Why two lists.** Two exhaustive lists can be checked against the C standard's own catalogue of undefined behaviour, and every future rule has to add itself to one of them.
 
@@ -1334,10 +1336,11 @@ The language depends on these modules by name. Their full surfaces are in the li
 | Module | What the language relies on |
 | --- | --- |
 | `memory` | `allocator` (thread-local current allocator), `heap` (the initial allocator), `exhausted` and `unset` (error codes), `read`, `write`, `copy`, `move`, `set`, `grow` |
-| `io` | `stdout()` and `stderr()` as `Writer`s |
+| `io` | `stdout()` and `stderr()` as `Writer`s; `path.user()`, `path.home()`, `path.temp()`, `path.config()` for the process's directories |
 | `files` | `read(path: c.str) -> u8[]!` allocating from the current allocator, `write`, `list(path: c.str) -> str[]!`, `missing` (error code) |
 | `process` | `run(program: c.str, arguments: c.str[]) -> i32!` |
-| `math` | `floor`, `mod`, `sqrt`, the NaN and infinity constants |
+| `math` | `pi`, `tau`, `e`, `infinity`, `nan`; `floor`, `ceil`, `round`, `trunc`, `sqrt`, `cbrt`, `hypot`, `mod`, `pow`, `exp`, `exp2`, `log`, `log2`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `abs`, `sign`, `min`, `max`, `clamp`, `is_nan`, `is_finite`, `is_infinite` on `f64`; `div_floor`, `mod_floor`, `iabs`, `imin`, `imax`, `iclamp` on `i64`. `from math import sqrt` brings one in; `import math` keeps them qualified |
+| `os` | the target as constants: `arm64`, `x86_64`, `macos`, `linux`, `pointer_bits`; `cpus()`, `page_size()`, `env`, `set_env`, `unset_env`, `cwd`, `change_dir`, `pid`, `parent_pid`, `hostname`, `exit` |
 | `thread` | `spawn`, `Handle`, `current`, `pause`, `yield`, `sleep` |
 | `sync` | `Mutex`, `Condition`, `Once`, `Semaphore` |
 | `atomic` | `fence`, `Ordering` |

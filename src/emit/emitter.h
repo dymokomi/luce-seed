@@ -106,7 +106,7 @@ struct Emitter {
     string emit_enum_check(Type* dest, const string& e);
     string emit_conv(Node* src, Type* dest, bool checked);
     string emit_member(Node* n);
-    string emit_index(Node* n);
+    string emit_index(Node* n, bool one_past = false);
     string emit_slice(Node* n);
     string emit_array_lit(Node* n);
     string emit_span_make(Node* n);

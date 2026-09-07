@@ -12,6 +12,8 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+
+#include <cmath>
 #include "interp/punning.h"
 
 #include "support/literal.h"
@@ -1211,6 +1213,30 @@ auto Interp::eval_extern(Node* n, Node* fn) -> Value {
     if (name == "strlen") {
         string s = args.empty() ? string() : cstr_text(args[0]);
         return v_int(rt, s.size());
+    }
+    {
+        // the C library's mathematics, for the `math` module's bodies
+        using Unary = double (*)(double);
+        using Binary = double (*)(double, double);
+        static const struct { const char* name; Unary f; } unary[] = {
+            {"floor", floor}, {"ceil", ceil}, {"round", round}, {"trunc", trunc}, {"sqrt", sqrt},
+            {"cbrt", cbrt}, {"exp", exp}, {"exp2", exp2}, {"log", log}, {"log2", log2},
+            {"log10", log10}, {"sin", sin}, {"cos", cos}, {"tan", tan}, {"asin", asin},
+            {"acos", acos}, {"atan", atan}, {"sinh", sinh}, {"cosh", cosh}, {"tanh", tanh},
+        };
+        static const struct { const char* name; Binary f; } binary[] = {
+            {"fmod", fmod}, {"pow", pow}, {"hypot", hypot}, {"atan2", atan2},
+        };
+        for (const auto& u : unary) {
+            if (name == u.name && args.size() == 1) {
+                return v_float(rt, u.f(args[0].f));
+            }
+        }
+        for (const auto& b : binary) {
+            if (name == b.name && args.size() == 2) {
+                return v_float(rt, b.f(args[0].f, args[1].f));
+            }
+        }
     }
     if (name == "printf") {
         string fmt = args.empty() ? string() : cstr_text(args[0]);

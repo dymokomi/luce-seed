@@ -1,0 +1,133 @@
+## The mathematical functions of the standard library (§16.6): `import math` for
+## `math.sqrt(x)`, `from math import sqrt` for `sqrt(x)`. The float functions are the C
+## library's, declared here with the types Base gives them; the integer functions are Base.
+extern func c_floor as "floor"(x: f64) -> f64
+extern func c_ceil as "ceil"(x: f64) -> f64
+extern func c_round as "round"(x: f64) -> f64
+extern func c_trunc as "trunc"(x: f64) -> f64
+extern func c_sqrt as "sqrt"(x: f64) -> f64
+extern func c_cbrt as "cbrt"(x: f64) -> f64
+extern func c_hypot as "hypot"(x: f64, y: f64) -> f64
+extern func c_fmod as "fmod"(x: f64, y: f64) -> f64
+extern func c_pow as "pow"(x: f64, y: f64) -> f64
+extern func c_exp as "exp"(x: f64) -> f64
+extern func c_exp2 as "exp2"(x: f64) -> f64
+extern func c_log as "log"(x: f64) -> f64
+extern func c_log2 as "log2"(x: f64) -> f64
+extern func c_log10 as "log10"(x: f64) -> f64
+extern func c_sin as "sin"(x: f64) -> f64
+extern func c_cos as "cos"(x: f64) -> f64
+extern func c_tan as "tan"(x: f64) -> f64
+extern func c_asin as "asin"(x: f64) -> f64
+extern func c_acos as "acos"(x: f64) -> f64
+extern func c_atan as "atan"(x: f64) -> f64
+extern func c_atan2 as "atan2"(y: f64, x: f64) -> f64
+extern func c_sinh as "sinh"(x: f64) -> f64
+extern func c_cosh as "cosh"(x: f64) -> f64
+extern func c_tanh as "tanh"(x: f64) -> f64
+
+pub let pi: f64 = 3.141592653589793
+pub let tau: f64 = 6.283185307179586
+pub let e: f64 = 2.718281828459045
+## Built from bits so that no constant expression needs to overflow.
+pub let infinity: f64 = f64.bits(9218868437227405312)
+pub let nan: f64 = f64.bits(9221120237041090560)
+
+## Rounding: `floor` toward negative infinity, `ceil` toward positive, `round` to the
+## nearest with halves away from zero, `trunc` toward zero.
+pub func floor(x: f64) -> f64:
+    return c_floor(x)
+pub func ceil(x: f64) -> f64:
+    return c_ceil(x)
+pub func round(x: f64) -> f64:
+    return c_round(x)
+pub func trunc(x: f64) -> f64:
+    return c_trunc(x)
+
+pub func sqrt(x: f64) -> f64:
+    return c_sqrt(x)
+pub func cbrt(x: f64) -> f64:
+    return c_cbrt(x)
+## `sqrt(x * x + y * y)` without overflow in the squares.
+pub func hypot(x: f64, y: f64) -> f64:
+    return c_hypot(x, y)
+## The remainder of `x / y` with the sign of `x`, as C's `fmod`.
+pub func mod(x: f64, y: f64) -> f64:
+    return c_fmod(x, y)
+pub func pow(x: f64, y: f64) -> f64:
+    return c_pow(x, y)
+pub func exp(x: f64) -> f64:
+    return c_exp(x)
+pub func exp2(x: f64) -> f64:
+    return c_exp2(x)
+pub func log(x: f64) -> f64:
+    return c_log(x)
+pub func log2(x: f64) -> f64:
+    return c_log2(x)
+pub func log10(x: f64) -> f64:
+    return c_log10(x)
+
+pub func sin(x: f64) -> f64:
+    return c_sin(x)
+pub func cos(x: f64) -> f64:
+    return c_cos(x)
+pub func tan(x: f64) -> f64:
+    return c_tan(x)
+pub func asin(x: f64) -> f64:
+    return c_asin(x)
+pub func acos(x: f64) -> f64:
+    return c_acos(x)
+pub func atan(x: f64) -> f64:
+    return c_atan(x)
+## The angle of the point `(x, y)`, in all four quadrants.
+pub func atan2(y: f64, x: f64) -> f64:
+    return c_atan2(y, x)
+pub func sinh(x: f64) -> f64:
+    return c_sinh(x)
+pub func cosh(x: f64) -> f64:
+    return c_cosh(x)
+pub func tanh(x: f64) -> f64:
+    return c_tanh(x)
+
+pub func is_nan(x: f64) -> bool:
+    return x != x
+pub func is_finite(x: f64) -> bool:
+    return x - x == 0.0
+pub func is_infinite(x: f64) -> bool:
+    return x == infinity or x == 0.0 - infinity
+pub func abs(x: f64) -> f64:
+    return 0.0 - x if x < 0.0 else x
+## `-1.0`, `0.0`, or `1.0`; NaN answers NaN.
+pub func sign(x: f64) -> f64:
+    if x < 0.0:
+        return -1.0
+    if x > 0.0:
+        return 1.0
+    return x
+pub func min(a: f64, b: f64) -> f64:
+    return a if a < b else b
+pub func max(a: f64, b: f64) -> f64:
+    return a if a > b else b
+pub func clamp(x: f64, low: f64, high: f64) -> f64:
+    return low if x < low else (high if x > high else x)
+
+## The integer functions. `//` and `%` truncate toward zero as C does (§7.2); these two
+## floor, so `div_floor(-7, 2)` is `-4` and `mod_floor(-7, 2)` is `1`.
+pub func div_floor(a: i64, b: i64) -> i64:
+    let q = a // b
+    if (a % b != 0) and ((a < 0) != (b < 0)):
+        return q - 1
+    return q
+pub func mod_floor(a: i64, b: i64) -> i64:
+    let r = a % b
+    if r != 0 and ((r < 0) != (b < 0)):
+        return r + b
+    return r
+pub func iabs(a: i64) -> i64:
+    return 0 - a if a < 0 else a
+pub func imin(a: i64, b: i64) -> i64:
+    return a if a < b else b
+pub func imax(a: i64, b: i64) -> i64:
+    return a if a > b else b
+pub func iclamp(x: i64, low: i64, high: i64) -> i64:
+    return low if x < low else (high if x > high else x)

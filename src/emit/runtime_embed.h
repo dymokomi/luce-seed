@@ -15,5 +15,7 @@ namespace lucb {
 const char* lucb_rt_h();
 const char* lucb_rt_c();
 const char* lucb_start_c();
+/* The Base text of a standard module the seed carries as source (`math`), or null. */
+const char* lucb_std_source(const char* name);
 
 } // namespace lucb

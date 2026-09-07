@@ -262,15 +262,17 @@ auto Interp::lvalue(Node* n) -> Value* {
         size_t nlen = base->length != 0 ? base->length : base->fields.size();
         if (is_array(bt) || is_span(bt) || base->kind == TypeKind::Array ||
             base->kind == TypeKind::Span) {
-            if (i >= nlen) {
+            const size_t slack = at_end_ok ? 1 : 0; // `&a[N]`: one past the end (§7.7)
+            at_end_ok = false;
+            if (i >= nlen + slack) {
                 fail("index out of bounds");
                 return nullptr;
             }
             if (base->ptr != nullptr) {
                 return base->ptr + static_cast<ptrdiff_t>(i);
             }
-            if (i < base->fields.size()) {
-                return &base->fields[i];
+            if (i <= base->fields.size()) {
+                return base->fields.data() + static_cast<ptrdiff_t>(i);
             }
             return nullptr;
         }

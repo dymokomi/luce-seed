@@ -901,7 +901,7 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
         return e;
     }
     if (dest->kind == TypeKind::CStr && st != nullptr && st->kind == TypeKind::Str) {
-        return "(" + e + ".data)";
+        return "lb_cstr_of(" + e + ")"; // the byte after the text is NUL, or the cast traps (§5.2)
     }
     if (is_int_enum(dest)) {
         if (checked) {
@@ -1030,13 +1030,15 @@ auto Emitter::emit_member(Node* n) -> string {
     return base + "." + string(n->text);
 }
 
-auto Emitter::emit_index(Node* n) -> string {
+auto Emitter::emit_index(Node* n, bool one_past) -> string {
     Type* bt = n->left != nullptr ? n->left->ty : nullptr;
     string b = emit_expr(n->left);
     string i = emit_expr(n->body);
+    // under `&` the index may equal the length: C's one past the end (§7.7)
+    const uint64_t slack = one_past ? 1 : 0;
     if (is_array(bt)) {
         char nbuf[32];
-        snprintf(nbuf, sizeof(nbuf), "%lluULL", static_cast<unsigned long long>(bt->length));
+        snprintf(nbuf, sizeof(nbuf), "%lluULL", static_cast<unsigned long long>(bt->length + slack));
         return "((" + b + ").d[(lb_check_index((uint64_t)(" + i + "), " + nbuf + "), " + i + ")])";
     }
     if (is_span(bt) || (bt != nullptr && bt->kind == TypeKind::Str)) {
@@ -1046,7 +1048,7 @@ auto Emitter::emit_index(Node* n) -> string {
         }
         string elem = et != nullptr ? c_type(et) : "uint8_t";
         return "(((" + elem + "*)" + b + ".data)[(lb_check_index((uint64_t)(" + i + "), " + b +
-               ".length), " + i + ")])";
+               (one_past ? ".length + 1ULL), " : ".length), ") + i + ")])";
     }
     if (is_ptr(bt)) {
         return "((" + b + ")[" + i + "])";
@@ -1121,7 +1123,7 @@ auto Emitter::emit_addr(Node* n) -> string {
         return "&(" + emit_member(n) + ")";
     }
     if (n->kind == NodeKind::Index) {
-        return "&(" + emit_index(n) + ")";
+        return "&(" + emit_index(n, true) + ")";
     }
     if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {
         return emit_expr(n->left);

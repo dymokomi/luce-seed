@@ -205,6 +205,14 @@ typedef struct lb_str {
     size_t length;
 } lb_str;
 
+/* `(c.str)text`: C's text ends at a NUL, so the byte after the view must be one. */
+static inline const char* lb_cstr_of(lb_str s) {
+    if (s.data[s.length] != 0) {
+        lb_trap("c.str: the text is not NUL-terminated");
+    }
+    return s.data;
+}
+
 typedef struct lb_span {
     void* data;
     size_t length;

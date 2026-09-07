@@ -419,6 +419,9 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
     if (src->kind == TypeKind::Char && is_int(dest)) {
         return true;
     }
+    if ((src->kind == TypeKind::Bool && is_int(dest)) || (is_int(src) && dest->kind == TypeKind::Bool)) {
+        return true; // `(i32)flag` is 0 or 1, `(bool)n` is `n != 0`, as in C (§7.5)
+    }
     if (is_int(src) && dest->kind == TypeKind::Char) {
         return true;
     }

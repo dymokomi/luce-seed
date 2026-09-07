@@ -9,6 +9,7 @@
 //==============================================================================================
 
 #include "pkg/package.h"
+#include "emit/runtime_embed.h"
 
 #include "lex/lexer.h"
 
@@ -150,6 +151,8 @@ string resolve_file(const Program& program, string_view dotted) {
 
 bool load_one(Program& program, const string& path, const string& name, DiagnosticBag& diagnostics,
               vector<string>& stack);
+bool load_bytes(Program& program, const string& path, const string& name, const string& bytes,
+                DiagnosticBag& diagnostics, vector<string>& stack);
 
 bool is_std_module(string_view name) {
     return name == "memory" || name == "luce" || name == "io" || name == "files" ||
@@ -181,11 +184,17 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
         if (existing == nullptr) {
             string path = resolve_file(program, dep);
             if (path.empty()) {
-                diagnostics.add("lucb.check.import", here, d->span,
-                                "cannot find module `" + dep + "`");
-                return false;
-            }
-            if (!load_one(program, path, dep, diagnostics, stack)) {
+                const char* embedded = lucb_std_source(dep.c_str());
+                if (embedded == nullptr) {
+                    diagnostics.add("lucb.check.import", here, d->span,
+                                    "cannot find module `" + dep + "`");
+                    return false;
+                }
+                // a standard module the seed carries as Base source (§16.6)
+                if (!load_bytes(program, "<std>/" + dep + ".lucb", dep, embedded, diagnostics, stack)) {
+                    return false;
+                }
+            } else if (!load_one(program, path, dep, diagnostics, stack)) {
                 return false;
             }
             existing = find_loaded(program, dep);
@@ -197,17 +206,8 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
     return diagnostics.empty();
 }
 
-bool load_one(Program& program, const string& path, const string& name, DiagnosticBag& diagnostics,
-              vector<string>& stack) {
-    if (find_loaded(program, name) != nullptr) {
-        return true;
-    }
-    string error;
-    string bytes = slurp_file(path, &error);
-    if (!error.empty()) {
-        diagnostics.add("lucb.check.import", path, Span{}, error);
-        return false;
-    }
+bool load_bytes(Program& program, const string& path, const string& name, const string& bytes,
+                DiagnosticBag& diagnostics, vector<string>& stack) {
     LoadedModule loaded;
     loaded.path = path;
     loaded.name = name;
@@ -241,6 +241,20 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     bool ok = load_imports(program, idx, diagnostics, stack);
     stack.pop_back();
     return ok && diagnostics.empty();
+}
+
+bool load_one(Program& program, const string& path, const string& name, DiagnosticBag& diagnostics,
+              vector<string>& stack) {
+    if (find_loaded(program, name) != nullptr) {
+        return true;
+    }
+    string error;
+    string bytes = slurp_file(path, &error);
+    if (!error.empty()) {
+        diagnostics.add("lucb.check.import", path, Span{}, error);
+        return false;
+    }
+    return load_bytes(program, path, name, bytes, diagnostics, stack);
 }
 
 } // namespace

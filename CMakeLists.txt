@@ -29,12 +29,14 @@ add_custom_command(
     OUTPUT "${LUCB_EMBED_CPP}"
     COMMAND ${CMAKE_COMMAND}
         -DRT_DIR=${CMAKE_SOURCE_DIR}/src/runtime
+        -DSTD_DIR=${CMAKE_SOURCE_DIR}/std
         -DOUT=${LUCB_EMBED_CPP}
         -P ${CMAKE_SOURCE_DIR}/cmake/embed_runtime.cmake
     DEPENDS
         src/runtime/lucb_rt.h
         src/runtime/lucb_rt.c
         src/runtime/start.c
+        std/math.lucb
         cmake/embed_runtime.cmake
     COMMENT "Embed lucb runtime sources"
 )
