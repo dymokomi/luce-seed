@@ -116,6 +116,7 @@ struct Interp {
     bool match_pat(Node* pat, const Value& scrut, Type* st);
     Value eval_match(Node* n);
     Value eval_conv(Node* srcn, Type* dest, bool checked);
+    string assert_message(Node* call);
     Value eval_str_conv(const Value& x, Type* src, Type* result_ty, bool checked);
     uint64_t hash_value(const Value& v, Type* t);
     Value eval_hash(Node* n);

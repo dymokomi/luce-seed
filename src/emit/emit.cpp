@@ -243,7 +243,7 @@ auto Emitter::emit_decls(Node* mod) -> void {
             if (first && !variadic) {
                 sig += "void";
             }
-            sig += ");";
+            sig += ") LB_SYMBOL(" + c_escape(c_symbol(d)) + ");";
             line(sig);
         } else if (d->kind == NodeKind::ExternVar) {
             line("extern " + c_type(d->ty) + " " + string(d->text) + ";");

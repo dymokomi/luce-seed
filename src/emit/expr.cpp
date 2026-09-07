@@ -23,6 +23,16 @@ auto Emitter::emit_src_file() -> string {
     return "((lb_str){" + c_escape(file) + ", " + std::to_string(file.size()) + "})";
 }
 
+// `path:line: assert failed: condition`: what a failed `assert` reports (§11.6).
+auto Emitter::assert_message(Node* call) -> string {
+    string file = src_file.empty() ? string("t.lucb") : src_file;
+    string msg = file + ":" + std::to_string(call->span.line) + ": assert failed";
+    if (!call->text.empty()) {
+        msg += ": " + string(call->text);
+    }
+    return msg;
+}
+
 auto Emitter::emit_src_function() -> string {
     string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
     return "((lb_str){" + c_escape(fn) + ", " + std::to_string(fn.size()) + "})";
@@ -489,7 +499,8 @@ auto Emitter::emit_literal(Node* n) -> string {
     }
     if (n->op == TokenKind::StringLit) {
         string d = decode_lit(n->text);
-        if (n->ty != nullptr && n->ty->kind == TypeKind::CStr) {
+        if (n->ty != nullptr && (n->ty->kind == TypeKind::CStr ||
+                                 (is_opt(n->ty) && n->ty->elem != nullptr && n->ty->elem->kind == TypeKind::CStr))) {
             return c_escape(d);
         }
         char buf[32];

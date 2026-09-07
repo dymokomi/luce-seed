@@ -150,6 +150,31 @@ auto Parser::parse_binary_rest(Node* left, int min_prec) -> Node* {
     return left;
 }
 
+// Where a subtree's text ends: the furthest end among the node and its children, since an
+// operator node keeps its first operand's span.
+static uint32_t span_end(Node* n) {
+    if (n == nullptr) {
+        return 0;
+    }
+    uint32_t end = n->span.end;
+    Node* parts[] = {n->left, n->right, n->type, n->body};
+    for (Node* p : parts) {
+        for (Node* c = p; c != nullptr; c = c->next) {
+            uint32_t e = span_end(c);
+            if (e > end) {
+                end = e;
+            }
+            if (c != p && c->next == nullptr) {
+                break;
+            }
+            if (p != n->body) {
+                break;
+            }
+        }
+    }
+    return end;
+}
+
 auto Parser::parse_unary() -> Node* {
     Token start = cur();
     if (at(TokenKind::KwTry) || at(TokenKind::KwNot) || at(TokenKind::Plus) ||
@@ -193,6 +218,12 @@ auto Parser::parse_postfix() -> Node* {
             c->left = value;
             c->body = parse_arg_list();
             c->span = span_from(start);
+            if (value->kind == NodeKind::Name && value->text == "assert" && c->body != nullptr &&
+                c->body->left != nullptr) {
+                // the condition's own text, for the trap's message (§11.6)
+                const Span& cs = c->body->left->span;
+                c->text = source->bytes().substr(cs.start, span_end(c->body->left) - cs.start);
+            }
             value = c;
         } else if (at(TokenKind::LBracket) && is_generic_call_ahead()) {
             Node* c = make(NodeKind::Call, start.span);
@@ -594,19 +625,30 @@ auto Parser::parse_type() -> Node* {
         }
     }
     Node* value = parse_primary_type();
-    while (at(TokenKind::Star) || at(TokenKind::StarQuestion) || is_array_suffix_ahead()) {
-        if (is_array_suffix_ahead()) {
-            take(); // [
-            Node* t = make(NodeKind::Type, start.span);
-            t->left = value;
-            if (eat(TokenKind::RBracket)) {
-                t->flags = FlagSpan | (flags & FlagConst);
-            } else {
-                t->flags = FlagArray;
-                t->right = parse_expression();
-                expect(TokenKind::RBracket, "lucb.parse.expect", "expected `]`");
+    // after a suffix, a bracket can only be another suffix: `i32[2][N]`
+    bool suffixed = false;
+    while (at(TokenKind::Star) || at(TokenKind::StarQuestion) || is_array_suffix_ahead() ||
+           (suffixed && at(TokenKind::LBracket))) {
+        suffixed = true;
+        if (at(TokenKind::LBracket)) {
+            // a run of brackets reads inside-out as in C: `u8[2][4]` is two arrays of four
+            vector<Node*> suffixes;
+            while (at(TokenKind::LBracket)) {
+                take(); // [
+                Node* t = make(NodeKind::Type, start.span);
+                if (eat(TokenKind::RBracket)) {
+                    t->flags = FlagSpan | (flags & FlagConst);
+                } else {
+                    t->flags = FlagArray;
+                    t->right = parse_expression();
+                    expect(TokenKind::RBracket, "lucb.parse.expect", "expected `]`");
+                }
+                suffixes.push_back(t);
             }
-            value = t;
+            for (size_t k = suffixes.size(); k > 0; k--) {
+                suffixes[k - 1]->left = value;
+                value = suffixes[k - 1];
+            }
             flags &= ~(FlagConst | FlagVolatile);
             continue;
         }
@@ -715,10 +757,15 @@ auto Parser::parse_primary_type() -> Node* {
     size_t path_end = name.span.end;
     // A path continues through PascalCase segments (`module.Type`); a
     // lowercase segment is an enum case, `new Kind.case(...)`, and stops it.
+    int segments = 1;
     while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Name &&
-           (is_type_path_ident(peek(1).text) || name.text == "c")) { // `c.int` (§5.2)
+           (is_type_path_ident(peek(1).text) || name.text == "c" || // `c.int` (§5.2)
+            (segments == 1 && !is_type_path_ident(name.text) && peek(2).kind != TokenKind::LParen))) {
+        // `module.alias` continues a one-segment path; a lowercase segment after a type name
+        // is an enum case (`new Kind.case`) and stops it
         take();
         path_end = take().span.end;
+        segments++;
     }
     Node* t = make(NodeKind::Type, start.span);
     t->text = source->bytes().substr(path_start, path_end - path_start);

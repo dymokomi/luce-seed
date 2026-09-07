@@ -402,9 +402,16 @@ auto Emitter::emit_call(Node* n) -> string {
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
         Node* cond = n->body != nullptr ? n->body->left : nullptr;
-        string msg = "\"assert failed\"";
+        string msg = c_escape(assert_message(n));
         if (n->body != nullptr && n->body->next != nullptr) {
-            msg = "(" + emit_expr(n->body->next->left) + ").data";
+            // `assert(c, message)`: the message follows the location; a literal joins it here
+            Node* m = n->body->next->left;
+            if (m != nullptr && m->kind == NodeKind::Literal && m->op == TokenKind::StringLit) {
+                msg = c_escape(assert_message(n) + ": " + decode_lit(m->text));
+            } else {
+                return "((void)((" + emit_expr(cond) + ") ? 0 : (lb_trap_two(" + msg + ", (" +
+                       emit_expr(m) + ").data), 0)))";
+            }
         }
         return "((void)((" + emit_expr(cond) + ") ? 0 : (lb_trap(" + msg + "), 0)))";
     }

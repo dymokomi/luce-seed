@@ -256,6 +256,10 @@ struct Checker {
     Type* check_float_from_bits(Node* n, Node* obj);
     void enter_loop(Node* n);
     bool is_constant_expr(Node* n);
+    bool is_global_place(Node* n);
+    Node* bracket_value_decl(string_view text);
+    Node* bracket_name_expr(Node* arg);
+    Node* array_reading(Node* n);
     bool names_a_global(Node* n);
     Type* bits_integer(Type* t);
     bool is_local(Node* n);

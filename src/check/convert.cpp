@@ -164,6 +164,13 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
         n->kind == NodeKind::Literal && n->op == TokenKind::StringLit) {
         return expected;
     }
+    if (is_opt(expected) && expected->elem != nullptr && expected->elem->kind == TypeKind::CStr &&
+        got->kind == TypeKind::Str && n != nullptr && n->kind == NodeKind::Literal &&
+        n->op == TokenKind::StringLit) {
+        // a literal fills a `c.str?` slot too: the `char*` that may be null (§5.2)
+        n->ty = expected->elem;
+        return expected;
+    }
     if (is_atomic(got) && expected != nullptr &&
         (type_eq(got->elem, expected) || can_widen(got->elem, expected))) {
         return expected;
@@ -286,6 +293,14 @@ auto Checker::as_index_type(Node* n) -> Type* {
     }
     if (is_int(t)) {
         return t;
+    }
+    if (t != nullptr && t->kind == TypeKind::Char && n->kind == NodeKind::Literal && n->op == TokenKind::CharLit) {
+        uint32_t cp = 0;
+        if (parse_char_literal(n->text, &cp) && cp < 128) {
+            // `table['P']`: an ASCII character literal adapts to an integer context (§4.4)
+            n->ty = t_usize();
+            return n->ty;
+        }
     }
     fail_n(n, "lucb.check.type", "an index must be an integer");
     return t_error();

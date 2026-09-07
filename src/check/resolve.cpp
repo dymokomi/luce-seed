@@ -527,6 +527,74 @@ auto Checker::atomic_ok(Type* t) -> bool {
     return false;
 }
 
+// The declaration a bare or `module.`-qualified name in a bracket refers to, when it is a
+// value rather than a type: a constant, a global, or a local.
+auto Checker::bracket_value_decl(string_view text) -> Node* {
+    size_t dot = text.find('.');
+    Node* d = nullptr;
+    if (dot == string_view::npos) {
+        Binding* b = lookup(text);
+        d = b != nullptr ? b->decl : nullptr;
+    } else {
+        Binding* mb = lookup(text.substr(0, dot));
+        if (mb != nullptr && mb->type != nullptr && mb->type->kind == TypeKind::Module) {
+            d = pub_member(mb->type->decl, text.substr(dot + 1));
+        }
+    }
+    if (d == nullptr) {
+        return nullptr;
+    }
+    const bool value = d->kind == NodeKind::Const || d->kind == NodeKind::Global ||
+                       d->kind == NodeKind::Let || d->kind == NodeKind::Var || d->kind == NodeKind::Param;
+    return value ? d : nullptr;
+}
+
+// The expression a bracketed name spells: `NAME` or `module.NAME`.
+auto Checker::bracket_name_expr(Node* arg) -> Node* {
+    size_t dot = arg->text.find('.');
+    if (dot == string_view::npos) {
+        Node* e = arena->make<Node>();
+        e->kind = NodeKind::Name;
+        e->text = arg->text;
+        e->span = arg->span;
+        return e;
+    }
+    Node* m = arena->make<Node>();
+    m->kind = NodeKind::Member;
+    m->text = arg->text.substr(dot + 1);
+    m->span = arg->span;
+    m->left = arena->make<Node>();
+    m->left->kind = NodeKind::Name;
+    m->left->text = arg->text.substr(0, dot);
+    m->left->span = arg->span;
+    return m;
+}
+
+// `T[NAME]` where NAME is a constant, not a type: the parser read a type argument, the
+// program means an array of NAME elements (§5.4). The array type that reading gives, or
+// null when the bracket does hold a type argument.
+auto Checker::array_reading(Node* n) -> Node* {
+    Node* arg = n->body;
+    if (arg == nullptr || arg->next != nullptr || arg->kind != NodeKind::Type || arg->flags != 0 ||
+        arg->left != nullptr || arg->body != nullptr || arg->text.empty()) {
+        return nullptr;
+    }
+    if (bracket_value_decl(arg->text) == nullptr) {
+        return nullptr;
+    }
+    Node* base = arena->make<Node>();
+    base->kind = NodeKind::Type;
+    base->text = n->text;
+    base->span = n->span;
+    Node* arr = arena->make<Node>();
+    arr->kind = NodeKind::Type;
+    arr->flags = FlagArray;
+    arr->left = base;
+    arr->right = bracket_name_expr(arg);
+    arr->span = n->span;
+    return arr;
+}
+
 auto Checker::resolve_type(Node* n) -> Type* {
     if (n == nullptr) {
         return t_unit();
@@ -631,8 +699,15 @@ auto Checker::resolve_type(Node* n) -> Type* {
         n->ty = resolve_type(n->left);
         return n->ty;
     }
+    if (Node* arr = array_reading(n)) {
+        n->ty = resolve_type(arr);
+        return n->ty;
+    }
     Type* named = named_scalar(n->text);
     if (named != nullptr) {
+        if (n->body != nullptr) {
+            fail_n(n, "lucb.check.type", "`" + string(n->text) + "` does not take type arguments");
+        }
         n->ty = named;
         return n->ty;
     }

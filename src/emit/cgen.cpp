@@ -100,7 +100,16 @@ string c_symbol(Node* fn) {
     return {};
 }
 
+// The C name of an `extern func`: its own, bound to the symbol by an asm label where it is
+// declared, so a binding never clashes with a prototype from a system header.
+string extern_ident(Node* fn) {
+    return "lb_x_" + c_symbol(fn);
+}
+
 string func_ident(Node* fn, Node* owner, string_view prefix) {
+    if (fn != nullptr && fn->kind == NodeKind::ExternFunc && owner == nullptr) {
+        return extern_ident(fn);
+    }
     string ext = c_symbol(fn);
     if (!ext.empty() && owner == nullptr) {
         return ext;

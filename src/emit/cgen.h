@@ -17,6 +17,7 @@ namespace lucb {
 string ident(string_view prefix, string_view name);
 string struct_ident(Node* st, string_view prefix = {});
 string c_symbol(Node* fn);
+string extern_ident(Node* fn);
 string func_ident(Node* fn, Node* owner, string_view prefix = {});
 // The manifest's `symbol_prefix`, put before every exported symbol (§17.6); set once per build.
 void set_export_prefix(string_view prefix);

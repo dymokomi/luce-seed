@@ -23,7 +23,14 @@
 #define LB_NORETURN
 #endif
 
+/* A declaration bound to a symbol by name: `int f(void) LB_SYMBOL("f")` reaches C's `f`
+   whatever the declaration is called, so a binding never clashes with a system prototype. */
+#define LB_STR2(x) #x
+#define LB_STR(x) LB_STR2(x)
+#define LB_SYMBOL(name) __asm__(LB_STR(__USER_LABEL_PREFIX__) name)
+
 LB_NORETURN void lb_trap(const char* message);
+LB_NORETURN void lb_trap_two(const char* message, const char* detail);
 void lb_pause(void);
 
 typedef struct lb_Mutex {

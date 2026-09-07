@@ -647,7 +647,8 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
         if (at(TokenKind::Dedent)) {
             break;
         }
-        if (at(TokenKind::KwFunc) || at(TokenKind::KwPub) || at(TokenKind::KwMutating)) {
+        if (at(TokenKind::KwFunc) || at(TokenKind::KwMutating) ||
+            (at(TokenKind::KwPub) && peek(1).kind != TokenKind::Name)) {
             uint32_t mflags = 0;
             if (eat(TokenKind::KwPub)) {
                 mflags |= FlagPub;
@@ -657,6 +658,9 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
         }
         Token t = cur();
         Node* m = make(NodeKind::Field, t.span);
+        if (eat(TokenKind::KwPub)) {
+            m->flags |= FlagPub;
+        }
         if (!at(TokenKind::Name)) {
             fail("lucb.parse.expect", "expected a member name");
             sync_line();

@@ -414,7 +414,7 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         if (dest == nullptr || (!is_signed_int(dest) && !is_float(dest))) {
             dest = t_i64();
         }
-        Type* inner = check_expr(n->left, nullptr);
+        Type* inner = check_expr(n->left, is_float(dest) ? dest : nullptr);
         if (expected == nullptr && inner != nullptr && inner->kind == TypeKind::UntypedInt &&
             n->left != nullptr && n->left->kind == NodeKind::Literal) {
             // `-literal` with no context stays untyped, so `-2147483647 - 1` can still be an `i32`
@@ -456,9 +456,6 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         if (inner->is_nullable) {
             fail_n(n, "lucb.check.type", "unwrap a nullable pointer with `if let` or `else`");
             return t_error();
-        }
-        if (is_local(n->left)) {
-            mark_local(n);
         }
         return inner->elem;
     }
@@ -1244,7 +1241,8 @@ auto Checker::place_is_local(Node* n) -> bool {
         if (b == nullptr || b->decl == nullptr) {
             return false;
         }
-        if (b->decl->kind == NodeKind::Global || b->decl->kind == NodeKind::Const) {
+        if (b->decl->kind == NodeKind::Global || b->decl->kind == NodeKind::Const ||
+            b->decl->kind == NodeKind::Import || b->decl->kind == NodeKind::FromImport) {
             return false;
         }
         return b->depth > 0;
@@ -1254,12 +1252,19 @@ auto Checker::place_is_local(Node* n) -> bool {
     }
     if (n->kind == NodeKind::Member) {
         Type* ot = n->left != nullptr ? n->left->ty : nullptr;
-        if (is_ptr(ot)) {
-            return is_local(n->left);
+        if (ot != nullptr && ot->kind == TypeKind::Module) {
+            return false; // `module.global`
+        }
+        if (is_ptr(ot) || is_span(ot) || (ot != nullptr && ot->kind == TypeKind::Str)) {
+            return is_local(n->left); // through a pointer or a view: wherever that points
         }
         return place_is_local(n->left);
     }
     if (n->kind == NodeKind::Index) {
+        Type* bt = n->left != nullptr ? n->left->ty : nullptr;
+        if (is_ptr(bt) || is_span(bt) || (bt != nullptr && bt->kind == TypeKind::Str)) {
+            return is_local(n->left);
+        }
         return place_is_local(n->left) || is_local(n->left);
     }
     if (n->kind == NodeKind::Unary && n->op == TokenKind::Star) {

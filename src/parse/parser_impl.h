@@ -249,6 +249,8 @@ struct Parser {
         expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
     }
 
+    bool bracket_holds_expression(int open) const;
+
     Span span_from(Token start) const {
         Span s = start.span;
         Token last = peek(-1);

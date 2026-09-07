@@ -26,6 +26,18 @@
 
 namespace lucb {
 
+// `path:line: assert failed: condition`: what a failed `assert` reports (§11.6).
+auto Interp::assert_message(Node* call) -> string {
+    string file = module != nullptr && module->left != nullptr && !module->left->text.empty()
+                      ? string(module->left->text)
+                      : (module != nullptr && !module->text.empty() ? string(module->text) : string("t.lucb"));
+    string msg = file + ":" + std::to_string(call->span.line) + ": assert failed";
+    if (!call->text.empty()) {
+        msg += ": " + string(call->text);
+    }
+    return msg;
+}
+
 // `&buffer` addresses an array value; a `memory.read` or `memory.write` there starts at its
 // first element, the first byte of the buffer it stands for.
 static Value* first_cell(Value* at) {
@@ -158,11 +170,11 @@ auto Interp::eval_call(Node* n) -> Value {
             return v_unit();
         }
         if (!c.b) {
-            string msg = "assert failed";
+            string msg = assert_message(n);
             if (n->body != nullptr && n->body->next != nullptr) {
                 Value m = eval(n->body->next->left);
                 if (m.kind == TypeKind::Str) {
-                    msg = decode_string(m.str);
+                    msg += ": " + decode_string(m.str);
                 }
             }
             fail(msg);

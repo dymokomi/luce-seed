@@ -397,7 +397,7 @@ auto Interp::eval_uncast(Node* n) -> Value {
         if (n->op == TokenKind::CharLit) {
             uint32_t cp = 0;
             parse_char_literal(n->text, &cp);
-            if (n->ty != nullptr && n->ty->kind == TypeKind::U8) {
+            if (n->ty != nullptr && is_int(n->ty)) {
                 return v_int(n->ty, cp);
             }
             Value v;

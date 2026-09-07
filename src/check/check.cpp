@@ -56,7 +56,7 @@ auto Checker::is_constant_expr(Node* n) -> bool {
         return is_constant_expr(n->left);
     case NodeKind::Unary:
         if (n->op == TokenKind::Amp) {
-            return n->left != nullptr && n->left->kind == NodeKind::Name && names_a_global(n->left);
+            return is_global_place(n->left);
         }
         return is_constant_expr(n->left);
     case NodeKind::Binary:
@@ -115,6 +115,27 @@ auto Checker::is_constant_expr(Node* n) -> bool {
 }
 
 // `&global` and a function name are constant addresses (§6.4); so is a top-level `let`.
+// A global, or an element or field of one reached by constant steps: what `&` may take the
+// address of in a constant expression (§6.4).
+auto Checker::is_global_place(Node* n) -> bool {
+    if (n == nullptr) {
+        return false;
+    }
+    if (n->kind == NodeKind::Name) {
+        return names_a_global(n);
+    }
+    if (n->kind == NodeKind::Group) {
+        return is_global_place(n->left);
+    }
+    if (n->kind == NodeKind::Index) {
+        return is_global_place(n->left) && is_constant_expr(n->body);
+    }
+    if (n->kind == NodeKind::Member) {
+        return n->resolved != nullptr && n->resolved->kind == NodeKind::Field && is_global_place(n->left);
+    }
+    return false;
+}
+
 auto Checker::names_a_global(Node* n) -> bool {
     Node* d = n != nullptr ? n->resolved : nullptr;
     if (d == nullptr && n != nullptr && n->kind == NodeKind::Name) {

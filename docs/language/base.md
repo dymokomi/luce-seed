@@ -229,7 +229,7 @@ f"frame {frame}: {status}"   # formatted; see §5.5
 text"""
 ```
 
-- A character literal is one Unicode scalar after escapes. In a `u8` context an ASCII character literal is that byte, so `byte == '\n'` needs no conversion.
+- A character literal is one Unicode scalar after escapes. In a `u8` context an ASCII character literal is that byte, so `byte == '\n'` needs no conversion; in an index position it is that integer, so `table['P']` indexes.
 - A string literal is valid UTF-8, stored once in static data, and followed by a NUL byte that is not part of its length. Its type is `str`, and it converts implicitly to `c.str` (§5.5) because the NUL is guaranteed.
 - A byte literal `b"..."` is static data of type `const u8[N]`, with `\xNN` escapes and ASCII text; it is not NUL-terminated.
 - Triple-quoted strings drop a newline that directly follows the opening delimiter, strip indentation by the closing delimiter's column, and normalise CRLF to `\n` before escapes are decoded.
@@ -256,7 +256,7 @@ Base is statically and nominally typed. Every expression has one type. Inference
 - any object pointer to `void*`, and any read-only object pointer to `const void*`;
 - a mutable `T[N]` to `T[]`, any `T[N]` to `const T[]`, and `T[]` to `const T[]`;
 - a string literal, or a `str` produced by `format`, to `c.str`;
-- an ASCII character literal to `u8`;
+- an ASCII character literal to `u8`, and to an index;
 - `T` to `T?`, and `T` to a successful `T!`;
 - a non-fallible function to the corresponding fallible function type;
 - a pointer to a conforming type to an interface view (§14.3).
@@ -334,7 +334,7 @@ T[]                # span: pointer plus length, elements mutable, non-owning
 const T[]          # span with read-only elements
 ```
 
-- `[N]` or `[]` after a complete type is an array or span. A bracket after a type *name* that contains types is a generic argument list (§13.1); a bracket that contains a constant expression, or nothing, after a complete type is always an array or span suffix. `Pair[i64, str][4]` is four pairs; `u8[4][4]` is an array of four arrays of four bytes, read inside-out as in C; `Node*[]` is a span of pointers; `u8[sizeof(Header)]` is a byte array the size of a header.
+- `[N]` or `[]` after a complete type is an array or span. A bracket after a type *name* that contains types is a generic argument list (§13.1); a bracket that contains a constant expression, or nothing, after a complete type is always an array or span suffix. A bracket holding one bare name is decided by what the name resolves to, never by its spelling: `i32[NIns]` is an array when `NIns` is a constant, `List[Item]` an instantiation when `Item` is a type. An array of optionals is spelled with the element parenthesised, `(c.str?)[3]`, since `?` suffixes the whole type before it. `Pair[i64, str][4]` is four pairs; `u8[4][4]` is an array of four arrays of four bytes, read inside-out as in C; `Node*[]` is a span of pointers; `u8[sizeof(Header)]` is a byte array the size of a header.
 - `N` is a positive constant expression (§6.4). C forbids zero-length arrays and Base does not declare what C cannot.
 - An array is a value: it copies element by element, may live inline in a struct or a local, and has C's layout.
 - A span is two words, a pointer and a `usize` length. It does not own its elements and does not keep them alive. It is made from an array, from a pointer and a count, or by slicing:
@@ -393,7 +393,7 @@ type Callback = func(void*, i32) -> unit
 type Link = FreeBlock*?
 ```
 
-An alias is another spelling for the same type. It creates no distinction, has no methods, and is not generic. For a domain distinction, declare a one-field struct.
+An alias is another spelling for the same type. It creates no distinction, has no methods, and is not generic. Its name follows the naming lint of §3.4 but is read as a type wherever a type is read, `lib.bits` included. For a domain distinction, declare a one-field struct.
 
 Aliases are how pointer shapes are kept readable. `T*`, `const T*`, `T*?`, and `T[]` read well on their own; a type that stacks more than two of `*`, `?`, `[]`, and `[N]` does not, and should be named: `Link[64]` rather than `FreeBlock*?[64]`. The linter reports a spelling with more than two postfix operators.
 
@@ -469,7 +469,7 @@ A module may declare `var` at top level. It is zero before `main` runs, or holds
 
 ### 6.4 Constant expressions
 
-A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; `luce.location`, `luce.file`, `luce.line`, and `luce.function`; arithmetic, bit, comparison, and cast operators on constants; array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`. `luce.location` (and its pieces) expand to the file, line, and function of the use site; when used as a default argument they expand at the call site.
+A constant expression is built from literals; `sizeof`, `alignof`, and `offsetof`; `luce.location`, `luce.file`, `luce.line`, and `luce.function`; arithmetic, bit, comparison, and cast operators on constants; array and tuple literals of constants; enum cases and `|` on integer-backed enums; struct construction from constants; the address of a global or a function, or of a global's element or field reached by constant steps; and top-level `let` names. It may appear as a top-level initialiser, an array length, a default parameter value, and the condition of a module-level `assert`. `luce.location` (and its pieces) expand to the file, line, and function of the use site; when used as a default argument they expand at the call site.
 
 ### 6.5 Assignment
 
@@ -487,7 +487,7 @@ p.field = value
 
 `&x` yields the address of an lvalue. The pointer's qualifier comes from the nearest root of the path: a `var` binding or a dereference of a `T*` yields `T*`; a `let` binding, a dereference of a `const T*`, or a read-only span yields `const T*`. So `&task.link` is `Link*` when `task` is a `let` holding a `Task*`, because the path is rooted at the pointee, not the binding. Stores follow the pointee: `*p = v` requires `T*`; `p.field = v` requires `T*` and a `var` field.
 
-The address of a local, and a span or `str` of a local array, may be passed down but not up. The compiler rejects four uses of such a pointer or view: returning it; passing it as the message to `error(...)`; storing it in a global; and storing it through a pointer parameter or into a struct that is returned. The check follows `let` aliases within one function and stops at calls. It catches the common mistakes and promises nothing about the rest, which remain the programmer's responsibility, as in C.
+The address of a local, and a span or `str` of a local array, may be passed down but not up. The compiler rejects four uses of such a pointer or view: returning it; passing it as the message to `error(...)`; storing it in a global; and storing it through a pointer parameter or into a struct that is returned. The check follows `let` aliases within one function and stops at calls; a value read through a pointer or a view is not the pointer, so `let row = &rows[n]` taints `row` and not `row.next`, and a global of an imported module is a global. It catches the common mistakes and promises nothing about the rest, which remain the programmer's responsibility, as in C.
 
 **Why.** C has `&x` and no way to say whether the result may be written through. Deriving the qualifier from the path gives the same information with no annotation, and it is the same rule Luce already uses to decide whether a field path may be assigned.
 
@@ -551,7 +551,7 @@ Base has two conversion spellings with two meanings.
 
 There is no reinterpreting cast between scalars of different kinds. `f32.bits(u32)` and `f64.bits(u64)` build a float from its bits and `value.bits()` reads them; a union (§10.4) reinterprets anything else.
 
-The parser reads `(` *type* `)` as a cast when the parenthesised text is a type ending in `*`, `[]`, `[N]`, or `?`, or is a scalar, `str`, or a `c.` type name, or a parenthesised function type. `(Name)(x)` with a bare struct name is a call, not a cast; struct-to-struct casts do not exist, so nothing is lost.
+The parser reads `(` *type* `)` as a cast when the parenthesised text is a type ending in `*`, `[]`, `[N]`, or `?`, or is a scalar, `str`, a `c.` type name, an alias of one of those (`(bits)1`, `(lib.bits)1`), or a parenthesised function type; a bare name that resolves to a value is not a cast. `(Name)(x)` with a bare struct name is a call, not a cast; struct-to-struct casts do not exist, so nothing is lost.
 
 **Why implicit widening.** Full Luce requires every integer conversion to be written, and its arithmetic code is correspondingly full of `u64(index)`. A widening of the same signedness cannot change a value or lose one, so requiring it to be written costs the reader without protecting them. Zig admits exactly this conversion and nothing more, and the rule has held there.
 
@@ -969,7 +969,7 @@ union Value:
     bytes: u8[8]
 ```
 
-A union stores one member at one address. Its alignment is its most-aligned member's, and its size is its largest member's size rounded up to that alignment. Reading a member other than the last written reinterprets the bytes, the rule of C11 §6.5.2.3 footnote 95. A member may be of any type; reading a member whose type has an invariant, a `bool`, an enum, a bare pointer, a `str`, an optional, after another member was written is undefined (§12.6), as it is in C. A union is zeroed as bytes, may declare methods, and cannot implement interfaces or cross into full Luce.
+A union stores one member at one address. Its alignment is its most-aligned member's, and its size is its largest member's size rounded up to that alignment. Reading a member other than the last written reinterprets the bytes, the rule of C11 §6.5.2.3 footnote 95. A member may be of any type, and `pub` before a member opens it to other modules as it does a field; reading a member whose type has an invariant, a `bool`, an enum, a bare pointer, a `str`, an optional, after another member was written is undefined (§12.6), as it is in C. A union is zeroed as bytes, may declare methods, and cannot implement interfaces or cross into full Luce.
 
 **Why.** The tagged enum is the safe sum type. The raw union exists because C has it, C libraries expose it, and type punning through it is defined C. Members of every type are admitted because a union declared in Base must be able to mirror one bound from C.
 
@@ -1035,7 +1035,7 @@ let text = files.read(path) catch failure:
 
 ### 11.6 Assertions
 
-`assert(condition)` and `assert(condition, message)` trap when the condition is false. The condition must be side-effect-free. Assertions are never removed by a build profile. An `assert` at module level, outside any function, is evaluated at compile time and its condition must be a constant expression; it is C's `static_assert`:
+`assert(condition)` and `assert(condition, message)` trap when the condition is false, saying where and what: `file:line: assert failed: condition`, with the message appended when given. The condition must be side-effect-free. Assertions are never removed by a build profile. An `assert` at module level, outside any function, is evaluated at compile time and its condition must be a constant expression; it is C's `static_assert`:
 
 ```luce
 assert(sizeof(Header) == 32, "Header must match the wire format")
@@ -1626,7 +1626,7 @@ Absent from Base, each with the reason it is not a loss:
 
 ## 21. Grammar
 
-Repetition is `{...}`, optional syntax is `[...]`, quoted text is a token. `NEWLINE`, `INDENT`, and `DEDENT` come from the layout lexer; `RAW_LINE` is a physical line captured without tokenisation after removal of the suite's indentation baseline. `IDENT` is an identifier that is not a reserved word; `TYPE_IDENT` is a `PascalCase` identifier; `TYPE_PATH` is a `TYPE_IDENT` optionally qualified by a module path; `CORE_TYPE` is one of the scalar type names, `str`, `fmt`, `unit`, `never`; `COMPARE_OP` is `==`, `!=`, `<`, `<=`, `>`, `>=`; `FORMAT_START`, `FORMAT_TEXT`, `FORMAT_END` are the lexer's pieces of one `f"..."` literal; `constant_expression` is an `expression` meeting §6.4. Semantic restrictions in the earlier chapters remain normative over this shape.
+Repetition is `{...}`, optional syntax is `[...]`, quoted text is a token. `NEWLINE`, `INDENT`, and `DEDENT` come from the layout lexer; `RAW_LINE` is a physical line captured without tokenisation after removal of the suite's indentation baseline. `IDENT` is an identifier that is not a reserved word; `TYPE_IDENT` is a `PascalCase` identifier; `TYPE_PATH` is a `TYPE_IDENT`, or an alias's `IDENT`, optionally qualified by a module path; `CORE_TYPE` is one of the scalar type names, `str`, `fmt`, `unit`, `never`; `COMPARE_OP` is `==`, `!=`, `<`, `<=`, `>`, `>=`; `FORMAT_START`, `FORMAT_TEXT`, `FORMAT_END` are the lexer's pieces of one `f"..."` literal; `constant_expression` is an `expression` meeting §6.4. Semantic restrictions in the earlier chapters remain normative over this shape.
 
 ```ebnf
 module          = { import_decl }, { top_decl }, EOF ;
@@ -1677,7 +1677,7 @@ payload         = IDENT, ":", type ;
 
 union_decl      = "union", TYPE_IDENT, ":", NEWLINE, INDENT,
                   union_member, { union_member }, { [ "pub" ], function_decl }, DEDENT ;
-union_member    = IDENT, ":", type, NEWLINE ;
+union_member    = [ "pub" ], IDENT, ":", type, NEWLINE ;
 
 interface_decl  = "interface", TYPE_IDENT, [ generic_params ], ":", NEWLINE,
                   INDENT, function_sig, { function_sig }, DEDENT ;

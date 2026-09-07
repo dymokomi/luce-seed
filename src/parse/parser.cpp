@@ -49,12 +49,71 @@ auto Parser::is_lambda_ahead() const -> bool {
     return tok[after].kind == TokenKind::FatArrow;
 }
 
+// Whether the bracket at `open` holds something no type can: an arithmetic or comparison
+// operator, a literal past the first token, a lowercase field after a dot, or `*` in the
+// middle. Such brackets are an index or an array length whatever their first name looks like
+// (§5.4, §7.6); a bracket holding only names is decided by what the names resolve to.
+auto Parser::bracket_holds_expression(int open) const -> bool {
+    int close = find_match(open, TokenKind::LBracket, TokenKind::RBracket);
+    if (close < 0) {
+        return false;
+    }
+    int depth = 0;
+    for (int i = open + 1; i < close; i++) {
+        TokenKind k = tok[i].kind;
+        if (k == TokenKind::LParen || k == TokenKind::LBracket) {
+            depth++;
+            continue;
+        }
+        if (k == TokenKind::RParen || k == TokenKind::RBracket) {
+            depth--;
+            continue;
+        }
+        if (depth > 0) {
+            continue;
+        }
+        TokenKind next = tok[i + 1].kind;
+        switch (k) {
+        case TokenKind::Plus: case TokenKind::Minus: case TokenKind::Slash: case TokenKind::Percent:
+        case TokenKind::Lt: case TokenKind::Gt: case TokenKind::LtEq: case TokenKind::GtEq:
+        case TokenKind::EqEq: case TokenKind::NotEq: case TokenKind::SlashSlash: case TokenKind::Pipe: case TokenKind::Caret:
+        case TokenKind::KwAnd: case TokenKind::KwOr: case TokenKind::KwNot:
+        case TokenKind::FloatLit: case TokenKind::CharLit: case TokenKind::StringLit:
+        case TokenKind::DotDot: case TokenKind::DotDotLt:
+            return true;
+        case TokenKind::IntLit:
+            if (i > open + 1) {
+                return true; // `T[3]` is an array type; `n - 3` is not
+            }
+            break;
+        case TokenKind::Star:
+            if (next == TokenKind::Name || next == TokenKind::IntLit || next == TokenKind::LParen) {
+                return true; // `a * b`, not `T*`
+            }
+            break;
+        case TokenKind::Dot:
+            if (next == TokenKind::Name && !tok[i + 1].text.empty() &&
+                tok[i + 1].text[0] >= 'a' && tok[i + 1].text[0] <= 'z' && i > open + 1 &&
+                tok[i - 1].text != "c") {
+                return true; // `s.count`: a field, not `module.Type`
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return false;
+}
+
 auto Parser::is_array_suffix_ahead() const -> bool {
     if (!at(TokenKind::LBracket)) {
         return false;
     }
     TokenKind k = peek(1).kind;
     if (k == TokenKind::RBracket) {
+        return true;
+    }
+    if (bracket_holds_expression(pos)) {
         return true;
     }
     if (k == TokenKind::IntLit || k == TokenKind::LParen || k == TokenKind::KwSelf) {
@@ -90,6 +149,9 @@ auto Parser::is_generic_call_ahead() const -> bool {
     }
     TokenKind after = tok[close + 1].kind;
     if (after != TokenKind::LParen && after != TokenKind::Dot) {
+        return false;
+    }
+    if (bracket_holds_expression(pos)) {
         return false;
     }
     Token first = peek(1);
@@ -135,8 +197,8 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
     }
     Token name = tok[i];
     i++;
-    if (name.text == "c" && peek_kind(i) == TokenKind::Dot && peek_kind(i + 1) == TokenKind::Name) {
-        i += 2;
+    if (peek_kind(i) == TokenKind::Dot && peek_kind(i + 1) == TokenKind::Name) {
+        i += 2; // `c.int`, `module.Type`, `module.alias`
     }
     int stars = 0;
     while (true) {

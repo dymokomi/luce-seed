@@ -1,7 +1,27 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.33**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.34**, the seed `luce-base` is written against.
+
+## 0.34: what porting QBE found
+
+- a bracket holding one bare name is read by what the name resolves to: `i32[NIns]`
+  is an array and `insb[NIns].f` an index when `NIns` is a constant (§5.4, §7.6);
+  brackets holding arithmetic or literals are never type arguments; a run of
+  brackets reads inside-out as in C, so `u8[2][4]` is two arrays of four;
+- `(bits)1` and `(lib.bits)1` cast through a scalar alias; `lib.bits` is a type
+  wherever a type is read (§5.10, §7.5);
+- `pub` before a union member (§10.4);
+- a string literal fills a `c.str?` slot; an ASCII character literal indexes
+  (§4.4, §5.2); `&global[i]` and `&global.field` are constant addresses (§6.4);
+- the escape rule stops at a pointer or a view: `row.next` read through a local
+  `row` is not local, `text.bytes` of a `str` parameter is not local, and an
+  imported module's global is a global (§6.6);
+- `assert` reports `file:line: assert failed: condition` (§11.6);
+- `-3.0e38` in an `f32` context is an `f32`; an infinity saturates in a float to
+  integer cast, only NaN answers 0 (§5);
+- an `extern func` is declared under a private C name bound to its symbol by an
+  asm label, so bindings of `fputc` and its kind never clash with `<stdio.h>`.
 
 ## 0.33: `c.str?` crosses the boundary
 

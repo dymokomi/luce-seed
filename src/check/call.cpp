@@ -112,6 +112,25 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
         mark_import(b);
         callee->resolved = b->decl;
         n->resolved = b->decl;
+        if (n->type != nullptr && n->type->next == nullptr && n->type->kind == NodeKind::Type &&
+            n->type->flags == 0 && n->type->left == nullptr && n->type->body == nullptr &&
+            bracket_value_decl(callee->text) != nullptr && bracket_value_decl(n->type->text) != nullptr) {
+            // `table[NAME]`: both names are values, so the bracket is an index (§7.6)
+            Node* idx = arena->make<Node>();
+            idx->kind = NodeKind::Index;
+            idx->left = callee;
+            idx->body = bracket_name_expr(n->type);
+            idx->span = n->span;
+            n->type = nullptr;
+            n->resolved = nullptr;
+            callee->resolved = nullptr;
+            if (n->body == nullptr) {
+                *n = *idx;
+                return check_expr(n, expected);
+            }
+            n->left = idx;
+            return check_call(n, expected);
+        }
         if (b->decl != nullptr && b->decl->kind == NodeKind::Struct) {
             if (is_generic_decl(b->decl) || n->type != nullptr) {
                 return check_generic_ctor(n, b->decl);
@@ -1290,8 +1309,8 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
         return t_error();
     }
     n->resolved = field;
-    if (is_local(n->left)) {
-        mark_local(n);
+    if (!is_ptr(ot) && is_local(n->left)) {
+        mark_local(n); // a field read through a pointer is not the pointer (§6.6)
     }
     return field->ty;
 }

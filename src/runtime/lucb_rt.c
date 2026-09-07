@@ -356,6 +356,11 @@ void lb_trap(const char* message) {
     exit(1);
 }
 
+void lb_trap_two(const char* message, const char* detail) {
+    fprintf(stderr, "trap: %s: %s\n", message != NULL ? message : "", detail != NULL ? detail : "");
+    exit(1);
+}
+
 void lb_pause(void) {
 #if defined(__aarch64__)
     __asm__ volatile("yield");
@@ -1251,7 +1256,7 @@ int64_t lb_f_to_s(double a, int bits, int mode) {
         }
         return (int64_t)a;
     }
-    if (!isfinite(a)) {
+    if (isnan(a)) {
         return 0;
     }
     if (a <= (double)smin(bits)) {
@@ -1271,7 +1276,7 @@ uint64_t lb_f_to_u(double a, int bits, int mode) {
         }
         return (uint64_t)a;
     }
-    if (!isfinite(a) || a < 0) {
+    if (isnan(a) || a < 0) {
         return 0;
     }
     if (a >= hi) {

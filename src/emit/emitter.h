@@ -39,6 +39,7 @@ struct Emitter {
     string current_sink; // the `lb_iface` a Display field writes through, while emitting it
     void emit_writer_rt();
     string emit_src_file();
+    string assert_message(Node* call);
     string emit_src_function();
     string emit_src_location(Node* n);
     int temps = 0;
