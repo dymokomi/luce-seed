@@ -1,7 +1,15 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.31**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.32**, the seed `luce-base` is written against.
+
+## 0.32: what chapters 20 and 22 of the conformance suite found
+
+- `luce.line` and its siblings bind only where `luce` is imported (§3.5), like
+  every standard module; the checker reaches the module's own declarations
+  through `builtin_module`;
+- a statement is a call, alone or under `try`, `catch`, or parentheses (§7.9):
+  `--n` and every other unused expression are refused.
 
 ## 0.31: `local var`
 

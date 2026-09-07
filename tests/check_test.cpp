@@ -820,7 +820,7 @@ TEST(check_location_call_rejected) {
 }
 
 TEST(check_luce_location_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
+    CHECK(check_ok("import luce\npub func answer() -> i64:\n"
                    "    let loc = luce.location\n"
                    "    return i64(loc.line)\n"));
 }
@@ -1210,4 +1210,12 @@ TEST(check_atomic_rules) {
     CHECK(check_has("import thread\nfunc work(n: i64):\n    discard(n)\n"
                     "pub func answer() -> i64!:\n    let h = try thread.spawn(work, none)\n    return 0\n",
                     "lucb.check.type"));
+}
+
+// §3.5: `luce.line` binds only where `luce` is imported; §7.9: a statement is a call
+TEST(check_luce_import_and_call_statements) {
+    CHECK(check_has("pub func answer() -> i64:\n    return i64(luce.line)\n", "lucb.check.name"));
+    CHECK(check_has("pub func answer() -> i64:\n    var n: i64 = 1\n    --n\n    return n\n", "lucb.check.type"));
+    CHECK(check_ok("func f() -> i64!:\n    return 1\n"
+                   "pub func answer() -> i64!:\n    discard(try f())\n    (try f())\n    f() catch e:\n        recover 0\n    return 0\n"));
 }

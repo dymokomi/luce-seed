@@ -731,11 +731,11 @@ TEST(eval_match_expr_int) {
 }
 
 TEST(eval_luce_location) {
-    EvalResult r = run("pub func answer() -> i64:\n"
+    EvalResult r = run("import luce\npub func answer() -> i64:\n"
                        "    let loc = luce.location\n"
                        "    return i64(loc.line)\n");
     CHECK(r.ok);
-    CHECK_EQ(r.answer, 2);
+    CHECK_EQ(r.answer, 3);
 }
 
 TEST(eval_method_value) {

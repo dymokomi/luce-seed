@@ -300,7 +300,7 @@ auto Checker::bind_memory() -> void {
     luce->body = l_loc;
     Type* luce_t = make_type(TypeKind::Module, "luce");
     luce_t->decl = luce;
-    bind_builtin("luce", luce_t, luce);
+    bind_builtin_module("luce", luce_t, luce); // `luce.line` needs `import luce` (§3.5)
 
     Node* io_out = syn_node(NodeKind::Func, "stdout");
     io_out->ty = ty_writer;
@@ -519,7 +519,7 @@ auto Checker::bind_memory() -> void {
     bind_builtin_module("sync", st, smod);
     // the protocols `for` consumes and formatting calls (§8.3, §14.4), as Base text, once
     // every name they mention is bound
-    Binding* lb = lookup("luce");
+    const BuiltinBinding* lb = builtin_module("luce");
     if (lb != nullptr && lb->decl != nullptr) {
         append_builtin_text(lb->decl,
                             "pub interface Iterator[T]:\n"

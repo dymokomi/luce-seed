@@ -349,6 +349,7 @@ struct Checker {
     bool place_is_local(Node* n);
     bool imported_owner(Node* st);
     void check_stmt(Node* n);
+    bool is_call_statement(Node* e);
     bool always_returns(Node* n);
     bool contains_break(Node* n);
     void check_params(Node* fn);

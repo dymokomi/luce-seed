@@ -332,7 +332,7 @@ auto Checker::check_formatted(Node* n) -> Type* {
 
 // The `Display` protocol of the `luce` module (§14.4).
 auto Checker::display_iface() -> Type* {
-    Binding* b = lookup("luce");
+    const BuiltinBinding* b = builtin_module("luce");
     Node* d = b != nullptr && b->decl != nullptr ? pub_member(b->decl, "Display") : nullptr;
     return d != nullptr ? d->ty : nullptr;
 }

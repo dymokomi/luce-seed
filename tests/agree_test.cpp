@@ -591,18 +591,18 @@ TEST(agree_format) {
 }
 
 TEST(agree_location) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import luce\npub func answer() -> i64:\n"
                  "    let loc = luce.location\n"
                  "    return i64(loc.line)\n"));
 }
 
 TEST(agree_luce_file) {
-    CHECK(agrees("pub func answer() -> i64:\n"
+    CHECK(agrees("import luce\npub func answer() -> i64:\n"
                  "    return i64(luce.file.length)\n"));
 }
 
 TEST(agree_location_default) {
-    CHECK(agrees("func log(at: Location = luce.location) -> i64:\n"
+    CHECK(agrees("import luce\nfunc log(at: Location = luce.location) -> i64:\n"
                  "    return i64(at.line)\n"
                  "pub func answer() -> i64:\n"
                  "    return log()\n"));

@@ -447,6 +447,9 @@ auto Checker::check_stmt(Node* n) -> void {
         if (is_fail(t)) {
             fail_n(n, "lucb.check.type", "handle this failure with `try` or `catch`");
         }
+        if (!is_call_statement(n->left)) {
+            fail_n(n, "lucb.check.type", "a statement is a call; an expression whose value is unused is not one (§7.9)");
+        }
         break;
     }
     default:
@@ -520,6 +523,25 @@ auto Checker::contains_break(Node* n) -> bool {
     }
     return contains_break(n->left) || contains_break(n->right) || contains_break(n->body) ||
            contains_break(n->type) || contains_break(n->next);
+}
+
+// A call, alone or under `try`, `catch`, or parentheses (§7.9).
+auto Checker::is_call_statement(Node* e) -> bool {
+    if (e == nullptr) {
+        return false;
+    }
+    switch (e->kind) {
+    case NodeKind::Call:
+        return true;
+    case NodeKind::Group:
+        return is_call_statement(e->left);
+    case NodeKind::Unary:
+        return e->op == TokenKind::KwTry && is_call_statement(e->left);
+    case NodeKind::Catch:
+        return is_call_statement(e->left);
+    default:
+        return false;
+    }
 }
 
 auto Checker::always_returns(Node* n) -> bool {
