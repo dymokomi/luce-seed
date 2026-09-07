@@ -56,7 +56,29 @@ auto Emitter::emit_writer_rt() -> void {
 }
 
 // The attributes of §9.8 as one `__attribute__` prefix; `inline` is advice this backend
-// leaves to the C compiler, and a section name is passed as written.
+// leaves to the C compiler. A section name is passed as written, except that a Mach-O
+// target needs a segment: a name without a comma goes to `__DATA` (a variable) or `__TEXT`
+// (a function) under that name with its leading dot dropped, so `section(".custom")` is
+// one spelling for every target.
+auto Emitter::section_name(string_view spelled, bool is_func) -> string {
+    string name = string(spelled);
+    if (name.size() >= 2 && name.front() == '"' && name.back() == '"') {
+        name = name.substr(1, name.size() - 2);
+    }
+#if defined(__APPLE__)
+    if (name.find(',') == string::npos) {
+        if (!name.empty() && name[0] == '.') {
+            name = name.substr(1);
+        }
+        name = string(is_func ? "__TEXT," : "__DATA,") + name;
+    }
+#endif
+#if !defined(__APPLE__)
+    (void)is_func;
+#endif
+    return "\"" + name + "\"";
+}
+
 auto Emitter::declaration_attributes(Node* d, bool is_func) -> string {
     vector<string> parts;
     if (is_func) {
@@ -78,11 +100,7 @@ auto Emitter::declaration_attributes(Node* d, bool is_func) -> string {
     }
     for (Node* a = d->attrs; a != nullptr; a = a->next) {
         if (a->text == "section" && a->left != nullptr) {
-            string name = string(a->left->text);
-            if (name.empty() || name[0] != '"') {
-                name = "\"" + name + "\"";
-            }
-            parts.push_back("section(" + name + ")");
+            parts.push_back("section(" + section_name(a->left->text, is_func) + ")");
         }
     }
     if (parts.empty()) {
@@ -189,7 +207,7 @@ auto Emitter::emit_global(Node* g) -> void {
     string tl = declaration_attributes(g, false) +
                 ((g->flags & FlagThreadLocal) != 0 ? "_Thread_local " : "");
     string ty = c_type(g->ty);
-    string name = ident("lb_", g->text);
+    string name = global_ident(g);
     if (g->flags & FlagUninit) {
         line(tl + ty + " " + name + ";");
         return;

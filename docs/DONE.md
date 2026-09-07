@@ -1,7 +1,34 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.40**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.41**, the seed `luce-base` is written against.
+
+## 0.41: the seed on Linux x86_64
+
+- the tree builds and its gate is green on x86_64 Linux with GCC 15 and clang 21 as well
+  as on arm64 macOS; what it took is what a second host always finds:
+- arguments are evaluated left to right (§7.1) whatever the C compiler does: a call whose
+  arguments may have an effect computes them into temporaries in order
+  (`testdata/programs/values/evaluation_order.lucb`); GCC evaluates C arguments right to
+  left, clang left to right, so the bug was invisible on the first host;
+- `f64.bits(N)` with constant bits is a hexadecimal float literal (`0x1.5555555555555p-2`),
+  or `__builtin_inf`/`__builtin_nan` with the payload, which every C compiler folds; GCC
+  has no `__builtin_bit_cast` in C;
+- a label's `unused` attribute follows the colon, the form both compilers accept;
+  `fread`'s result is not ignored; the fixed allocator's overflow check compares sizes,
+  not pointers;
+- the `platform` standard module (§19.5) is decided when the seed is compiled for its host,
+  so `import platform` and `os`-style constants read the host's target;
+- a section name is the language's spelling, `section(".custom")`; a Mach-O target places
+  it in `__DATA` or `__TEXT` (§9.8); the assembly test programs carry an `asm x86_64` arm
+  beside the arm64 one, and a module-level symbol is defined under both the C-underscore and
+  the bare ELF spelling;
+- a top-level `let` or `var` and a generic instance are qualified by their module in the C,
+  so two modules may declare `failed`, `count`, or a `Home` used as a type argument
+  (`testdata/programs/modules/same_names`); the interpreter assigns through
+  `module.variable`;
+- the interpreter's frames are a deque: a receiver's address stays valid while calls push
+  frames (libstdc++'s vector copied the frames on growth, which ASan caught on Linux).
 
 ## 0.40: the escape rule through aggregates
 

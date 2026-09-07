@@ -336,10 +336,7 @@ lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size) {
         lb_fixed* f = (lb_fixed*)a.ctx;
         uint8_t* start = (uint8_t*)block.data;
         if (f->data != NULL && start >= f->data && start + block.length == f->data + f->used) {
-            if (start + size < start) {
-                return s;
-            }
-            if (start + size <= f->data + f->cap) {
+            if (size <= (size_t)(f->data + f->cap - start)) {
                 f->used = (size_t)(start - f->data) + size;
                 s.data = start;
                 s.length = size;

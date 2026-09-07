@@ -5,6 +5,9 @@ naked func forty_two() -> i64:
     asm arm64:
         mov x0, #42
         ret
+    asm x86_64:
+        movq $42, %rax
+        ret
 
 pub func answer() -> i64:
     return forty_two()

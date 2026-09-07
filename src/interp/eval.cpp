@@ -170,6 +170,14 @@ auto Interp::lvalue(Node* n) -> Value* {
             if (n->text == "allocator") {
                 return &current_alloc;
             }
+            // `module.variable`: another module's public global is a place (§16.3)
+            if (n->resolved != nullptr && n->resolved->kind == NodeKind::Global) {
+                for (size_t i = 0; i < globals.slots.size(); i++) {
+                    if (globals.slots[i].decl == n->resolved) {
+                        return &globals.slots[i].value;
+                    }
+                }
+            }
             fail("not an lvalue");
             return nullptr;
         }

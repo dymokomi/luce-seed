@@ -889,7 +889,7 @@ A small closed set of words may precede a `func` or a top-level `var`, each one 
 | `used func`, `used var` | keep the symbol even if nothing references it |
 | `section("name") func`, `section("name") var` | place the symbol in the named linker section |
 
-They combine, `used section(".isr_vector") var vectors: Handler[64] = ...`. There is no general attribute syntax; this set is the language.
+They combine, `used section(".isr_vector") var vectors: Handler[64] = ...`. There is no general attribute syntax; this set is the language. A section name is passed to the target as written; a Mach-O target, whose sections live in segments, places a name without a comma in `__DATA` (a variable) or `__TEXT` (a function) under that name with its leading dot dropped, so `.isr_vector` is one spelling for every target.
 
 **Why.** Embedded and kernel code needs an interrupt table in a named section, a weak default handler, a symbol the linker must keep, and a function with no prologue. Each is a fact about one declaration, and a word before the declaration is the shortest way to state it.
 

@@ -1,0 +1,31 @@
+## Arguments are evaluated left to right (base.md §7.1), whatever the C compiler behind
+## the binary would do on its own: every call with an argument that has an effect
+## computes its arguments into temporaries in order. GCC evaluates C arguments right
+## to left, which is where this was first seen.
+var trace: u8[8]
+var n: usize = 0
+
+func step(k: u8) -> i64:
+    trace[n] = k
+    n += 1
+    return (i64)k
+
+func sum3(a: i64, b: i64, c: i64) -> i64:
+    return a + b + c
+
+struct Acc:
+    var total: i64
+    func add(x: i64, y: i64) -> i64:
+        return self.total + x + y
+
+pub func answer() -> i64:
+    var acc = Acc(total = 0)
+    discard(sum3(step(1), step(2), step(3)))
+    discard(acc.add(step(4), step(5)))
+    var i: usize = 0
+    while i < 5:
+        if trace[i] != (u8)(i + 1):
+            return (i64)(100 + i)
+        i += 1
+    return 42
+# answer: 42

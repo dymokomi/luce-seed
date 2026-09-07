@@ -287,7 +287,7 @@ auto Emitter::emit_catch(Node* n) -> string {
         s += "lb_error " + ident("lb_", n->text) + " __attribute__((unused)) = " + rn + ".error; ";
     }
     s += body;
-    s += "__attribute__((unused)) _lb_cd" + std::to_string(id) + ": ;";
+    s += "_lb_cd" + std::to_string(id) + ": __attribute__((unused));";
     s += " } else { ";
     if (payload != nullptr && payload->kind != TypeKind::Unit) {
         s += vn + " = " + rn + ".value; ";
@@ -358,14 +358,14 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
             return string(n->text);
         }
         if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
-            string nm = ident("lb_", n->text);
+            string nm = name_ident(n);
             char nbuf[32];
             snprintf(nbuf, sizeof(nbuf), "%lluULL",
                      static_cast<unsigned long long>(n->resolved->ty->length));
             string sty = c_type(n->ty);
             return "((" + sty + "){" + nm + ".d, " + nbuf + "})";
         }
-        return ident("lb_", n->text);
+        return name_ident(n);
     case NodeKind::Self:
         return "(*self)";
     case NodeKind::Group:
@@ -992,7 +992,7 @@ auto Emitter::emit_member(Node* n) -> string {
         // `module.constant`: a public top-level binding of another module.
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Const || n->resolved->kind == NodeKind::Global)) {
-            return ident("lb_", n->resolved->text);
+            return global_ident(n->resolved);
         }
     }
     bool ptr = is_ptr(ot);
@@ -1115,9 +1115,9 @@ auto Emitter::emit_addr(Node* n) -> string {
     }
     if (n->kind == NodeKind::Name) {
         if (n->ty != nullptr && is_array(n->ty)) {
-            return ident("lb_", n->text) + ".d";
+            return name_ident(n) + ".d";
         }
-        return "&" + ident("lb_", n->text);
+        return "&" + name_ident(n);
     }
     if (n->kind == NodeKind::Member) {
         return "&(" + emit_member(n) + ")";

@@ -676,7 +676,7 @@ auto Emitter::emit_for_range(Node* n) -> void {
 // The `continue` or `break` target of a labeled loop, `outer: for ...` (§8.5).
 auto Emitter::emit_loop_label(const char* prefix, Node* loop) -> void {
     if (!loop->label.empty()) {
-        line("__attribute__((unused)) " + string(prefix) + string(loop->label) + ": ;");
+        line(string(prefix) + string(loop->label) + ": __attribute__((unused));");
     }
 }
 

@@ -184,7 +184,7 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
         if (existing == nullptr) {
             string path = resolve_file(program, dep);
             if (path.empty()) {
-                const char* embedded = lucb_std_source(dep.c_str());
+                const char* embedded = dep == "platform" ? lucb_std_platform() : lucb_std_source(dep.c_str());
                 if (embedded == nullptr) {
                     diagnostics.add("lucb.check.import", here, d->span,
                                     "cannot find module `" + dep + "`");

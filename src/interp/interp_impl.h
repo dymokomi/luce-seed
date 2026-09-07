@@ -23,7 +23,7 @@ struct Interp {
     Node* module = nullptr;
     bool at_end_ok = false; // set under `&`: an index may equal the length (§7.7)
     vector<Node*> all_modules;
-    vector<Frame> frames;
+    std::deque<Frame> frames; // a deque: a frame keeps its address while calls push more
     std::deque<vector<Value>> storage;
     // String literals decoded once; every `Value.str` holds decoded text.
     std::unordered_map<const Node*, string> literal_text;

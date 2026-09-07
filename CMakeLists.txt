@@ -82,6 +82,7 @@ set(LUCB_CORE_SOURCES
     src/emit/stmt.cpp
     src/emit/host.cpp
     src/pkg/package.cpp
+    src/pkg/platform.cpp
     ${LUCB_EMBED_CPP}
 )
 

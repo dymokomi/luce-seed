@@ -1,0 +1,17 @@
+## Two modules may declare the same names (base.md §16.3): a `Home` struct, a `failed`
+## constant, a `count` variable, each qualified by its module in the C, and a generic
+## instantiated over each module's `Home` is two instances.
+import box
+import left
+import right
+
+pub func answer() -> i64:
+    let l = box.Box[left.Home](value = left.make(3))
+    let r = box.Box[right.Home](value = right.make(4))
+    left.count += 10
+    right.count += 20
+    var total: i64 = l.value.size + r.value.width + left.count + right.count
+    if left.failed != right.failed:
+        total += 5
+    return total
+# answer: 42

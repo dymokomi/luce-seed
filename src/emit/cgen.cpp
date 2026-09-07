@@ -69,6 +69,21 @@ string struct_ident(Node* st, string_view prefix) {
     return ident("lb_", st->text);
 }
 
+string global_ident(Node* d) {
+    string tag = module_tag(d);
+    if (!tag.empty()) {
+        return ident("lb_", tag) + "_" + string(d->text);
+    }
+    return ident("lb_", d->text);
+}
+
+string name_ident(Node* n) {
+    if (n->resolved != nullptr && (n->resolved->kind == NodeKind::Global || n->resolved->kind == NodeKind::Const)) {
+        return global_ident(n->resolved);
+    }
+    return ident("lb_", n->text);
+}
+
 static string g_export_prefix;
 
 void set_export_prefix(string_view prefix) {

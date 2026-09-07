@@ -124,7 +124,8 @@ struct Emitter {
     void emit_vtable(Node* st, Node* iface_type_node);
     void emit_ifaces(Node* mod);
     string emit_as_cspan(Node* n);
-    string emit_args(Node* args);
+    string emit_args(Node* args, string* prefix = nullptr);
+    string sequenced(const string& prefix, const string& call);
     string emit_extern_args(Node* n, const string& out_prefix = "");
     string emit_extern_out_call(Node* n);
     string emit_call(Node* n);
@@ -148,6 +149,7 @@ struct Emitter {
     void emit_if(Node* n);
     void emit_sig(Node* fn, Node* owner, bool define);
     string declaration_attributes(Node* d, bool is_func);
+    string section_name(string_view spelled, bool is_func);
     string asm_body(Node* n);
     string asm_arch_guard(Node* n);
     void emit_naked_body(Node* fn);

@@ -4,7 +4,7 @@
 weak func base(x: i64) -> i64:
     return x + 41
 
-used section("__DATA,__custom") var table: i64[4]
+used section(".custom") var table: i64[4]
 
 cold noinline func rare() -> i64:
     return 1

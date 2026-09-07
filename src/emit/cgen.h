@@ -16,6 +16,11 @@ namespace lucb {
 
 string ident(string_view prefix, string_view name);
 string struct_ident(Node* st, string_view prefix = {});
+// The C name of a top-level `let` or `var`: qualified by its module, as a struct is, so two
+// modules may declare the same name (§16.3).
+string global_ident(Node* d);
+// The C name of a name expression: a global by `global_ident`, a local by `ident`.
+string name_ident(Node* n);
 string c_symbol(Node* fn);
 string extern_ident(Node* fn);
 string func_ident(Node* fn, Node* owner, string_view prefix = {});

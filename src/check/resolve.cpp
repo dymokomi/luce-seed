@@ -13,6 +13,7 @@
 //==============================================================================================
 
 #include "check/checker.h"
+#include <cstring>
 
 #include "support/literal.h"
 

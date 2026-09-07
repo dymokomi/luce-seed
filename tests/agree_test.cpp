@@ -141,7 +141,7 @@ TEST(agree_union_byte_punning) {
 }
 
 TEST(agree_declaration_attributes) {
-    CHECK(agrees("weak func f(x: i64) -> i64:\n    return x + 41\nused section(\"__DATA,__custom\") var table: i64[4]\ncold noinline func g() -> i64:\n    return 1\npub func answer() -> i64:\n    return f(g()) + table[0]\n"));
+    CHECK(agrees("weak func f(x: i64) -> i64:\n    return x + 41\nused section(\".custom\") var table: i64[4]\ncold noinline func g() -> i64:\n    return 1\npub func answer() -> i64:\n    return f(g()) + table[0]\n"));
 }
 
 TEST(agree_untyped_right_operand) {

@@ -1,0 +1,2 @@
+pub struct Box[T]:
+    pub var value: T

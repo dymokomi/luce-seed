@@ -44,11 +44,18 @@ auto Checker::sanitize_ty(const string& s) -> string {
     return o;
 }
 
+// The name of an instance: the generic's name, then each argument's. A nominal argument
+// declared in an imported module carries the module's name, so `List[Home]` of two modules
+// that each declare a private `Home` are two instances with two C names.
 auto Checker::mangle_inst(string_view base, const vector<Type*>& args) -> string {
     string s(base);
     for (size_t i = 0; i < args.size(); i++) {
         s += "__";
-        s += sanitize_ty(type_name(args[i]));
+        const Type* a = args[i];
+        if (a != nullptr && a->decl != nullptr && !a->decl->module.empty()) {
+            s += sanitize_ty(string(a->decl->module)) + "_";
+        }
+        s += sanitize_ty(type_name(a));
     }
     return s;
 }

@@ -41,7 +41,54 @@ static string memorder_of(Node* n) {
     return "memory_order_seq_cst";
 }
 
-auto Emitter::emit_args(Node* args) -> string {
+// Whether evaluating `e` may have an effect another operand could observe (§7.1): a call,
+// a `try`, a `catch`, an allocation, or a formatted string with such a field. A lambda's
+// body runs later, not here.
+static bool may_have_effect(Node* e) {
+    if (e == nullptr) {
+        return false;
+    }
+    switch (e->kind) {
+    case NodeKind::Call:
+    case NodeKind::Catch:
+    case NodeKind::New:
+    case NodeKind::Alloc:
+    case NodeKind::MatchExpr:
+        return true;
+    case NodeKind::Lambda:
+        return false;
+    case NodeKind::Unary:
+        if (e->op == TokenKind::KwTry) {
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (may_have_effect(e->left) || may_have_effect(e->right)) {
+        return true;
+    }
+    for (Node* b = e->body; b != nullptr; b = b->next) {
+        if (may_have_effect(b)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The argument list of a call. Base evaluates arguments left to right (§7.1); C promises
+// no order. When `prefix` is given, the call has more than one argument, and any of them
+// may have an effect, every argument with a known parameter type is computed into a
+// temporary first, in order, declared in `prefix`; the list then names the temporaries,
+// and `sequenced` closes the statement expression around the call.
+auto Emitter::emit_args(Node* args, string* prefix) -> string {
+    int count = 0;
+    bool effects = false;
+    for (Node* a = args; a != nullptr; a = a->next) {
+        count++;
+        effects = effects || may_have_effect(a->left);
+    }
+    const bool hoist = prefix != nullptr && count > 1 && effects;
     string s;
     bool first = true;
     for (Node* a = args; a != nullptr; a = a->next) {
@@ -50,13 +97,23 @@ auto Emitter::emit_args(Node* args) -> string {
         }
         first = false;
         Type* want = a->resolved != nullptr ? a->resolved->ty : nullptr;
-        if (is_u8_cspan(want)) {
-            s += emit_as_cspan(a->left);
+        string value = is_u8_cspan(want) ? emit_as_cspan(a->left) : emit_expr(a->left);
+        if (hoist && want != nullptr && want->kind != TypeKind::Unit) {
+            string tn = "_lb_sq" + std::to_string(tmp());
+            *prefix += c_type(want) + " " + tn + " = " + value + "; ";
+            s += tn;
         } else {
-            s += emit_expr(a->left);
+            s += value;
         }
     }
     return s;
+}
+
+auto Emitter::sequenced(const string& prefix, const string& call) -> string {
+    if (prefix.empty()) {
+        return call;
+    }
+    return "({ " + prefix + call + "; })";
 }
 
 auto Emitter::emit_direct_call(Node* fn, Node* owner, Node* args) -> string {
@@ -72,7 +129,9 @@ auto Emitter::emit_direct_call(Node* fn, Node* owner, Node* args) -> string {
         }
     }
     if (!split) {
-        return name + "(" + emit_args(args) + ")";
+        string prefix;
+        string list = emit_args(args, &prefix);
+        return sequenced(prefix, name + "(" + list + ")");
     }
     string s = "({ ";
     string alist;
@@ -190,7 +249,9 @@ auto Emitter::emit_call(Node* n) -> string {
     if (callee != nullptr && callee->kind == NodeKind::Member && callee->resolved != nullptr &&
         callee->resolved->kind == NodeKind::Field && is_func(callee->ty)) {
         // `holder.callback(args)`: a field of function type, called through its value
-        return "(" + emit_expr(callee) + ")(" + emit_args(n->body) + ")";
+        string prefix;
+        string list = emit_args(n->body, &prefix);
+        return sequenced(prefix, "(" + emit_expr(callee) + ")(" + list + ")");
     }
     if (callee != nullptr && callee->kind == NodeKind::Member && callee->left != nullptr &&
         callee->left->kind == NodeKind::Name && callee->left->text == "ErrorCode" &&
@@ -514,8 +575,9 @@ auto Emitter::emit_call(Node* n) -> string {
         string rn = "_lb_ir" + std::to_string(id);
         string sty = struct_ident(st);
         string initf = func_ident(n->resolved, st);
-        string args = emit_args(n->body);
-        string s = "({ " + sty + " " + vn + " = {0}; ";
+        string prefix;
+        string args = emit_args(n->body, &prefix);
+        string s = "({ " + sty + " " + vn + " = {0}; " + prefix;
         s += fail_c_name(n->resolved->ty) + " " + rn + " = " + initf + "(&" + vn;
         if (!args.empty()) {
             s += ", " + args;
@@ -576,7 +638,7 @@ auto Emitter::emit_call(Node* n) -> string {
                        "!_lb_ao.present) { _lb_fr.failed = "
                        "true; _lb_fr.error = (lb_error){ .code = 1, .message = "
                        "(lb_str){\"memory.exhausted\", 16} }; fclose(_lb_f); } else { "
-                       "if (_lb_n > 0) fread(_lb_b.data, 1, (size_t)_lb_n, _lb_f); "
+                       "if (_lb_n > 0) (void)!fread(_lb_b.data, 1, (size_t)_lb_n, _lb_f); "
                        "fclose(_lb_f); _lb_fr.failed = false; _lb_fr.value = _lb_b; } } _lb_fr; })";
             }
             if (lt->name == "memory" && (callee->text == "copy" || callee->text == "move")) {
@@ -737,7 +799,9 @@ auto Emitter::emit_call(Node* n) -> string {
                        "_lb_fr.failed = true; _lb_fr.error = (lb_error){ .code = 1, .message = "
                        "(lb_str){\"write\", 5} }; } else { _lb_fr.failed = false; } } _lb_fr; })";
             }
-            return func_ident(n->resolved, nullptr) + "(" + emit_args(n->body) + ")";
+            string prefix;
+            string list = emit_args(n->body, &prefix);
+            return sequenced(prefix, func_ident(n->resolved, nullptr) + "(" + list + ")");
         }
         if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
             n->resolved->kind == NodeKind::Struct) {
@@ -752,14 +816,15 @@ auto Emitter::emit_call(Node* n) -> string {
         if (ot != nullptr && ot->kind == TypeKind::Interface && method != nullptr) {
             int id = tmp();
             string vn = "_lb_if" + std::to_string(id);
-            string args = emit_args(n->body);
+            string prefix;
+            string args = emit_args(n->body, &prefix);
             string call = "((" + vt_type_name(ot) + "*)" + vn + ".vtable)->" +
                           string(method->text) + "(" + vn + ".data";
             if (!args.empty()) {
                 call += ", " + args;
             }
             call += ")";
-            return "({ lb_iface " + vn + " = " + emit_expr(obj) + "; " + call + "; })";
+            return "({ lb_iface " + vn + " = " + emit_expr(obj) + "; " + prefix + call + "; })";
         }
         if (callee->text == "bits" && method == nullptr && obj != nullptr) {
             return emit_float_bits(obj, n);
@@ -780,7 +845,8 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         Node* owner = ot != nullptr ? ot->decl : nullptr;
         string name = func_ident(method, owner);
-        string args = emit_args(n->body);
+        string prefix;
+        string args = emit_args(n->body, &prefix);
         if (method != nullptr && (method->flags & FlagStatic) != 0) {
             bool fixed_over =
                 method->text == "over" && ((owner != nullptr && owner->text == "FixedBuffer") ||
@@ -798,20 +864,20 @@ auto Emitter::emit_call(Node* n) -> string {
                 return "({ lb_span " + sn + " = " + e + "; (lb_fixed){ .data = (uint8_t*)" + sn +
                        ".data, .cap = " + sn + ".length, .used = 0 }; })";
             }
-            return name + "(" + args + ")";
+            return sequenced(prefix, name + "(" + args + ")");
         }
         // A pointer-typed receiver already is the address the method takes; a place is
         // addressed; a value, `Flags.a.name()` or a call's result, is held in a temporary.
         if (obj != nullptr && !is_ptr(obj->ty) && !is_place_expression(obj)) {
             string tn = "_lb_rc" + std::to_string(tmp());
             string call = name + "(&" + tn + (args.empty() ? "" : ", " + args) + ")";
-            return "({ " + c_type(obj->ty) + " " + tn + " = " + emit_expr(obj) + "; " + call + "; })";
+            return "({ " + c_type(obj->ty) + " " + tn + " = " + emit_expr(obj) + "; " + prefix + call + "; })";
         }
         string recv = is_ptr(obj != nullptr ? obj->ty : nullptr) ? emit_expr(obj) : emit_addr(obj);
         if (args.empty()) {
-            return name + "(" + recv + ")";
+            return sequenced(prefix, name + "(" + recv + ")");
         }
-        return name + "(" + recv + ", " + args + ")";
+        return sequenced(prefix, name + "(" + recv + ", " + args + ")");
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::EnumCase) {
         return emit_enum_value(n);
@@ -819,7 +885,9 @@ auto Emitter::emit_call(Node* n) -> string {
     if (callee != nullptr && is_func(callee->ty) &&
         (n->resolved == nullptr ||
          (n->resolved->kind != NodeKind::Func && n->resolved->kind != NodeKind::ExternFunc))) {
-        return "(" + emit_expr(callee) + ")(" + emit_args(n->body) + ")";
+        string prefix;
+        string list = emit_args(n->body, &prefix);
+        return sequenced(prefix, "(" + emit_expr(callee) + ")(" + list + ")");
     }
     if (n->resolved != nullptr &&
         (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc)) {
@@ -905,15 +973,80 @@ auto Emitter::emit_span_end(Node* obj, Node* n, bool first) -> string {
            rn + " = " + none_opt(n->ty) + "; } " + rn + "; })";
 }
 
+namespace {
+
+// Hexadecimal digits of the low `digits` × 4 bits of `v`, most significant first.
+string hex_digits(uint64_t v, int digits) {
+    string s(static_cast<size_t>(digits), '0');
+    for (int i = digits - 1; i >= 0; i--) {
+        s[static_cast<size_t>(i)] = "0123456789abcdef"[v & 15];
+        v >>= 4;
+    }
+    return s;
+}
+
+// The C constant whose value is the float of `kind` with these bits (§7.5): a hexadecimal
+// literal for a finite value, exact by construction, `__builtin_inf` for an infinity, and
+// `__builtin_nan` or `__builtin_nans` with the payload otherwise. Every spelling is a
+// constant expression under both GCC and clang, so a global may be initialised with it.
+string float_constant_from_bits(TypeKind kind, uint64_t bits) {
+    const int exp_bits = kind == TypeKind::F64 ? 11 : kind == TypeKind::F32 ? 8 : 5;
+    const int mant_bits = kind == TypeKind::F64 ? 52 : kind == TypeKind::F32 ? 23 : 10;
+    const int width = 1 + exp_bits + mant_bits;
+    const char* suffix = kind == TypeKind::F64 ? "" : kind == TypeKind::F32 ? "f" : "f16";
+    const char* type = kind == TypeKind::F64 ? "double" : kind == TypeKind::F32 ? "float" : "_Float16";
+    if (width < 64) {
+        bits &= (1ULL << width) - 1;
+    }
+    const bool negative = ((bits >> (width - 1)) & 1) != 0;
+    const uint64_t exponent = (bits >> mant_bits) & ((1ULL << exp_bits) - 1);
+    const uint64_t mantissa = bits & ((1ULL << mant_bits) - 1);
+    const int bias = (1 << (exp_bits - 1)) - 1;
+    const int digits = (mant_bits + 3) / 4;
+    const string sign = negative ? "-" : "";
+    if (exponent == (1ULL << exp_bits) - 1) {
+        if (mantissa == 0) {
+            return "((" + string(type) + ")(" + sign + "__builtin_inf()))";
+        }
+        // the top mantissa bit is the quiet bit; the rest is the payload, given in the
+        // width of `float` or `double` so the conversion to a half keeps it
+        const bool quiet = ((mantissa >> (mant_bits - 1)) & 1) != 0;
+        const uint64_t payload = mantissa & ((1ULL << (mant_bits - 1)) - 1);
+        const string builtin = string(quiet ? "__builtin_nan" : "__builtin_nans") + (kind == TypeKind::F64 ? "" : "f");
+        const uint64_t shifted = kind == TypeKind::F16 ? payload << 13 : payload;
+        return "((" + string(type) + ")(" + sign + builtin + "(\"0x" + hex_digits(shifted, 16) + "\")))";
+    }
+    string s = "(" + sign + "0x";
+    if (exponent == 0 && mantissa == 0) {
+        s += "0p0";
+    } else {
+        const int shift = digits * 4 - mant_bits;
+        s += exponent == 0 ? "0." : "1.";
+        s += hex_digits(mantissa << shift, digits);
+        s += "p" + std::to_string(exponent == 0 ? 1 - bias : static_cast<int>(exponent) - bias);
+    }
+    return s + suffix + ")";
+}
+
+} // namespace
+
 // `f64.bits(u)` and `value.bits()` are a memcpy each way (§7.5), at the float's width.
 auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
     const TypeKind from = obj->kind == NodeKind::Name ? float_kind_named(obj->text) : TypeKind::Error;
     if (from != TypeKind::Error) {
-        string in = emit_expr(n->body != nullptr ? n->body->left : nullptr);
+        Node* arg = n->body != nullptr ? n->body->left : nullptr;
         string it = bits_integer_c_name(n->ty);
         string ft = c_type_name(n->ty);
-        // a constant expression, so `f64.bits(...)` can initialise a global (§6.4)
-        return "__builtin_bit_cast(" + ft + ", (" + it + ")(" + in + "))";
+        // a literal's bits are spelled as a float constant, so `f64.bits(...)` can initialise
+        // a global (§6.4) under GCC, which has no bit cast in C; other bits are copied
+        if (arg != nullptr && arg->kind == NodeKind::Literal) {
+            ParsedInt p = parse_int_literal(arg->text);
+            if (p.ok) {
+                return float_constant_from_bits(n->ty->kind, p.value);
+            }
+        }
+        string in = emit_expr(arg);
+        return "({ " + it + " _lb_b = (" + it + ")(" + in + "); " + ft + " _lb_f; __builtin_memcpy(&_lb_f, &_lb_b, sizeof _lb_f); _lb_f; })";
     }
     string it = bits_integer_c_name(obj->ty);
     string ft = c_type_name(obj->ty);

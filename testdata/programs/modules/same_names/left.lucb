@@ -1,0 +1,8 @@
+pub struct Home:
+    pub var size: i64
+
+pub let failed: ErrorCode = ErrorCode.package(1)
+pub var count: i64 = 0
+
+pub func make(n: i64) -> Home:
+    return Home(size = n)
