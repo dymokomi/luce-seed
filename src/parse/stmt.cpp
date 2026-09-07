@@ -197,13 +197,11 @@ auto Parser::parse_binding() -> Node* {
         Node* names = nullptr;
         do {
             if (at(TokenKind::Underscore)) {
+                // `let (_, rest) = pair`: a discarded element; the loop's own test eats the comma
                 Token t = take();
                 Node* blank = make(NodeKind::Name, t.span);
                 blank->text = "_";
                 append(&names, blank);
-                if (!eat(TokenKind::Comma)) {
-                    break;
-                }
                 continue;
             }
             if (!at(TokenKind::Name)) {

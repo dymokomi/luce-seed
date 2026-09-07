@@ -1084,7 +1084,15 @@ auto Interp::eval_call(Node* n) -> Value {
         if (is_place_expression(callee->left)) {
             Value* recv = lvalue(callee->left);
             if (recv != nullptr) {
-                return call_func(method, recv, n->body);
+                if (recv->kind == TypeKind::Pointer) {
+                    return call_func(method, recv, n->body); // a pointer receiver: that pointer
+                }
+                // the place by address: `&self` is the object and a mutation lands in it
+                Value by_address;
+                by_address.kind = TypeKind::Pointer;
+                by_address.type = nullptr; // the pointee's type is on the object
+                by_address.ptr = recv;
+                return call_func(method, &by_address, n->body);
             }
             if (trapped) {
                 return v_unit();

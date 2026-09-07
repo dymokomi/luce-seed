@@ -159,6 +159,9 @@ auto Interp::lvalue(Node* n) -> Value* {
             fail("unknown name at runtime");
             return nullptr;
         }
+        if (n->kind == NodeKind::Self && s->value.kind == TypeKind::Pointer && s->value.ptr != nullptr) {
+            return s->value.ptr; // `self` held by address: the object itself
+        }
         return &s->value;
     }
     if (n->kind == NodeKind::Member) {

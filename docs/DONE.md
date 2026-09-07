@@ -1,7 +1,16 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.38**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.39**, the seed `luce-base` is written against.
+
+## 0.39: what the expanded conformance programs found
+
+- `let (_, rest) = pair()`: a discarded tuple element parses in every position, binds no
+  name, and the C output names nothing for it;
+- a method on a place receives the place by address in the interpreter, so `&self` is the
+  object and `c.add(2).add(3)` mutates `c` through the returned pointer;
+- an element read from a local array is a copy: a `str` from a local table may be
+  returned; only `&a[i]` and a slice view the frame (§6.6).
 
 ## 0.38: an interface view's optional everywhere
 

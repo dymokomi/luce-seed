@@ -144,11 +144,13 @@ auto Emitter::emit_stmt(Node* n) -> void {
         if (n->body != nullptr && n->text.empty() && is_tup(n->ty)) {
             int id = tmp();
             string tn = "_lb_tu" + std::to_string(id);
-            line(c_type(n->ty) + " " + tn + " = " + emit_expr(n->left) + ";");
+            line(c_type(n->ty) + " " + tn + " __attribute__((unused)) = " + emit_expr(n->left) + ";");
             int i = 0;
             for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
-                line(c_type(nm->ty) + " " + ident("lb_", nm->text) +
-                     " __attribute__((unused)) = " + tn + ".a" + std::to_string(i) + ";");
+                if (nm->text != "_") { // a discarded element gets no name
+                    line(c_type(nm->ty) + " " + ident("lb_", nm->text) +
+                         " __attribute__((unused)) = " + tn + ".a" + std::to_string(i) + ";");
+                }
                 i++;
             }
             break;

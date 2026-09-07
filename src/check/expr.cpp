@@ -504,9 +504,7 @@ auto Checker::check_index(Node* n) -> Type* {
         return base->elem;
     }
     if (is_array(base) || is_span(base)) {
-        if (is_local(n->left) || (is_array(base) && place_is_local(n->left))) {
-            mark_local(n);
-        }
+        // an element read is a copy: a `str` from a local table views its own text (§6.6)
         return base->elem;
     }
     fail_n(n, "lucb.check.type", "cannot index this type");

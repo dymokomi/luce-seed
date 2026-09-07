@@ -106,7 +106,9 @@ auto Checker::check_stmt(Node* n) -> void {
             for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
                 Type* et = i < init->ntargs ? init->args[i] : t_error();
                 nm->ty = et;
-                bind(nm->text, et, n->kind == NodeKind::Var, nm);
+                if (nm->text != "_") {
+                    bind(nm->text, et, n->kind == NodeKind::Var, nm); // `_` discards its element
+                }
                 i++;
             }
             n->ty = init;
