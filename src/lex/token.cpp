@@ -49,6 +49,7 @@ constexpr KeywordEntry k_keywords[] = {
     {"in", TokenKind::KwIn},
     {"interface", TokenKind::KwInterface},
     {"let", TokenKind::KwLet},
+    {"local", TokenKind::KwLocal},
     {"match", TokenKind::KwMatch},
     {"mutating", TokenKind::KwMutating},
     {"new", TokenKind::KwNew},
@@ -63,7 +64,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"static", TokenKind::KwStatic},
     {"struct", TokenKind::KwStruct},
     {"test", TokenKind::KwTest},
-    {"thread_local", TokenKind::KwThreadLocal},
     {"true", TokenKind::KwTrue},
     {"try", TokenKind::KwTry},
     {"type", TokenKind::KwType},
@@ -214,8 +214,8 @@ const char* token_kind_name(TokenKind kind) {
         return "struct";
     case TokenKind::KwTest:
         return "test";
-    case TokenKind::KwThreadLocal:
-        return "thread_local";
+    case TokenKind::KwLocal:
+        return "local";
     case TokenKind::KwTrue:
         return "true";
     case TokenKind::KwTry:

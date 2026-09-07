@@ -905,9 +905,9 @@ TEST(eval_struct_compare_under_bound) {
     CHECK_EQ(r.answer, 2);
 }
 
-// §15.3: a `thread_local var` is one per thread: the spawner's stays as it was
+// §15.3: a `local var` is one per thread: the spawner's stays as it was
 TEST(eval_thread_local_per_thread) {
-    EvalResult r = run("import thread\nthread_local var mine: u64\n"
+    EvalResult r = run("import thread\nlocal var mine: u64\n"
                        "func bump(context: void*):\n    mine += 1\n"
                        "pub func answer() -> i64!:\n    var n: i64 = 0\n    let h = try thread.spawn(bump, &n)\n    try h.join()\n    return (i64)mine\n");
     CHECK(r.ok);

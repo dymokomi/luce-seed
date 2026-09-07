@@ -728,7 +728,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 Node* ctxn =
                     n->body != nullptr && n->body->next != nullptr ? n->body->next : nullptr;
                 if (fn != nullptr) {
-                    // the thread runs to completion here; a `thread_local var` is one per
+                    // the thread runs to completion here; a `local var` is one per
                     // thread (§15.3), so the new thread sees zeroes and the spawner's values
                     // return afterwards
                     vector<std::pair<size_t, Value>> saved;

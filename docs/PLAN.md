@@ -65,7 +65,7 @@ Exhaustive `match`. Ranges. Labeled `break`/`continue`. `defer`.
 ## M8 — Enums, unions, zeros, globals, layout
 
 Payload enums, integer-backed `enum as u32`, unions, zero values, `---`,
-module `var` / `thread_local var`, `packed` / `align(N)`, `offsetof`.
+module `var` / `local var`, `packed` / `align(N)`, `offsetof`.
 **Landed.**
 
 ## M9 — Modules, packages, `main`, `test`

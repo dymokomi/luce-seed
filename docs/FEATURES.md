@@ -49,7 +49,7 @@ not land in this tree).
 | 6.6 | Address-of and escape | partial | `check_escape_local`, `agree_escape_global`; stores into escaped params later |
 | 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`, `check_never_null_zero`; never-null pointers still require an initialiser |
 | 6.2 | `---` uninitialised `var` | done | `agree_uninit` |
-| 6.3 | Module `var` / `thread_local var` | done | `agree_global`, `agree_thread_local` |
+| 6.3 | Module `var` / `local var` | done | `agree_global`, `agree_thread_local` |
 | 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
 | 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var`, `check_assign_let` |
 | 7.2 | Checked `+ - *`, wrapping `%`, saturating `|`, `+?` | done | `agree_u8_wrap`, `agree_u8_overflow_traps`, `agree_u8_saturating`, `agree_overflow_optional` |

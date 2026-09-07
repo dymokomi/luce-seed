@@ -75,7 +75,7 @@ enum class TokenKind : uint16_t {
     KwStatic,
     KwStruct,
     KwTest,
-    KwThreadLocal,
+    KwLocal,
     KwTrue,
     KwTry,
     KwType,

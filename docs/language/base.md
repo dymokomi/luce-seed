@@ -189,8 +189,8 @@ The reserved words of §3.6 are excluded the same way, by the lexer. A standard 
 ```text
 alloc and as asm break catch const continue defer elif else enum errdefer
 export extern false for free from func goto if import in interface
-let match mutating new none not or pub recover return self static struct test
-thread_local true try type union var volatile while with
+let local match mutating new none not or pub recover return self static struct test
+true try type union var volatile while with
 ```
 
 Contextual words, meaningful only in the positions stated: `void` before `*`; `packed`, `align`, `naked`, `weak`, `used`, `noinline`, `cold`, `section`, and `inline` before a declaration (§9.8); `noalias` before a parameter type; `blocking` and `out` in `extern` declarations; `reg` and `options` in an `asm` operand list. `goto` is reserved and unused (§8.6). `class`, `weak` as a field marker, and `spawn` belong to full Luce and are rejected in Base with a diagnostic that names the tier they belong to. `none` is a literal (§4.1) and is never a case name.
@@ -459,11 +459,11 @@ var nodes: Node[64] = ---
 ```luce
 var next_id: u32
 var seed: u32 = 0x9E3779B9
-thread_local var current_arena: Arena*?
+local var current_arena: Arena*?
 pub let max_header: usize = 16 * 1024
 ```
 
-A module may declare `var` at top level. It is zero before `main` runs, or holds the constant its initialiser names; the initialiser must be a constant expression (§6.4), so there is no initialisation order. `thread_local var` is one such variable per thread, C11's `_Thread_local`: ordinary zero-initialised or constant-initialised storage in each thread, with no per-access guard. A top-level `let` is a constant. C's function-scope `static` local is a module-level `var`.
+A module may declare `var` at top level. It is zero before `main` runs, or holds the constant its initialiser names; the initialiser must be a constant expression (§6.4), so there is no initialisation order. `local var` is one such variable per thread, C11's `_Thread_local`: ordinary zero-initialised or constant-initialised storage in each thread, with no per-access guard. A top-level `let` is a constant. C's function-scope `static` local is a module-level `var`.
 
 **Why.** Full Luce forbids mutable globals because their initialisation order and their effect on test isolation are unmanageable. Base cannot forbid them, because a C replacement without globals is not a C replacement, but it removes the two hazards: a constant initialiser is static data with nothing to order, and the test runner reports which globals a test wrote (§16.5).
 
@@ -1274,11 +1274,11 @@ pub func main(arguments: str[]) -> i32!:
 
 - `thread.spawn(entry: func(void*) -> unit, context: void*, stack: usize = 0, name: str = "") -> thread.Handle!` starts a thread that runs `entry(context)` and ends when it returns; `stack = 0` means the host default. `Handle` is an integer-shaped zeroable value. `handle.join() -> !` waits for the thread and is not `mutating`; `handle.detach()` lets it run unjoined. A `Handle` that is neither joined nor detached when its scope ends is a linter diagnostic; the thread keeps running. `thread.current()`, `thread.pause()` (the CPU spin hint), `thread.yield()`, and `thread.sleep(milliseconds)` exist.
 - The memory model is C11's. Two threads that access one non-atomic location, where at least one writes, with no ordering between them, are a data race, and a data race is undefined (§12.6). Ordering is established by `@T` operations, `atomic.fence`, `thread.spawn` (everything before the spawn is visible to the new thread), `join` (everything the thread did is visible after it), and the `sync` module's `Mutex` (`lock`, `unlock`, `try`), `Condition` (`wait(mutex)`, `signal`, `broadcast`), `Once` (`run(function)`), and `Semaphore` (`acquire`, `release`), all zeroable so that `var lock: sync.Mutex` is a valid unlocked mutex, and built over `@T` with `wait` and `wake`.
-- `thread_local var` (§6.3) is one variable per thread. `memory.allocator` (§12.3) is thread-local: a new thread starts with `memory.heap`, not the spawning thread's current allocator; a thread that should allocate elsewhere receives the allocator through its context and uses `with` or `in`.
+- `local var` (§6.3) is one variable per thread. `memory.allocator` (§12.3) is thread-local: a new thread starts with `memory.heap`, not the spawning thread's current allocator; a thread that should allocate elsewhere receives the allocator through its context and uses `with` or `in`.
 - A trap on any thread stops the whole process, with the trace of the thread that trapped.
 - A thread started by Base may not call into full Luce (§18.7). Inside a full Luce program, full Luce's workers are built above this module.
 
-**Why a module and not syntax.** Everything a thread needs from the language is already present: `@T`, `thread_local`, function pointers, and a `void*` for its argument. C's threads are a library, and Base's are too. Full Luce's isolated workers, which copy values and forbid sharing, are the safer design for application code, and they are built on this layer.
+**Why a module and not syntax.** Everything a thread needs from the language is already present: `@T`, `local`, function pointers, and a `void*` for its argument. C's threads are a library, and Base's are too. Full Luce's isolated workers, which copy values and forbid sharing, are the safer design for application code, and they are built on this layer.
 
 ## 16. Modules, packages, and tests
 
@@ -1484,7 +1484,7 @@ A full Luce program that imports a Base package compiles both into one intermedi
 | `T[N]` | `array[T, N]` | fixed array | anywhere |
 | integer-backed `enum` | `export c enum` | enum with a fixed integer representation | anywhere |
 
-Types with two representations, crossed only through adapters: `str` (a view here, an owned reference-counted string there); `Error`; `T[]` against `slice[T]` (an owner-retaining view) and `list[T]` (a growable collection); interface views against interface values (boxed). `usize` and `isize` convert (§18.4). Types that never cross: `c.str`, `union`, `@T`, `volatile T*`, `fmt`, `thread_local` globals.
+Types with two representations, crossed only through adapters: `str` (a view here, an owned reference-counted string there); `Error`; `T[]` against `slice[T]` (an owner-retaining view) and `list[T]` (a growable collection); interface views against interface values (boxed). `usize` and `isize` convert (§18.4). Types that never cross: `c.str`, `union`, `@T`, `volatile T*`, `fmt`, `local` globals.
 
 ### 18.3 Plain types
 
@@ -1644,7 +1644,7 @@ top_decl        = [ "pub" ], ( constant_decl | global_decl | type_alias
                 | asm_module_decl ;
 
 constant_decl   = "let", IDENT, [ ":", type ], "=", constant_expression, NEWLINE ;
-global_decl     = [ "thread_local" ], { attribute }, "var", IDENT, ":", type,
+global_decl     = [ "local" ], { attribute }, "var", IDENT, ":", type,
                   [ "=", constant_expression ], NEWLINE ;
 type_alias      = "type", TYPE_IDENT, "=", type, NEWLINE ;
 attribute       = "inline" | "noinline" | "cold" | "naked" | "weak" | "used"
@@ -1845,7 +1845,7 @@ uint32_t x = byte;           let x: u32 = byte          # widening is implicit
 switch                       match, `1, 2, 3:` alternatives, ranges, guards
 static int helper()          func helper()   # private by default
 static int counter = 3;      var counter: i32 = 3        # module level
-_Thread_local int t;         thread_local var t: i32
+_Thread_local int t;         local var t: i32
 #include "x.h"               import x
 #ifdef __x86_64__            asm x86_64: ... / per-target modules
 printf("%d\n", n)            print(f"{n}")
@@ -1877,7 +1877,7 @@ Base is a profile of Luce, and this document restates every shared rule so that 
 | Integer division | `//` and `%` floor | truncate, as the instruction and C do | never slower or silently different from C |
 | Integer widening | always written | implicit for the same signedness | no value can change |
 | Zero values | every local initialised | typed `var` of a zeroable type is zero; `---` for any type | C idiom, with never-null types excluded |
-| Globals | none | `var` with a constant initialiser, `thread_local var` | C needs them; no initialisation order |
+| Globals | none | `var` with a constant initialiser, `local var` | C needs them; no initialisation order |
 | Labels, guards | refused | `break label`, `pattern if condition` | structured jumps and state machines |
 | Methods | explicit `self` parameter; a type function has none | implicit `self`; `static func` | the receiver is what a function in a type has by default |
 | Non-mutating `self` | a copy | `const Self*` | no copy per call; deterministic C header |

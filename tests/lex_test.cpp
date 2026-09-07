@@ -108,10 +108,10 @@ TEST(lex_keywords_are_not_names) {
 }
 
 TEST(lex_base_only_keywords) {
-    Lexed lexed("with alloc free const asm union volatile static errdefer thread_local goto\n");
+    Lexed lexed("with alloc free const asm union volatile static errdefer local goto\n");
     CHECK(lexed.diagnostics.empty());
     CHECK(kinds_eq(lexed, {"with", "alloc", "free", "const", "asm", "union", "volatile", "static",
-                           "errdefer", "thread_local", "goto", "newline", "eof"}));
+                           "errdefer", "local", "goto", "newline", "eof"}));
 }
 
 TEST(lex_full_luce_words_stay_keywords) {

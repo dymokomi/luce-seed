@@ -21,9 +21,9 @@ pub func answer() -> i64!:
     var backing: u8[4096]
     var arena = FixedBuffer.over(backing)
     with arena:
-        var local = try list.List[i64].create(2)
-        try local.push(10)
+        var mine = try list.List[i64].create(2)
+        try mine.push(10)
         var bag = try Bag.create()
         try bag.add(12)
         try bag.add(18)
-        return bag.total() + local.get(0)
+        return bag.total() + mine.get(0)

@@ -117,7 +117,7 @@ auto Parser::weak_is_attribute() -> bool {
         } else {
             return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwStatic ||
                    t.kind == TokenKind::KwMutating || t.kind == TokenKind::KwVar ||
-                   t.kind == TokenKind::KwThreadLocal;
+                   t.kind == TokenKind::KwLocal;
         }
     }
 }
@@ -220,7 +220,7 @@ auto Parser::parse_top() -> Node* {
     Node* attrs = nullptr;
     flags |= parse_attributes(&attrs);
 
-    if (at(TokenKind::KwThreadLocal) || at(TokenKind::KwVar)) {
+    if (at(TokenKind::KwLocal) || at(TokenKind::KwVar)) {
         return with_attrs(parse_global(flags), attrs);
     }
     if (at(TokenKind::KwLet)) {
@@ -279,7 +279,7 @@ auto Parser::parse_const(uint32_t flags) -> Node* {
 auto Parser::parse_global(uint32_t flags) -> Node* {
     Token start = cur();
     Node* n = make(NodeKind::Global, start.span);
-    if (eat(TokenKind::KwThreadLocal)) {
+    if (eat(TokenKind::KwLocal)) {
         flags |= FlagThreadLocal;
     }
     Node* attrs = nullptr;

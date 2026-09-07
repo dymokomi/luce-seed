@@ -1,7 +1,12 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.30**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.31**, the seed `luce-base` is written against.
+
+## 0.31: `local var`
+
+- the keyword `thread_local` is `local` (base.md §3.6, §6.3): no reserved word
+  carries an underscore; `local` is reserved, so no name may be `local`.
 
 ## 0.30: what chapter 15 of the conformance suite found
 
@@ -12,7 +17,7 @@ This tree is **luce-seed-0.30**, the seed `luce-base` is written against.
   compares pointers by address;
 - `thread.spawn` takes `func(void*) -> unit`; `Mutex.try_lock` (the spec's
   `try` is a keyword); the interpreter gives a spawned thread fresh
-  `thread_local` variables;
+  `local` variables;
 - `_` in a tuple binding names a value nothing reads.
 
 ## 0.29: what chapter 14 of the conformance suite found
@@ -585,7 +590,7 @@ Evidence: `tests/pkg_test.cpp`, `testdata/m9/`.
 
 Payload enums with exhaustive `match`, integer-backed `enum as u32` with
 `|` `&` `^` `~` and checked `T(n)`, C unions, zero values for structs and
-unions, `---` uninitialised locals, module `var` / `thread_local var`,
+unions, `---` uninitialised locals, module `var` / `local var`,
 `packed` / `align(N)`, `offsetof`. Interpreter and C backend agree.
 Evidence: `tests/agree_test.cpp`, `tests/eval_test.cpp`, `tests/check_test.cpp`.
 

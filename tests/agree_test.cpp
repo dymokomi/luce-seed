@@ -521,7 +521,7 @@ TEST(agree_enum_checked_conv_traps) {
 }
 
 TEST(agree_thread_local) {
-    CHECK(agrees("thread_local var n: i64 = 5\n"
+    CHECK(agrees("local var n: i64 = 5\n"
                  "pub func answer() -> i64:\n"
                  "    return n\n"));
 }

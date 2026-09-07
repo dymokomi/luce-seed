@@ -36,7 +36,7 @@ void dump_flags(const Node* n, string& out) {
         out += " mutating";
     }
     if (n->flags & FlagThreadLocal) {
-        out += " thread_local";
+        out += " local";
     }
     if (n->flags & FlagPacked) {
         out += " packed";
