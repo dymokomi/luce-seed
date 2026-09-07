@@ -207,6 +207,9 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->flags & FlagIfLet) {
             Node* let = n->left;
             Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
+            if (is_atomic(ot)) {
+                ot = ot->elem; // a plain read of an `@T` is a load (§15.1)
+            }
             if (!is_opt(ot) && !is_null_niche(ot)) {
                 fail_n(n, "lucb.check.type", "`if let` needs an optional");
             }
@@ -236,6 +239,9 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->flags & FlagIfLet) {
             Node* let = n->left;
             Type* ot = check_expr(let != nullptr ? let->left : nullptr, nullptr);
+            if (is_atomic(ot)) {
+                ot = ot->elem; // a plain read of an `@T` is a load (§15.1)
+            }
             if (!is_opt(ot) && !is_null_niche(ot)) {
                 fail_n(n, "lucb.check.type", "`while let` needs an optional");
             }

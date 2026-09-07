@@ -404,6 +404,9 @@ bool can_widen(const Type* from, const Type* to) {
     if (type_eq(from, to)) {
         return true;
     }
+    if (is_atomic(to) && !is_atomic(from)) {
+        return type_eq(from, to->elem) || can_widen(from, to->elem); // the first store of an `@T` (§15.1)
+    }
     if (is_int(from) && is_int(to) && is_signed_int(from) == is_signed_int(to)) {
         return int_bits(from) < int_bits(to);
     }

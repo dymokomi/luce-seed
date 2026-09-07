@@ -1,7 +1,19 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.29**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.30**, the seed `luce-base` is written against.
+
+## 0.30: what chapter 15 of the conformance suite found
+
+- an `@T` takes a `T` as its initial value, in a binding or a field; `if let`
+  reads an `@T?` through its load;
+- `cas` refuses a failure ordering stronger than the success ordering; the
+  arithmetic and bit methods need an integer atomic; the interpreter's `cas`
+  compares pointers by address;
+- `thread.spawn` takes `func(void*) -> unit`; `Mutex.try_lock` (the spec's
+  `try` is a keyword); the interpreter gives a spawned thread fresh
+  `thread_local` variables;
+- `_` in a tuple binding names a value nothing reads.
 
 ## 0.29: what chapter 14 of the conformance suite found
 

@@ -62,6 +62,9 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
         if (is_opt(expected)) {
             dest = expected->elem;
         }
+        if (is_atomic(dest)) {
+            dest = dest->elem; // a literal is the first store of an `@T` (§15.1)
+        }
         if (dest != nullptr && dest->kind == TypeKind::UntypedInt) {
             dest = t_i64();
         }

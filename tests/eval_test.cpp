@@ -904,3 +904,23 @@ TEST(eval_struct_compare_under_bound) {
     CHECK(r.ok);
     CHECK_EQ(r.answer, 2);
 }
+
+// §15.3: a `thread_local var` is one per thread: the spawner's stays as it was
+TEST(eval_thread_local_per_thread) {
+    EvalResult r = run("import thread\nthread_local var mine: u64\n"
+                       "func bump(context: void*):\n    mine += 1\n"
+                       "pub func answer() -> i64!:\n    var n: i64 = 0\n    let h = try thread.spawn(bump, &n)\n    try h.join()\n    return (i64)mine\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 0);
+}
+
+// §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
+TEST(eval_pointer_cas) {
+    EvalResult r = run("struct N:\n    var v: i64\n"
+                       "pub func answer() -> i64:\n    var head: @N*? = none\n    var a = N(v = 1)\n    var b = N(v = 2)\n"
+                       "    let (first, _) = head.cas(none, &a, .acq_rel, .acquire)\n    let (second, seen) = head.cas(none, &b, .acq_rel, .acquire)\n"
+                       "    var total: i64 = 0\n    if let s = seen:\n        total = s.v\n"
+                       "    return (1 if first else 0) + (10 if second else 0) + total * 100\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 101);
+}

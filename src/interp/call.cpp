@@ -728,7 +728,21 @@ auto Interp::eval_call(Node* n) -> Value {
                 Node* ctxn =
                     n->body != nullptr && n->body->next != nullptr ? n->body->next : nullptr;
                 if (fn != nullptr) {
+                    // the thread runs to completion here; a `thread_local var` is one per
+                    // thread (§15.3), so the new thread sees zeroes and the spawner's values
+                    // return afterwards
+                    vector<std::pair<size_t, Value>> saved;
+                    for (size_t i = 0; i < globals.slots.size(); i++) {
+                        Node* g = globals.slots[i].decl;
+                        if (g != nullptr && (g->flags & FlagThreadLocal) != 0) {
+                            saved.emplace_back(i, globals.slots[i].value);
+                            globals.slots[i].value = zero_of(globals.slots[i].value.type);
+                        }
+                    }
                     call_func(fn, nullptr, ctxn);
+                    for (auto& kept : saved) {
+                        globals.slots[kept.first].value = kept.second;
+                    }
                 }
                 Value h;
                 h.kind = TypeKind::Struct;
@@ -781,7 +795,8 @@ auto Interp::eval_call(Node* n) -> Value {
                 Value des = n->body != nullptr && n->body->next != nullptr
                                 ? eval(n->body->next->left)
                                 : v_unit();
-                bool ok = as_u(*slot, elem) == as_u(exp, elem);
+                // pointers compare by address and optionals by presence, not by the word
+                bool ok = values_equal(*slot, exp, elem);
                 Value obs = *slot;
                 if (ok) {
                     des.type = elem;
@@ -876,7 +891,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 slot->u = 0;
                 return v_unit();
             }
-            if (ot->name == "Mutex" && callee->text == "try") {
+            if (ot->name == "Mutex" && callee->text == "try_lock") {
                 if (slot->u != 0) {
                     return v_bool(false);
                 }

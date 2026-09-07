@@ -367,7 +367,7 @@ auto Emitter::emit_call(Node* n) -> string {
             if (recv->name == "Mutex" && callee->text == "unlock") {
                 return "(lb_mutex_unlock(" + loc + "))";
             }
-            if (recv->name == "Mutex" && callee->text == "try") {
+            if (recv->name == "Mutex" && callee->text == "try_lock") {
                 return "(lb_mutex_try(" + loc + "))";
             }
             if (recv->name == "Condition" && callee->text == "wait") {

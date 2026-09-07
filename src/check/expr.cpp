@@ -195,6 +195,9 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
 }
 
 auto Checker::check_literal(Node* n, Type* expected) -> Type* {
+    if (is_atomic(expected)) {
+        expected = expected->elem; // the initial value of an `@T` is a `T` (§15.1)
+    }
     if (n->op == TokenKind::KwNone) {
         if (is_null_niche(expected)) {
             return expected;

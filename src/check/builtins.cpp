@@ -470,7 +470,7 @@ auto Checker::bind_memory() -> void {
 
     Node* m_lock = syn_method("lock", t_unit(), true);
     Node* m_unlock = syn_method("unlock", t_unit(), true);
-    Node* m_try = syn_method("try", ty_bool, true);
+    Node* m_try = syn_method("try_lock", ty_bool, true);
     m_lock->next = m_unlock;
     m_unlock->next = m_try;
     Node* mu = syn_node(NodeKind::Struct, "Mutex");

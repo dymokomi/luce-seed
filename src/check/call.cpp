@@ -171,6 +171,24 @@ auto Checker::name_positional_fields(Node* n, Node* st) -> void {
     }
 }
 
+// How strong a written `Ordering` case is: relaxed, then acquire and release, then acq_rel,
+// then seq_cst; anything else ranks as the weakest (§15.1).
+static int ordering_rank(Node* e) {
+    if (e == nullptr || (e->kind != NodeKind::CaseValue && e->kind != NodeKind::Member)) {
+        return 0;
+    }
+    if (e->text == "seq_cst") {
+        return 3;
+    }
+    if (e->text == "acq_rel") {
+        return 2;
+    }
+    if (e->text == "acquire" || e->text == "release") {
+        return 1;
+    }
+    return 0;
+}
+
 auto Checker::check_ctor(Node* n, Node* st) -> Type* {
     Type* ty = st->ty;
     Node* init = struct_member(st, "init", NodeKind::Func);
@@ -766,6 +784,13 @@ auto Checker::check_method_call(Node* n) -> Type* {
                             fail_n(n, "lucb.check.type", "`thread.spawn` needs a function name");
                         } else {
                             entry->resolved = fb->decl;
+                            Node* p = fb->decl->right;
+                            const bool one_param = p != nullptr && p->next == nullptr;
+                            const bool context_param = one_param && is_ptr(p->ty) && p->ty->elem != nullptr && p->ty->elem->kind == TypeKind::Void;
+                            const bool unit_result = fb->decl->ty == nullptr || type_eq(fb->decl->ty, t_unit());
+                            if (!context_param || !unit_result || (fb->decl->flags & FlagFallible) != 0) {
+                                fail_n(entry, "lucb.check.type", "`thread.spawn` takes an entry `func(void*) -> unit`");
+                            }
                         }
                     }
                     if (n->body != nullptr && n->body->next != nullptr) {
@@ -917,6 +942,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
             if (nargs < 1 || nargs > 2) {
                 fail_n(n, "lucb.check.call", "this atomic method takes a value");
             }
+            if (mem->text != "swap" && !is_int(elem)) {
+                fail_n(n, "lucb.check.type", "this atomic method needs an integer atomic (§15.1)");
+            }
             if (n->body != nullptr) {
                 check_expr(n->body->left, elem);
                 if (n->body->next != nullptr) {
@@ -954,6 +982,7 @@ auto Checker::check_method_call(Node* n) -> Type* {
             a = a->next;
             check_expr(a->left, elem);
             a = a->next;
+            Node* success = a != nullptr ? a->left : nullptr;
             if (a != nullptr && a->text != "weak") {
                 check_expr(a->left, ord);
                 if (a->left != nullptr &&
@@ -971,6 +1000,9 @@ auto Checker::check_method_call(Node* n) -> Type* {
                         (a->left->text == "release" || a->left->text == "acq_rel")) {
                         fail_n(a, "lucb.check.type",
                                "`cas` failure ordering cannot be `release` or `acq_rel`");
+                    } else if (ordering_rank(a->left) > ordering_rank(success)) {
+                        fail_n(a, "lucb.check.type",
+                               "`cas` failure ordering cannot be stronger than the success ordering");
                     }
                     a = a->next;
                 }

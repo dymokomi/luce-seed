@@ -1195,3 +1195,19 @@ TEST(check_comparable_struct_and_derived_protocols) {
                     "pub func answer() -> i64:\n    return 0\n",
                     "lucb.check.type"));
 }
+
+// §15.1: an `@T` takes a `T` as its initial value; `cas` orderings obey their rules; the
+// bit methods need an integer atomic; §15.3: `spawn` takes `func(void*) -> unit`
+TEST(check_atomic_rules) {
+    CHECK(check_ok("struct C:\n    var hits: @u64\n    var flag: @bool\n"
+                   "pub func answer() -> i64:\n    var byte: @u8 = 250\n    var c = C(hits = 1, flag = false)\n"
+                   "    var head: @i64*? = none\n    let (a, _) = c.hits.cas(1, 2, .acq_rel, .acquire)\n"
+                   "    return (i64)byte + (1 if a else 0) + (1 if head == none else 0)\n"));
+    CHECK(check_has("pub func answer() -> i64:\n    var hits: @u64\n    let (ok, seen) = hits.cas(0, 1, .relaxed, .acquire)\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    var flag: @bool\n    let before = flag.set(true)\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("import thread\nfunc work(n: i64):\n    discard(n)\n"
+                    "pub func answer() -> i64!:\n    let h = try thread.spawn(work, none)\n    return 0\n",
+                    "lucb.check.type"));
+}

@@ -196,6 +196,16 @@ auto Parser::parse_binding() -> Node* {
         // tuple binding: reuse body as name list
         Node* names = nullptr;
         do {
+            if (at(TokenKind::Underscore)) {
+                Token t = take();
+                Node* blank = make(NodeKind::Name, t.span);
+                blank->text = "_";
+                append(&names, blank);
+                if (!eat(TokenKind::Comma)) {
+                    break;
+                }
+                continue;
+            }
             if (!at(TokenKind::Name)) {
                 fail("lucb.parse.expect", "expected a name");
                 break;

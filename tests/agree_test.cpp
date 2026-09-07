@@ -925,9 +925,9 @@ TEST(agree_thread_current) {
 TEST(agree_sync_mutex) {
     CHECK(agrees("import sync\n" "pub func answer() -> i64:\n"
                  "    var lock: sync.Mutex\n"
-                 "    if not lock.try():\n"
+                 "    if not lock.try_lock():\n"
                  "        return 0\n"
-                 "    if lock.try():\n"
+                 "    if lock.try_lock():\n"
                  "        return 0\n"
                  "    lock.unlock()\n"
                  "    lock.lock()\n"
