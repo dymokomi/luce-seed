@@ -1,7 +1,12 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.24**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.25**, the seed `luce-base` is written against.
+
+## 0.25
+
+- a unary operator under an optional context computes in the payload's type:
+  `return ~v` in a function returning `u64?`.
 
 ## 0.24: what chapter 11 of the conformance suite found, continued
 

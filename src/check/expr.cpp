@@ -359,8 +359,10 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         }
         return t_bool();
     }
+    // under an optional context the operand computes in the payload's type: `~v` for a `u64?`
+    Type* operand_expected = is_opt(expected) && !is_ptr(expected) && !is_func(expected) ? expected->elem : expected;
     if (n->op == TokenKind::Tilde) {
-        Type* inner = check_expr(n->left, expected);
+        Type* inner = check_expr(n->left, operand_expected);
         if (!is_int(inner) && !is_int_enum(inner)) {
             fail_n(n, "lucb.check.type", "`~` requires an integer");
             return t_error();
@@ -368,7 +370,7 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         return inner;
     }
     if (n->op == TokenKind::MinusPercent) {
-        Type* inner = check_expr(n->left, expected);
+        Type* inner = check_expr(n->left, operand_expected);
         if (!is_int(inner)) {
             fail_n(n, "lucb.check.type", "wrapping negate requires an integer");
             return t_error();
@@ -376,7 +378,7 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         return inner;
     }
     if (n->op == TokenKind::Plus) {
-        Type* inner = check_expr(n->left, expected);
+        Type* inner = check_expr(n->left, operand_expected);
         if (!is_numeric(inner) && inner->kind != TypeKind::UntypedInt) {
             fail_n(n, "lucb.check.type", "unary `+` requires a number");
             return t_error();
@@ -384,7 +386,7 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
         return inner;
     }
     if (n->op == TokenKind::Minus) {
-        Type* dest = expected;
+        Type* dest = operand_expected;
         if (dest == nullptr || (!is_signed_int(dest) && !is_float(dest))) {
             dest = t_i64();
         }

@@ -1116,3 +1116,11 @@ TEST(check_error_in_handler_needs_fallible) {
                     "pub func answer() -> i64:\n    let v = may() catch e:\n        error(e.code, e.message)\n    return v\n",
                     "lucb.check.type"));
 }
+
+// §5.8: a unary operator under an optional result computes in the payload's type
+TEST(check_unary_under_optional_context) {
+    CHECK(check_ok("func f(v: u64) -> u64?:\n    return ~v\n"
+                   "func g(v: i64) -> i64?:\n    return -v\n"
+                   "func h(v: u32) -> u32?:\n    return -%v\n"
+                   "pub func answer() -> i64:\n    let a = f(1) else 0\n    return (i64)a\n"));
+}
