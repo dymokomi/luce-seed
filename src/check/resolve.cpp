@@ -789,6 +789,9 @@ auto Checker::is_c_repr(Type* t) -> bool {
         is_func(t) || is_span(t) || t->kind == TypeKind::ErrorCode) {
         return true;
     }
+    if (is_opt(t) && t->elem != nullptr && t->elem->kind == TypeKind::CStr) {
+        return true; // `c.str?`: a `char*` that may be null (§17.1)
+    }
     return false;
 }
 

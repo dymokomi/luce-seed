@@ -1,7 +1,12 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.32**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.33**, the seed `luce-base` is written against.
+
+## 0.33: `c.str?` crosses the boundary
+
+- an `extern` or `export` signature admits `c.str?`, a `char*` that may be
+  null (§17.1); the callee's `none` becomes C's null and back.
 
 ## 0.32: what chapters 20 and 22 of the conformance suite found
 
