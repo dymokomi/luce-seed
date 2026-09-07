@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 # VERSION is the one place the seed's version lives; a release bumps it and tags luce-seed-N.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" LUCB_VERSION)
 string(STRIP "${LUCB_VERSION}" LUCB_VERSION)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
 project(luce-seed VERSION ${LUCB_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)

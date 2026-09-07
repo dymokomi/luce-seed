@@ -41,7 +41,12 @@ auto Emitter::produces_opt(Node* n) -> bool {
         return false;
     }
     if (n->kind == NodeKind::Group) {
-        return produces_opt(n->left);
+        // the inner expression's emission is the optional whenever its type is one
+        return n->left != nullptr && is_opt(n->left->ty);
+    }
+    if (n->kind == NodeKind::Conditional) {
+        // each branch was emitted as the optional; the choice between them is one too
+        return n->left != nullptr && is_opt(n->left->ty) && n->right != nullptr && is_opt(n->right->ty);
     }
     if (n->kind == NodeKind::Literal && n->op == TokenKind::KwNone) {
         return true;
@@ -560,7 +565,8 @@ auto Emitter::emit_unary(Node* n) -> string {
     if (n->op == TokenKind::Plus) {
         return emit_expr(n->left);
     }
-    Type* t = n->ty;
+    // under an optional context the operator computes in the payload's type; emit_expr wraps
+    Type* t = is_opt(n->ty) && !is_ptr(n->ty) && !is_func(n->ty) ? n->ty->elem : n->ty;
     string x = emit_expr(n->left);
     if (n->op == TokenKind::Tilde) {
         if (t != nullptr && is_unsigned_int(t)) {
@@ -675,7 +681,8 @@ auto Emitter::emit_binary(Node* n) -> string {
     if (op == TokenKind::KwOr) {
         return "(" + L + " || " + R + ")";
     }
-    Type* t = n->ty;
+    // under an optional context the operator computes in the payload's type; emit_expr wraps
+    Type* t = is_opt(n->ty) && !is_ptr(n->ty) && !is_func(n->ty) ? n->ty->elem : n->ty;
     Type* result = t;
     if (is_opt(t) && op != TokenKind::PlusQuestion && op != TokenKind::MinusQuestion &&
         op != TokenKind::StarQuestion) {

@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.25**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.26**, the seed `luce-base` is written against.
+
+## 0.26
+
+- the C backend wraps a value into an optional once: a group and a conditional
+  whose branches are optionals produce the optional themselves, and a unary or
+  binary operator under an optional context computes in the payload's type;
+- CMake reconfigures when `VERSION` changes, so `lucb --version` is current.
 
 ## 0.25
 

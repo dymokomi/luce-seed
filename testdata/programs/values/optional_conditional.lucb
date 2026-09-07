@@ -1,0 +1,23 @@
+## A conditional, a group, and a unary operator under an optional result produce the optional
+## once: the C backend wraps the value where the checker widened it, and nowhere else.
+# answer: 260
+func divide(a: u64, b: u64) -> u64?:
+    return (a // b) if b != 0 else none
+
+func pick(a: bool, b: bool, both: bool) -> bool?:
+    return (a and b) if both else (a or b)
+
+func less(a: u64, b: u64, signed: bool) -> bool?:
+    let sa = (i64)a
+    let sb = (i64)b
+    return (sa < sb) if signed else (a < b)
+
+func flip(v: u64) -> u64?:
+    return ~v
+
+pub func answer() -> i64:
+    let d = divide(7, 2) else 0
+    let p = pick(true, false, false) else false
+    let l = less(1, 2, false) else false
+    let f = flip(0) else 0
+    return (i64)d + (1 if p else 0) + (1 if l else 0) + (i64)(f & 255)
