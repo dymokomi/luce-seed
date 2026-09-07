@@ -380,6 +380,9 @@ auto Checker::check_params(Node* fn) -> void {
                 fail_n(p, "lucb.check.type",
                        "default has type " + type_name(dt) + ", expected " + type_name(p->ty));
             }
+            if (!is_constant_expr(p->left)) {
+                fail_n(p->left, "lucb.check.type", "a default argument is a constant expression");
+            }
         }
         bind(p->text, p->ty, false, p);
     }
@@ -396,6 +399,9 @@ auto Checker::check_func(Node* fn, Node* owner) -> void {
     Type* result = t_unit();
     if (fn->type != nullptr) {
         result = resolve_type(fn->type);
+        if (result != nullptr && result->kind == TypeKind::Fmt) {
+            fail_n(fn, "lucb.check.type", "a function does not return `fmt`; it is a parameter type only");
+        }
     }
     if (is_fail(result)) {
         fn->flags |= FlagFallible;
@@ -868,6 +874,9 @@ auto Checker::resolve_sig(Node* fn) -> void {
     Type* result = t_unit();
     if (fn->type != nullptr) {
         result = resolve_type(fn->type);
+        if (result != nullptr && result->kind == TypeKind::Fmt) {
+            fail_n(fn, "lucb.check.type", "a function does not return `fmt`; it is a parameter type only");
+        }
     }
     if (is_fail(result)) {
         fn->flags |= FlagFallible;

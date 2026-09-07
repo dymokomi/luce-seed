@@ -1,7 +1,18 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.20**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.21**, the seed `luce-base` is written against.
+
+## 0.21: what chapters 8 and 9 of the conformance suite found
+
+- a deferred call runs whole on `continue`, `break`, and `return`: the jump in
+  flight is set aside while it runs;
+- a string pattern compares its text, so `"two", "deux" => 2` matches "deux";
+- `match` refuses a duplicate pattern, a pattern after an unguarded `_`, and
+  alternatives that bind different names;
+- a deferred call must produce `unit` and a fallible one must carry `catch`;
+- a label already open may not be reopened; a range needs integer bounds;
+- a default argument is a constant expression; no function returns `fmt`.
 
 ## 0.20: what chapters 6 and 7 of the conformance suite found
 

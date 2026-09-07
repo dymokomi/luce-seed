@@ -304,6 +304,9 @@ auto Checker::check_stmt(Node* n) -> void {
             Type* hint = (annotated != nullptr && is_int(annotated)) ? annotated : nullptr;
             Type* a = check_expr(n->right->left, hint);
             Type* b = check_expr(n->right->right, hint);
+            if (is_float(a) || is_float(b)) {
+                fail_n(n->right, "lucb.check.type", "a range needs integer bounds");
+            }
             Type* u = hint != nullptr ? hint : unify_int(a, b);
             if (u == nullptr || !is_int(u)) {
                 u = t_i64();
@@ -395,7 +398,14 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->left != nullptr && n->left->kind == NodeKind::Free) {
             check_free(n->left);
         } else {
-            check_expr(n->left);
+            Type* t = check_expr(n->left);
+            // the call must produce `unit`; a fallible one carries its `catch` (§8.8)
+            if (is_fail(t) && n->body == nullptr) {
+                fail_n(n->left, "lucb.check.type", "a deferred call must handle its failure with `catch`");
+            } else if (!is_fail(t) && t != nullptr && t->kind != TypeKind::Unit && t->kind != TypeKind::Never &&
+                       t->kind != TypeKind::Error) {
+                fail_n(n->left, "lucb.check.type", "a deferred call must produce `unit`; wrap it in `discard`");
+            }
         }
         if (n->body != nullptr) {
             check_stmt(n->body);
@@ -559,6 +569,11 @@ auto Checker::always_returns(Node* n) -> bool {
 auto Checker::enter_loop(Node* n) -> void {
     if (!n->label.empty() && is_core_name(n->label)) {
         fail_n(n, "lucb.check.shadow", "`" + string(n->label) + "` belongs to the language; a label cannot take it");
+    }
+    for (string_view open : loop_labels) {
+        if (!n->label.empty() && open == n->label) {
+            fail_n(n, "lucb.check.shadow", "this label is already open");
+        }
     }
     loop_labels.push_back(n->label);
 }

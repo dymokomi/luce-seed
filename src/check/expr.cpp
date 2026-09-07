@@ -917,24 +917,57 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
     bool saw_none = false;
     bool saw_some = false;
     vector<string_view> saw_cases;
+    vector<string> saw_literals;
     for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
         push_scope();
         bool guarded = arm->type != nullptr;
-        for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+        // the names the arm's first pattern binds; every alternative binds the same (§8.4)
+        vector<string_view> first_names;
+        int index = 0;
+        for (Node* pat = arm->left; pat != nullptr; pat = pat->next, index++) {
+            if (saw_rest) {
+                fail_n(pat, "lucb.check.match", "this pattern is unreachable: an earlier `_` arm takes everything");
+            }
+            size_t bound = 0;
+            auto bind_name = [&](Node* at, string_view name, Type* t) {
+                bound++;
+                if (index > 0) {
+                    bool known = false;
+                    for (string_view f : first_names) {
+                        known = known || f == name;
+                    }
+                    if (!known) {
+                        fail_n(at, "lucb.check.match", "every pattern of an arm binds the same names");
+                    }
+                    Binding* existing = lookup(name);
+                    if (existing != nullptr && !type_eq(existing->type, t)) {
+                        fail_n(at, "lucb.check.type", "shared bindings must have the same type");
+                    }
+                    return;
+                }
+                first_names.push_back(name);
+                bind(name, t, false, at);
+            };
             if (pat->text == "_") {
                 if (!guarded) {
                     saw_rest = true;
                 }
             } else if (pat->text == "none") {
+                if (saw_none && !guarded) {
+                    fail_n(pat, "lucb.check.match", "duplicate pattern");
+                }
                 if (!guarded) {
                     saw_none = true;
                 }
             } else if (pat->text == "some") {
+                if (saw_some && !guarded) {
+                    fail_n(pat, "lucb.check.match", "duplicate pattern");
+                }
                 if (!guarded) {
                     saw_some = true;
                 }
                 if (pat->body != nullptr && !pat->body->text.empty() && is_opt(scrut)) {
-                    bind(pat->body->text, scrut->elem, false, pat);
+                    bind_name(pat, pat->body->text, scrut->elem);
                 }
             } else if (is_enum(scrut) && scrut->decl != nullptr && !pat->text.empty() &&
                        pat->text != "_" && pat->left == nullptr) {
@@ -942,6 +975,13 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                 if (cse == nullptr) {
                     fail_n(pat, "lucb.check.name", "no case `" + string(pat->text) + "`");
                 } else {
+                    bool seen = false;
+                    for (string_view c : saw_cases) {
+                        seen = seen || c == pat->text;
+                    }
+                    if (seen && !guarded) {
+                        fail_n(pat, "lucb.check.match", "duplicate pattern");
+                    }
                     if (!guarded) {
                         saw_cases.push_back(pat->text);
                     }
@@ -950,15 +990,7 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                     Node* b = pat->body;
                     while (p != nullptr && b != nullptr) {
                         if (b->text != "_") {
-                            Binding* existing = lookup(b->text);
-                            if (existing != nullptr) {
-                                if (!type_eq(existing->type, p->ty)) {
-                                    fail_n(b, "lucb.check.type",
-                                           "shared bindings must have the same type");
-                                }
-                            } else {
-                                bind(b->text, p->ty, false, b);
-                            }
+                            bind_name(b, b->text, p->ty);
                         }
                         p = p->next;
                         b = b->next;
@@ -975,11 +1007,23 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                     if (pat->left->op == TokenKind::KwFalse) {
                         saw_false = true;
                     }
+                    if (pat->right == nullptr && !guarded) {
+                        string spelled(pat->left->text);
+                        for (const string& seen : saw_literals) {
+                            if (seen == spelled) {
+                                fail_n(pat, "lucb.check.match", "duplicate pattern");
+                            }
+                        }
+                        saw_literals.push_back(spelled);
+                    }
                 }
                 check_expr(pat->left, scrut);
                 if (pat->right != nullptr) {
                     check_expr(pat->right, scrut);
                 }
+            }
+            if (index > 0 && bound != first_names.size()) {
+                fail_n(pat, "lucb.check.match", "every pattern of an arm binds the same names");
             }
         }
         if (arm->type != nullptr) {

@@ -952,6 +952,9 @@ auto Interp::match_pat(Node* pat, const Value& scrut, Type* st) -> bool {
         if (lit.kind == TypeKind::Bool) {
             return lit.b == scrut.b;
         }
+        if (lit.kind == TypeKind::Str || scrut.kind == TypeKind::Str) {
+            return decode_string(lit.str) == decode_string(scrut.str); // text by bytes (§7.4)
+        }
         return as_u(lit, lit.type) == as_u(scrut, scrut.type);
     }
     return false;

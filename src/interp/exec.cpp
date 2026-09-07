@@ -33,10 +33,20 @@ auto Interp::exec(Node* n) -> void {
             defers.pop_back();
             if (!trapped) {
                 bool failing = returning && ret.failed;
+                // a deferred call runs whole on every exit (§8.8): the `break`, `continue`, or
+                // `return` in flight is set aside while it runs and restored after
+                const bool was_returning = returning;
+                const bool was_breaking = breaking;
+                const bool was_continuing = continuing;
+                const Value pending = ret;
+                const string_view pending_label = jump_label;
                 for (int i = static_cast<int>(d.size()) - 1; i >= 0; i--) {
                     if (d[static_cast<size_t>(i)].err_only && !failing) {
                         continue;
                     }
+                    returning = false;
+                    breaking = false;
+                    continuing = false;
                     Node* dn = d[static_cast<size_t>(i)].n;
                     if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
                         exec(dn->left);
@@ -46,7 +56,15 @@ auto Interp::exec(Node* n) -> void {
                             run_catch_handler(dn, dv);
                         }
                     }
+                    if (trapped) {
+                        break;
+                    }
                 }
+                returning = was_returning;
+                breaking = was_breaking;
+                continuing = was_continuing;
+                ret = pending;
+                jump_label = pending_label;
             }
         }
         break;
