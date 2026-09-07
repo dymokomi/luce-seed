@@ -309,7 +309,15 @@ struct Checker {
     bool pattern_covers_rest(Node* pat);
     Type* check_match(Node* n, Type* expected);
     Type* check_trap(Node* n);
+    void name_positional_fields(Node* n, Node* st);
     Type* check_ctor(Node* n, Node* st);
+    void check_case_values(Node* en);
+    void check_init(Node* fn, Node* owner);
+    bool terminates_handler(Node* n);
+    bool has_equality(Type* t);
+    void check_containment(Node* d);
+    bool contains_by_value(Type* t, Node* d);
+    bool contains_by_value(Type* t, Node* d, vector<Node*>& seen);
     Type* check_func_call(Node* n, Node* fn, Node* recv);
     bool is_cstr(Type* t);
     bool extern_arg_ok(Type* at, Type* pt, Node* arg);

@@ -855,18 +855,12 @@ auto Emitter::emit_enum_check(Type* dest, const string& e) -> string {
         if (c->kind != NodeKind::EnumCase) {
             continue;
         }
-        uint64_t v = next;
-        if (c->left != nullptr && c->left->kind == NodeKind::Literal) {
-            ParsedInt p = parse_int_literal(c->left->text);
-            if (p.ok) {
-                v = p.value;
-            }
-        }
+        uint64_t v = (c->flags & FlagLiteralCached) != 0 ? c->cached : next;
         if (!first) {
             s += " || ";
         }
         first = false;
-        s += "_lb_e == " + std::to_string(v) + "u";
+        s += "_lb_e == (" + c_type(dest) + ")" + std::to_string(v) + "ull";
         next = v + 1;
     }
     if (first) {

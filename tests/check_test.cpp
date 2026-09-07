@@ -1008,3 +1008,87 @@ TEST(check_export_span) {
                    "pub func answer() -> i64:\n"
                    "    return 0\n"));
 }
+
+// §10.1: a memberwise initialiser is positional or named
+TEST(check_struct_positional_construction) {
+    CHECK(check_ok("struct P:\n    var x: i64\n    var y: i64\n"
+                   "pub func answer() -> i64:\n    let p = P(1, 2)\n    let q = P(1, y = 2)\n    return p.x + q.y\n"));
+    CHECK(check_has("struct P:\n    var x: i64\n    var y: i64\n"
+                    "pub func answer() -> i64:\n    let p = P(1, 2, 3)\n    return 0\n",
+                    "lucb.check.call"));
+    CHECK(check_has("struct P:\n    var x: i64\n    var y: i64\n"
+                    "pub func answer() -> i64:\n    let p = P(x = 1, 2)\n    return 0\n",
+                    "lucb.check.call"));
+}
+
+// §10.3: case values are constants that fit, distinct, and given for every case
+TEST(check_backed_enum_case_values) {
+    CHECK(check_ok("enum L as i8:\n    low = -1\n    high = 1\n"
+                   "pub func answer() -> i64:\n    return (i64)(i8)L.low\n"));
+    CHECK(check_has("enum S as u8:\n    a = 255\n    b = 256\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("enum S as u8:\n    a = -1\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("enum S as u8:\n    a = 1\n    b = 1\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("enum S as u8:\n    a\n    b\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+// §10.1: a custom `init` assigns every field exactly once, reads none early, returns unit or `!`
+TEST(check_init_rules) {
+    CHECK(check_ok("struct P:\n    let a: i64\n    let b: i64\n"
+                   "    pub func init(n: i64) -> !:\n        if n < 0:\n            error(1, \"neg\")\n"
+                   "        self.a = n\n        self.b = n * 2\n        discard(self.a + self.b)\n"
+                   "pub func answer() -> i64!:\n    let p = try P(1)\n    return p.b\n"));
+    CHECK(check_has("struct P:\n    let a: i64\n    let b: i64\n"
+                    "    pub func init(n: i64):\n        self.a = n\n"
+                    "pub func answer() -> i64:\n    return P(1).a\n",
+                    "lucb.check.init"));
+    CHECK(check_has("struct P:\n    let a: i64\n"
+                    "    pub func init(n: i64):\n        self.a = n\n        self.a = n + 1\n"
+                    "pub func answer() -> i64:\n    return P(1).a\n",
+                    "lucb.check.init"));
+    CHECK(check_has("struct P:\n    let a: i64\n    let b: i64\n"
+                    "    pub func init(n: i64):\n        self.a = n\n        self.b = self.a * 2\n"
+                    "pub func answer() -> i64:\n    return P(1).a\n",
+                    "lucb.check.init"));
+    CHECK(check_has("struct P:\n    let a: i64\n"
+                    "    pub func init(n: i64):\n        while n > 0:\n            self.a = n\n"
+                    "pub func answer() -> i64:\n    return P(1).a\n",
+                    "lucb.check.init"));
+    CHECK(check_has("struct P:\n    let a: i64\n"
+                    "    pub func init(n: i64) -> i64:\n        self.a = n\n        return n\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.init"));
+}
+
+// §10.1: a struct cannot contain itself directly
+TEST(check_struct_contains_itself) {
+    CHECK(check_has("struct N:\n    var next: N\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("struct A:\n    var b: B\nstruct B:\n    var a: A\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("struct N:\n    var value: i64\n    var next: N*?\n"
+                   "pub func answer() -> i64:\n    let n = N(value = 1, next = none)\n    return n.value\n"));
+}
+
+// §7.4, §10.4: a union has no equality, nor does a struct holding one; a union has a member
+TEST(check_union_rules) {
+    CHECK(check_has("union U:\n    a: i64\n    b: f64\nstruct S:\n    var u: U\n"
+                    "pub func answer() -> i64:\n    var x: S\n    var y: S\n    return 1 if x == y else 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("union U:\n    func f() -> i64:\n        return 1\npub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+}
+
+// §11.4: a handler for a value recovers one or leaves; one for `unit` may fall through
+TEST(check_catch_handler_terminates) {
+    CHECK(check_has("func f() -> i64!:\n    return 1\n"
+                    "pub func answer() -> i64:\n    let v = f() catch e:\n        discard(e)\n    return v\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("func f() -> i64!:\n    return 1\n"
+                   "pub func answer() -> i64:\n    let v = f() catch e:\n        recover 2\n    return v\n"));
+    CHECK(check_ok("func g() -> !:\n    return\n"
+                   "pub func answer() -> i64:\n    g() catch e:\n        discard(e)\n    return 1\n"));
+}

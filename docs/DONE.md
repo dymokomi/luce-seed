@@ -1,7 +1,26 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.21**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.22**, the seed `luce-base` is written against.
+
+## 0.22: what chapter 10 of the conformance suite found
+
+- a memberwise initialiser is positional or named: an unnamed value takes the
+  field at its position, none may follow a named one;
+- an integer-backed enum gives every case a constant that fits its
+  representation, negative only when it is signed, no two alike; the checker
+  folds the value and the backends read it, so `low = -1` in an `i8` enum is
+  the byte 0xFF and `L(n)` finds it;
+- a custom `init` returns `unit` or `!`, assigns every field exactly once, and
+  neither reads a field nor calls a method before every field is assigned
+  (`check/init.cpp`); a failing `init` fails the construction in the interpreter;
+- a struct cannot contain itself by value, directly or through another aggregate;
+- `==` needs equality in every component, so a struct holding a union has none;
+  a union has at least one member;
+- a `catch` handler for a value must `recover` or leave; a handler for `unit`
+  may fall through;
+- the interpreter's union keeps its bytes across member changes, so a `u8`
+  member's write leaves the rest of a `u16` member as C does.
 
 ## 0.21: what chapters 8 and 9 of the conformance suite found
 

@@ -838,3 +838,33 @@ TEST(eval_hex) {
     CHECK(r.ok);
     CHECK(r.output.find("ff") != std::string::npos);
 }
+
+// §10.4: a narrow member's write leaves the union's other bytes as they were
+TEST(eval_union_keeps_other_bytes) {
+    EvalResult r = run("union S:\n    byte: u8\n    pair: u16\n"
+                       "pub func answer() -> i64:\n    var s: S\n    s.pair = 0x1234\n    s.byte = 0xFF\n"
+                       "    return (i64)s.pair\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 0x12FF);
+}
+
+// §10.1: a failing `init` fails the construction
+TEST(eval_init_failure_propagates) {
+    EvalResult r = run("let bad = ErrorCode.package(1)\n"
+                       "struct P:\n    let v: i64\n"
+                       "    pub func init(v: i64) -> !:\n        if v < 0:\n            return error(bad, \"neg\")\n"
+                       "        self.v = v\n"
+                       "pub func answer() -> i64:\n    let p = P(-1) catch e:\n        recover P(7) catch:\n            return 0\n"
+                       "    return p.v\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 7);
+}
+
+// §10.3: a checked conversion to an `i8` enum matches the case `-1`
+TEST(eval_negative_backed_enum_case) {
+    EvalResult r = run("enum L as i8:\n    low = -1\n    high = 1\n"
+                       "pub func answer() -> i64:\n    let n: i8 = -1\n    let l = L(n)\n"
+                       "    return 1 if l == .low else 0\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1);
+}

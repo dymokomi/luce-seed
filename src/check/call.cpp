@@ -145,6 +145,32 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
     return t_error();
 }
 
+// A memberwise initialiser is positional or named (§10.1): each unnamed argument takes the
+// field at its position, after which the rest of the check reads every argument by name.
+auto Checker::name_positional_fields(Node* n, Node* st) -> void {
+    Node* field = st->body;
+    bool named = false;
+    for (Node* a = n->body; a != nullptr; a = a->next) {
+        if (!a->text.empty()) {
+            named = true;
+            continue;
+        }
+        if (named) {
+            fail_n(a, "lucb.check.call", "a positional value cannot follow a named one");
+            return;
+        }
+        while (field != nullptr && field->kind != NodeKind::Field) {
+            field = field->next;
+        }
+        if (field == nullptr) {
+            fail_n(a, "lucb.check.call", "too many values for this struct");
+            return;
+        }
+        a->text = field->text;
+        field = field->next;
+    }
+}
+
 auto Checker::check_ctor(Node* n, Node* st) -> Type* {
     Type* ty = st->ty;
     Node* init = struct_member(st, "init", NodeKind::Func);
@@ -156,25 +182,19 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
         }
         return ty;
     }
+    name_positional_fields(n, st);
     for (Node* a = n->body; a != nullptr; a = a->next) {
-        if (a->left == nullptr) {
+        if (a->left == nullptr || a->text.empty()) {
             continue;
         }
-        Node* field = nullptr;
-        if (!a->text.empty()) {
-            field = struct_member(st, a->text, NodeKind::Field);
-            if (field == nullptr) {
-                fail_n(a, "lucb.check.name", "no field `" + string(a->text) + "`");
-                continue;
-            }
-            if (field != nullptr && imported_owner(st) && (field->flags & FlagPub) == 0) {
-                fail_n(a, "lucb.check.name", "field `" + string(a->text) + "` is not public");
-                return t_error();
-            }
-        } else {
-            fail_n(a, "lucb.check.unsupported",
-                   "positional struct construction is not in the scalar core; use names");
+        Node* field = struct_member(st, a->text, NodeKind::Field);
+        if (field == nullptr) {
+            fail_n(a, "lucb.check.name", "no field `" + string(a->text) + "`");
             continue;
+        }
+        if (imported_owner(st) && (field->flags & FlagPub) == 0) {
+            fail_n(a, "lucb.check.name", "field `" + string(a->text) + "` is not public");
+            return t_error();
         }
         a->resolved = field;
         Type* at = check_expr(a->left, field->ty);

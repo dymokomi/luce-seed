@@ -259,14 +259,12 @@ auto Interp::eval_call(Node* n) -> Value {
         callee->resolved != nullptr && callee->resolved->kind == NodeKind::Struct) {
         Node* st = callee->resolved;
         Value v = zero_of(st->ty);
-        call_func(n->resolved, &v, n->body);
+        Value outcome = call_func(n->resolved, &v, n->body);
         if (trapped) {
             return v_unit();
         }
-        if (returning && ret.failed) {
-            returning = false;
-            ret.failed = true;
-            return ret;
+        if (outcome.failed) {
+            return outcome;
         }
         v.failed = false;
         return v;

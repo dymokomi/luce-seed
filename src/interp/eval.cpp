@@ -104,12 +104,8 @@ auto Interp::enum_case_int(Node* en, Node* cse) -> uint64_t {
             continue;
         }
         uint64_t v = next;
-        if (m->left != nullptr && m->left->kind == NodeKind::Literal &&
-            m->left->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(m->left->text);
-            if (p.ok) {
-                v = p.value;
-            }
+        if ((m->flags & FlagLiteralCached) != 0) {
+            v = m->cached; // folded by the checker (§10.3)
         }
         if (m == cse) {
             return v;
@@ -141,7 +137,8 @@ auto Interp::v_enum_case(Node* cse, Type* t) -> Value {
     v.kind = TypeKind::Enum;
     v.type = t;
     if (is_int_enum(t)) {
-        v.u = enum_case_int(t != nullptr ? t->decl : nullptr, cse);
+        // the representation's width, so `-1` in an `i8` enum is the byte 0xFF (§10.3)
+        v.u = enum_case_int(t->decl, cse) & int_mask(int_bits(t->elem));
     } else {
         v.u = static_cast<uint64_t>(enum_tag_of(t != nullptr ? t->decl : nullptr, cse));
     }

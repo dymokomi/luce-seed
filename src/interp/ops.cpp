@@ -717,18 +717,13 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         if (checked && dest->decl != nullptr) {
             bool ok = false;
             uint64_t next = 0;
+            const uint64_t mask = int_mask(int_bits(dest->elem));
             for (Node* c = dest->decl->body; c != nullptr; c = c->next) {
                 if (c->kind != NodeKind::EnumCase) {
                     continue;
                 }
-                uint64_t v = next;
-                if (c->left != nullptr && c->left->kind == NodeKind::Literal) {
-                    ParsedInt p = parse_int_literal(c->left->text);
-                    if (p.ok) {
-                        v = p.value;
-                    }
-                }
-                if (v == u) {
+                uint64_t v = (c->flags & FlagLiteralCached) != 0 ? c->cached : next;
+                if ((v & mask) == (u & mask)) {
                     ok = true;
                     break;
                 }

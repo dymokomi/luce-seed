@@ -297,6 +297,14 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
     if (n->kind == NodeKind::Group) {
         return const_u64(n->left, out);
     }
+    if (n->kind == NodeKind::Unary && n->op == TokenKind::Minus) {
+        uint64_t a = 0;
+        if (!const_u64(n->left, &a)) {
+            return false;
+        }
+        *out = 0 - a;
+        return true;
+    }
     if (n->kind == NodeKind::Call && n->left != nullptr && n->left->kind == NodeKind::Name &&
         (n->left->text == "sizeof" || n->left->text == "alignof")) {
         if (n->body == nullptr || n->body->left == nullptr) {
@@ -426,6 +434,9 @@ auto Checker::check_func(Node* fn, Node* owner) -> void {
     }
     check_params(fn);
     check_stmt(fn->body);
+    if (owner != nullptr && fn->text == "init") {
+        check_init(fn, owner);
+    }
     if ((fn->flags & FlagNaked) != 0) {
         check_naked_body(fn);
     } else if (!type_eq(result, t_unit()) && !always_returns(fn->body)) {
@@ -696,7 +707,15 @@ auto Checker::collect_module(Node* mod) -> void {
                     }
                 }
             }
-        } else if (d->kind == NodeKind::Enum) {
+        }
+    }
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union) && !is_generic_decl(d)) {
+            check_containment(d);
+        }
+    }
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind == NodeKind::Enum) {
             if (d->right != nullptr && d->right->kind == NodeKind::Type) {
                 Type* backing = resolve_type(d->right);
                 if (!is_int(backing)) {
@@ -821,6 +840,56 @@ auto Checker::collect_module(Node* mod) -> void {
     }
 }
 
+// A struct or union cannot contain itself by value; a pointer, span, or optional pointer
+// breaks the cycle (§10.1). The offending field loses its type so no layout recurses.
+auto Checker::check_containment(Node* d) -> void {
+    for (Node* m = d->body; m != nullptr; m = m->next) {
+        if (m->kind == NodeKind::Field && contains_by_value(m->ty, d)) {
+            fail_n(m, "lucb.check.type", "`" + string(d->text) + "` contains itself; use a pointer");
+            m->ty = t_error();
+        }
+    }
+}
+
+auto Checker::contains_by_value(Type* t, Node* d) -> bool {
+    vector<Node*> seen;
+    return contains_by_value(t, d, seen);
+}
+
+auto Checker::contains_by_value(Type* t, Node* d, vector<Node*>& seen) -> bool {
+    if (t == nullptr) {
+        return false;
+    }
+    if (is_array(t) || is_atomic(t) || (is_opt(t) && !is_ptr(t) && !is_func(t))) {
+        return contains_by_value(t->elem, d, seen);
+    }
+    if (is_tup(t)) {
+        for (int i = 0; i < t->ntargs; i++) {
+            if (contains_by_value(t->args[i], d, seen)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if ((t->kind == TypeKind::Struct || t->kind == TypeKind::Union) && t->decl != nullptr) {
+        if (t->decl == d) {
+            return true;
+        }
+        for (Node* s : seen) {
+            if (s == t->decl) {
+                return false; // another cycle, reported at its own declaration
+            }
+        }
+        seen.push_back(t->decl);
+        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field && contains_by_value(m->ty, d, seen)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 auto Checker::check_enum(Node* en) -> void {
     bool saw_payload = false;
     bool saw_value = false;
@@ -832,10 +901,6 @@ auto Checker::check_enum(Node* en) -> void {
             }
             if (m->left != nullptr) {
                 saw_value = true;
-                uint64_t v = 0;
-                if (!const_u64(m->left, &v)) {
-                    fail_n(m, "lucb.check.type", "enum case value must be a constant");
-                }
             }
             for (Node* o = en->body; o != m; o = o->next) {
                 if (o->kind == NodeKind::EnumCase && o->text == m->text) {
@@ -849,9 +914,57 @@ auto Checker::check_enum(Node* en) -> void {
     if (saw_payload && (saw_value || is_int_enum(en->ty))) {
         fail_n(en, "lucb.check.type", "payload cases cannot mix with integer-backed values");
     }
+    check_case_values(en);
+}
+
+// An integer-backed enum gives every case a constant that fits its representation, no two
+// alike (§10.3); the value is folded into the case for the backends.
+auto Checker::check_case_values(Node* en) -> void {
+    Type* backing = is_int_enum(en->ty) ? en->ty->elem : nullptr;
+    for (Node* m = en->body; m != nullptr; m = m->next) {
+        if (m->kind != NodeKind::EnumCase) {
+            continue;
+        }
+        if (m->left == nullptr) {
+            if (backing != nullptr) {
+                fail_n(m, "lucb.check.type", "an integer-backed enum gives every case its value");
+            }
+            continue;
+        }
+        uint64_t v = 0;
+        if (!const_u64(m->left, &v)) {
+            fail_n(m, "lucb.check.type", "enum case value must be a constant");
+            continue;
+        }
+        Node* spelling = m->left;
+        while (spelling->kind == NodeKind::Group) {
+            spelling = spelling->left;
+        }
+        bool negative = spelling->kind == NodeKind::Unary && spelling->op == TokenKind::Minus;
+        if (backing != nullptr && negative && !is_signed_int(backing)) {
+            fail_n(m, "lucb.check.type", "a negative value needs a signed representation");
+        } else if (backing != nullptr && !int_fits(negative ? 0 - v : v, negative, backing)) {
+            fail_n(m, "lucb.check.type", "this value does not fit the enum's representation");
+        }
+        m->cached = v;
+        m->flags |= FlagLiteralCached;
+        for (Node* o = en->body; o != m; o = o->next) {
+            if (o->kind == NodeKind::EnumCase && (o->flags & FlagLiteralCached) != 0 && o->cached == v) {
+                fail_n(m, "lucb.check.type", "two cases share the value of `" + string(o->text) + "`");
+                break;
+            }
+        }
+    }
 }
 
 auto Checker::check_union(Node* un) -> void {
+    bool any_member = false;
+    for (Node* m = un->body; m != nullptr; m = m->next) {
+        any_member = any_member || m->kind == NodeKind::Field;
+    }
+    if (!any_member) {
+        fail_n(un, "lucb.check.type", "a union has at least one member");
+    }
     for (Node* m = un->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
             for (Node* o = un->body; o != m; o = o->next) {

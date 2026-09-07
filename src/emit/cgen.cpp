@@ -317,12 +317,8 @@ uint64_t emit_case_int(Node* en, Node* cse) {
             continue;
         }
         uint64_t v = next;
-        if (m->left != nullptr && m->left->kind == NodeKind::Literal &&
-            m->left->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(m->left->text);
-            if (p.ok) {
-                v = p.value;
-            }
+        if ((m->flags & FlagLiteralCached) != 0) {
+            v = m->cached; // folded by the checker (§10.3)
         }
         if (m == cse) {
             return v;

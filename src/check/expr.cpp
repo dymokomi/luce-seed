@@ -774,6 +774,8 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         }
         if (!type_eq(L, R)) {
             fail_n(n, "lucb.check.type", "operands of `==` must have the same type");
+        } else if (!has_equality(L)) {
+            fail_n(n, "lucb.check.type", "these values have no equality (§7.4)");
         }
         return t_bool();
     }
@@ -896,8 +898,36 @@ auto Checker::check_catch(Node* n, Type* expected) -> Type* {
     pop_scope();
     in_catch = saved;
     catch_type = saved_ct;
+    // a handler for a value recovers one or leaves; one for `unit` may fall through (§11.4)
+    if (!type_eq(payload, t_unit()) && !terminates_handler(n->body)) {
+        fail_n(n, "lucb.check.type",
+               "a `catch` handler must `recover` a value or leave with `return`, `error`, `trap`, `break`, or `continue`");
+    }
     (void)expected;
     return payload;
+}
+
+// A handler's every path ends in `recover`, `return`, `error`, `trap`, `break`, or `continue`.
+auto Checker::terminates_handler(Node* n) -> bool {
+    if (n == nullptr) {
+        return false;
+    }
+    switch (n->kind) {
+    case NodeKind::Break:
+    case NodeKind::Continue:
+        return true;
+    case NodeKind::Block:
+        for (Node* s = n->body; s != nullptr; s = s->next) {
+            if (terminates_handler(s)) {
+                return true;
+            }
+        }
+        return false;
+    case NodeKind::If:
+        return terminates_handler(n->body) && terminates_handler(n->right);
+    default:
+        return always_returns(n);
+    }
 }
 
 auto Checker::pattern_covers_rest(Node* pat) -> bool {

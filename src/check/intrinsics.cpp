@@ -140,6 +140,40 @@ auto Checker::is_display(Type* t) -> bool {
            t->kind == TypeKind::Char || is_ptr(t) || t->kind == TypeKind::Fmt;
 }
 
+// `==` exists where every component supports it; unions and interface views never do (§7.4).
+auto Checker::has_equality(Type* t) -> bool {
+    if (t == nullptr) {
+        return false;
+    }
+    if (t->kind == TypeKind::Union || t->kind == TypeKind::Interface || t->kind == TypeKind::Fmt) {
+        return false;
+    }
+    if ((is_array(t) || is_opt(t)) && !is_ptr(t) && !is_func(t)) {
+        return has_equality(t->elem);
+    }
+    if (is_tup(t)) {
+        for (int i = 0; i < t->ntargs; i++) {
+            if (!has_equality(t->args[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if ((t->kind == TypeKind::Struct || t->kind == TypeKind::Enum) && t->decl != nullptr) {
+        for (Node* m = t->decl->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Field && !has_equality(m->ty)) {
+                return false;
+            }
+            for (Node* p = m->kind == NodeKind::EnumCase ? m->body : nullptr; p != nullptr; p = p->next) {
+                if (!has_equality(p->ty)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 auto Checker::is_hashable(Type* t) -> bool {
     if (t == nullptr) {
         return false;

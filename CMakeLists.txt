@@ -60,6 +60,7 @@ set(LUCB_CORE_SOURCES
     src/check/convert.cpp
     src/check/intrinsics.cpp
     src/check/stmt.cpp
+    src/check/init.cpp
     src/check/generic.cpp
     src/interp/interp.cpp
     src/interp/eval.cpp

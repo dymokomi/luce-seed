@@ -14,6 +14,8 @@
 
 namespace lucb {
 
+void sync_raw(Value& u);
+
 namespace {
 
 // The `Field` node of member `index` of a struct or union declaration.
@@ -120,7 +122,10 @@ bool encode(const Value& v, const Type* t, uint8_t* out) {
         return encode_members(v, t, out, false);
     }
     if (t->kind == TypeKind::Union) {
-        return v.active >= 0 ? encode_members(v, t, out, true) : true;
+        Value& u = const_cast<Value&>(v);
+        sync_raw(u);
+        std::memcpy(out, u.raw.data(), u.raw.size());
+        return true;
     }
     return false;
 }
@@ -164,6 +169,7 @@ bool decode(Value& v, const Type* t, const uint8_t* in) {
         return decode_members(v, t, in, false);
     }
     if (t->kind == TypeKind::Union) {
+        v.raw.assign(in, in + type_size(t));
         return v.active >= 0 ? decode_members(v, t, in, true) : true;
     }
     return false;
@@ -211,19 +217,31 @@ double float_from_bits(uint64_t bits, TypeKind k) {
     return d;
 }
 
+// The union's bytes brought up to date with its active member; the bytes beyond that
+// member's size are whatever an earlier member left there, as in C.
+void sync_raw(Value& u) {
+    const int size = type_size(u.type);
+    if (u.raw.size() != static_cast<size_t>(size)) {
+        u.raw.assign(static_cast<size_t>(size), 0);
+    }
+    if (u.active >= 0 && size > 0) {
+        Node* from = member_field(u.type->decl, u.active);
+        if (from != nullptr) {
+            encode(u.fields[static_cast<size_t>(u.active)], from->ty, u.raw.data());
+        }
+    }
+}
+
 Value* union_member(Value& u, int index) {
     if (u.type == nullptr || u.type->decl == nullptr || index < 0 ||
         static_cast<size_t>(index) >= u.fields.size()) {
         return nullptr;
     }
-    if (u.active >= 0 && u.active != index) {
-        Node* from = member_field(u.type->decl, u.active);
+    if (u.active != index) {
+        sync_raw(u);
         Node* to = member_field(u.type->decl, index);
-        const int size = type_size(u.type);
-        vector<uint8_t> bytes(static_cast<size_t>(size > 0 ? size : 1), 0);
-        if (from != nullptr && to != nullptr &&
-            encode(u.fields[static_cast<size_t>(u.active)], from->ty, bytes.data())) {
-            decode(u.fields[static_cast<size_t>(index)], to->ty, bytes.data());
+        if (to != nullptr) {
+            decode(u.fields[static_cast<size_t>(index)], to->ty, u.raw.data());
         }
     }
     u.active = index;
