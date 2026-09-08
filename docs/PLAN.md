@@ -48,7 +48,7 @@ compiled binary must agree. **Landed.**
 
 All scalars of §5.1. Wrapping / saturating / checked operators. Implicit
 same-signedness widening. `T(x)` vs `(T)x`. `sizeof`. Host pointer width.
-**Landed** (`f16` and `+?` wait; `offsetof` waits on layout tests).
+**Landed**, `f16`, `+?`, and `offsetof` included.
 
 ## M6 — Pointers, arrays, spans, `str`
 
@@ -120,8 +120,7 @@ shape as Zig after the C++ compiler could emit C:
 3. QBE or a machine backend is added in `luce-base`, not here (`zig3`).
 4. Freeze a seed (C dump or wasm) so C++ can go away (`zig1.wasm`).
 
-Out of scope in this repo: `f16`, math, stdlib `Arena`/`PageAllocator`,
-user `Display`, `out` parameters, thread `stack`/`name`, `asm` in the
-interpreter, Unicode `for character in text`, span `first`/`last`/`indexed`,
-extra `luce.toml` roots, status-form fallible export, MIR/QBE/native,
-formatter, linter. See [`FEATURES.md`](FEATURES.md).
+Out of scope in this repo: stdlib `Arena`/`PageAllocator`, thread
+`stack`/`name`, `asm` in the interpreter, Unicode `for character in text`,
+extra `luce.toml` roots, the status form of a fallible export in the C,
+MIR/QBE/native, formatter, linter. See [`FEATURES.md`](FEATURES.md).

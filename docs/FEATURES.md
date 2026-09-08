@@ -38,7 +38,7 @@ not land in this tree).
 | 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
 | 21 | Grammar | partial | parser accepts the productions; programs in `testdata/programs/` |
 | 5.1 | Integer scalars, `usize`/`isize`, `char` | done | `agree_u8_wrap`, `agree_sizeof_usize`, `check_u8_literal_ok` |
-| 5.1 | `f32`/`f64` | partial | `agree_f64_to_i64`; `f16` out of seed |
+| 5.1 | `f16`/`f32`/`f64` | done | `agree_f64_to_i64`, `decimal_test`; every literal converted exactly and rounded once to its width |
 | 5.3 | Pointers `T*`, `const T*`, `void*`, `T*?` | partial | `agree_pointer_deref`, `agree_ptr_int_cast`, `check_nullable_deref`, `check_escape_local` |
 | 5.4 | Arrays `T[N]`, spans `T[]` | done | `agree_array_index`, `agree_span_from_array`, `agree_slice` |
 | 5.5 | `str` as a view | done | `agree_str_length`, `agree_str_bytes`, `agree_str_from_bytes`, `agree_str_cstr`, `agree_str_unchecked`, `agree_str_invalid_utf8` |
@@ -94,7 +94,7 @@ not land in this tree).
 | 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb`; answers `(i32, str, str)!` |
 | 17.1 | `extern` / `export`, `null_foreign` | done | `agree_null_foreign`, `agree_export_twice`, `eval_null_foreign`, `check_extern_str_rejected`; `out` out of seed |
 | 17.2 | Variadic C calls | done | `agree_variadic_printf`, `check_variadic_str_rejected` |
-| 17.6 | Export header | partial | `header_export_func`, `header_export_span`, `lucb header`; spans in parameter position are pointer plus count; status-form fallible export out of seed |
+| 17.6 | Export header | partial | `header_export_func`, `header_export_span`, `lucb header`; spans in parameter position are pointer plus count; a fallible export checks, and its C keeps the internal result form (the status form of §17.6 is luce-base's) |
 | 5.9 / 15.1 | `@T` atomics, `atomic.fence`, `Ordering` | done | `agree_atomic_add`, `agree_atomic_method`, `agree_atomic_cas`, `agree_atomic_wait` |
 | 15.2 | `volatile T*` | done | `agree_volatile_store` |
 | 15.3 | `thread.spawn` / `Handle` | partial | `agree_thread_spawn`, `agree_thread_current`, `agree_program_thread_mod`; `import thread` / `import sync`; optional `stack`/`name` out of seed |
