@@ -347,7 +347,7 @@ let tail = all[16..]
 let view = u8[](pointer, count)         # from a pointer and a length; `pointer` must address `count` elements
 ```
 
-- Indexing and slicing are bounds-checked and trap on violation, in every build. `span.length` is `usize`; `span.data` is the pointer; `span.first()` and `span.last()` are `T?`; `span.indexed()` yields `(usize, T)` pairs for `for`.
+- Indexing and slicing are bounds-checked and trap on violation, in every build. `span.length` is `usize`; `span.data` is the pointer; `span.first()` and `span.last()` are `T?`; `span.indexed()` yields `(usize, T)` pairs for `for`. An array has `length`, a constant, `first()`, and `last()`; it has no `data`, because an array is a value and its address is `&array[0]`, or the span it converts to.
 - An empty span's `data` is a non-null, correctly aligned, dangling pointer that must not be dereferenced. This keeps the empty span distinct from `none`, so `T[]?` uses the ordinary tagged optional representation, not a niche. A C caller that passes `(NULL, 0)` to an exported span parameter receives the empty span; the export wrapper normalises it (§17.6).
 - A span of a local array is a pointer into the frame; §6.6 states the escape rule.
 
@@ -1632,7 +1632,7 @@ A Base executable links a startup shim and a trap reporter and no Luce runtime (
 | `arm64-macos` | `arm64` | 64 | 64 | signed | Apple arm64 |
 | `wasm32` | none | 32 | 32 | signed | WebAssembly C ABI |
 
-A target has an **instruction-set level** beyond its family's baseline, chosen with `--cpu`: on x86-64, `v1` (SSE2, the default), `v2` (SSE4.2, POPCNT), `v3` (AVX2, FMA, BMI2), and `v4` (AVX-512); on arm64, `neon` (the default) and `sve`. A program compiled for a level runs only on processors that have it; the compiler emits the level's instructions where it has forms for them, and the baseline's elsewhere, so the level never changes what a program means. `os.cpu_level` is the level the program was compiled for; `os.cpu_level_running()` is the level of the processor it runs on, for a program that dispatches at run time.
+A target has an **instruction-set level** beyond its family's baseline: on x86-64, `v1` (SSE2), `v2` (SSE4.2, POPCNT), `v3` (AVX2, FMA, BMI2), and `v4` (AVX-512); on arm64, `neon` and `sve`. Without `--cpu`, a build for the host is for the level of the processor it is built on, and a build for another target is for the baseline; `--cpu NAME` chooses the level, `--cpu v1` for a program that must run anywhere. A program compiled for a level runs only on processors that have it; the compiler emits the level's instructions where it has forms for them, and the baseline's elsewhere, so the level never changes what a program means. `os.cpu_level` is the level the program was compiled for; `os.cpu_level_running()` is the level of the processor it runs on, for a program that dispatches at run time.
 
 ### 19.6 Tooling
 

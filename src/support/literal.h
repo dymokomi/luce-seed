@@ -21,13 +21,17 @@ struct ParsedInt {
 
 struct ParsedFloat {
     bool ok = false;
-    double value = 0;
+    double value = 0;   // correctly rounded to binary64
+    string body;        // the digits, point, and exponent, without separators or suffix
     string_view suffix;
 };
 
 bool parse_i64_literal(string_view text, int64_t* out);
 ParsedInt parse_int_literal(string_view text);
 ParsedFloat parse_float_literal(string_view text);
+// The literal's value rounded once to a float of `width` bits (16, 32, or 64), as the
+// double that value is exactly (base.md §4.3).
+double float_literal_value(const ParsedFloat& parsed, int width);
 bool parse_char_literal(string_view text, uint32_t* out);
 
 // The bytes a string, byte, raw, or triple-quoted literal denotes (base.md §4.4):

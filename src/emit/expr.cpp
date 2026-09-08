@@ -12,6 +12,7 @@
 
 #include "emit/emitter.h"
 
+#include "support/decimal.h"
 #include "support/literal.h"
 #include <cinttypes>
 #include <cstdio>
@@ -533,21 +534,13 @@ auto Emitter::emit_literal(Node* n) -> string {
     }
     if (n->op == TokenKind::FloatLit) {
         ParsedFloat p = parse_float_literal(n->text);
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%.17g", p.value);
-        string text = buf;
-        // `%g` prints `2` for 2.0; C needs a point or an exponent for a floating literal
-        if (text.find_first_of(".eEn") == string::npos) {
-            text += ".0";
-        }
-        // `1.5f16`: the C compiler rounds the decimal to a half once
-        if (n->ty != nullptr && n->ty->kind == TypeKind::F16) {
-            return text + "f16";
-        }
-        if (n->ty != nullptr && n->ty->kind == TypeKind::F32) {
-            return text + "f";
-        }
-        return text;
+        // the bits the literal rounds to at its own width (base.md §4.3), as C's exact
+        // hexadecimal float: the C compiler neither rounds again nor refuses a small value
+        int width = n->ty != nullptr && n->ty->kind == TypeKind::F16 ? 16
+                  : n->ty != nullptr && n->ty->kind == TypeKind::F32 ? 32 : 64;
+        uint64_t bits = 0;
+        decimal_to_bits(p.body, width, &bits);
+        return hex_float(bits, width);
     }
     ParsedInt p = parse_int_literal(n->text);
     Type* t = n->ty;

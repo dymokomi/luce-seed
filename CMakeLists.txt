@@ -53,6 +53,7 @@ set(LUCB_CORE_SOURCES
     src/parse/stmt.cpp
     src/parse/expr.cpp
     src/support/literal.cpp
+    src/support/decimal.cpp
     src/check/type.cpp
     src/check/check.cpp
     src/check/resolve.cpp
@@ -99,6 +100,7 @@ add_executable(lucb_tests
     tests/harness.cpp
     tests/source_test.cpp
     tests/lex_test.cpp
+    tests/decimal_test.cpp
     tests/parse_test.cpp
     tests/check_test.cpp
     tests/eval_test.cpp

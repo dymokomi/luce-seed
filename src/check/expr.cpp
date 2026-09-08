@@ -13,6 +13,7 @@
 
 #include "check/checker.h"
 
+#include "support/decimal.h"
 #include "support/literal.h"
 
 namespace lucb {
@@ -264,24 +265,29 @@ auto Checker::check_literal(Node* n, Type* expected) -> Type* {
             fail_n(n, "lucb.check.number", "invalid float literal");
             return t_error();
         }
+        Type* t = nullptr;
         if (p.suffix == "f16") {
-            fail_n(n, "lucb.check.unsupported", "`f16` is not in this slice");
+            t = ty_f16;
+        } else if (p.suffix == "f32") {
+            t = ty_f32;
+        } else if (p.suffix == "f64") {
+            t = ty_f64;
+        } else if (p.suffix.empty()) {
+            t = is_float(expected) ? expected : ty_f64;
+        } else {
+            fail_n(n, "lucb.check.number", "unknown float suffix");
             return t_error();
         }
-        if (p.suffix == "f16") {
-            return ty_f16;
+        // a literal that would round to an infinity is refused: the infinities are
+        // constants of `math`, not literals (base.md §4.3)
+        int width = t->kind == TypeKind::F16 ? 16 : t->kind == TypeKind::F32 ? 32 : 64;
+        uint64_t bits = 0;
+        uint64_t infinity = width == 64 ? 0x7FF0000000000000ull : width == 32 ? 0x7F800000ull : 0x7C00ull;
+        if (decimal_to_bits(p.body, width, &bits) && bits == infinity) {
+            fail_n(n, "lucb.check.number", "the float literal is beyond its type; the infinities are constants of `math`");
+            return t_error();
         }
-        if (p.suffix == "f32") {
-            return ty_f32;
-        }
-        if (p.suffix == "f64" || p.suffix.empty()) {
-            if (is_float(expected) && p.suffix.empty()) {
-                return expected;
-            }
-            return ty_f64;
-        }
-        fail_n(n, "lucb.check.number", "unknown float suffix");
-        return t_error();
+        return t;
     }
     fail_n(n, "lucb.check.unsupported", "this literal is not in the scalar core yet");
     return t_error();

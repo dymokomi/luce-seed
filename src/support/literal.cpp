@@ -9,6 +9,7 @@
 //==============================================================================================
 
 #include "support/literal.h"
+#include "support/decimal.h"
 
 #include <cstdlib>
 
@@ -116,15 +117,22 @@ ParsedFloat parse_float_literal(string_view text) {
     if (buf.empty()) {
         return out;
     }
-    char* end = nullptr;
-    double v = strtod(buf.c_str(), &end);
-    if (end == buf.c_str()) {
+    uint64_t bits = 0;
+    if (!decimal_to_bits(buf, 64, &bits)) {
         return out;
     }
     out.ok = true;
-    out.value = v;
+    out.value = decimal_to_double(buf, 64);
+    out.body = buf;
     out.suffix = strip_suffix_alpha(text, i);
     return out;
+}
+
+double float_literal_value(const ParsedFloat& parsed, int width) {
+    if (!parsed.ok) {
+        return 0.0;
+    }
+    return decimal_to_double(parsed.body, width);
 }
 
 bool parse_char_literal(string_view text, uint32_t* out) {

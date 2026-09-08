@@ -436,7 +436,9 @@ auto Interp::eval_uncast(Node* n) -> Value {
         }
         if (n->op == TokenKind::FloatLit) {
             ParsedFloat p = parse_float_literal(n->text);
-            return v_float(n->ty, p.value);
+            TypeKind kind = n->ty != nullptr ? n->ty->kind : TypeKind::F64;
+            int width = kind == TypeKind::F16 ? 16 : kind == TypeKind::F32 ? 32 : 64;
+            return v_float(n->ty, float_literal_value(p, width));
         }
         if (n->op == TokenKind::CharLit) {
             uint32_t cp = 0;

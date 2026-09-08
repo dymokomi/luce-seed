@@ -1,7 +1,18 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.44**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.45**, the seed `luce-base` is written against.
+
+## 0.45: float literals rounded once, and finite
+
+- A decimal float literal is converted exactly (`support/decimal`): big-integer arithmetic
+  and one rounding, ties to even, to the width the literal has, so an `f32` or `f16`
+  literal is never rounded through a double (§4.3). The emitted C spells the literal as
+  the hexadecimal float of those bits, which the C compiler reads exactly.
+- A literal that would round to an infinity is refused; the infinities are `math`'s
+  constants. The `f16` suffix is accepted as `f32`'s is.
+- The generated C is compiled with `-fno-strict-aliasing`: Base has no type-based
+  aliasing rule (§12.6), and the C must not be optimised as if it had one.
 
 ## 0.44: a discarded asm output on a register the block reads
 

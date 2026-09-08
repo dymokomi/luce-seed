@@ -108,7 +108,7 @@ bool compile_c(const string& c_source, const string& exe_path, string* error,
     }
 
     const char* opt = release ? "-O2" : "-O0";
-    string cmd = host_cc() + " -std=gnu11 -Wall -Werror " + opt + " -I " + shell_quote(dir_path) +
+    string cmd = host_cc() + " -std=gnu11 -Wall -Werror -fno-strict-aliasing " + opt + " -I " + shell_quote(dir_path) +
                  " " + shell_quote(src_path) + " " + shell_quote(dir_path + "/lucb_rt.c");
     if (link_answer_start) {
         cmd += " " + shell_quote(dir_path + "/start.c");
@@ -160,7 +160,7 @@ bool compile_c_object(const string& c_source, string* error) {
     if (!write_text(dir_path + "/lucb_rt.h", lucb_rt_h(), error)) {
         return false;
     }
-    string cmd = host_cc() + " -std=gnu11 -Wall -Werror -c -I " + shell_quote(dir_path) + " " +
+    string cmd = host_cc() + " -std=gnu11 -Wall -Werror -fno-strict-aliasing -c -I " + shell_quote(dir_path) + " " +
                  shell_quote(src_path) + " -o " + shell_quote(dir_path + "/gen.o") + " 2> " +
                  shell_quote(dir_path + "/cc.err");
     int status = std::system(cmd.c_str());
