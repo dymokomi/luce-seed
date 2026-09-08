@@ -45,6 +45,11 @@ struct Emitter {
     string emit_src_function();
     string emit_src_location(Node* n);
     int temps = 0;
+    // The format buffers the function being written has used: each is declared at the
+    // function's top by `insert_format_decls`, so a formatted text's bytes live as long as
+    // the function, not the expression that made them (the callee reads them after it).
+    vector<string> format_decls;
+    void insert_format_decls(size_t at);
     string catch_var;
     string catch_done;
 

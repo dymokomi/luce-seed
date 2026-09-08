@@ -197,6 +197,23 @@ bool prove(const fs::path& entry) {
         std::fprintf(stderr, "    link failed:\n%s\n", err.c_str());
         return false;
     }
+    // `# release: true`: the C the host compiler optimises must behave as the C it does
+    // not; a value that only survives at -O0 (a buffer of a scope that ended) shows here
+    if (directive(text, "release") == "true") {
+        std::string exe_release = scratch.path + "/prog-release";
+        if (!lucb::compile_c(c, exe_release, &err, has_answer, true, &inputs)) {
+            std::fprintf(stderr, "    release link failed:\n%s\n", err.c_str());
+            return false;
+        }
+        std::vector<std::string> release_args = split_words(args_line);
+        lucb::RunResult plain = lucb::run_exe(exe, release_args);
+        lucb::RunResult optimised = lucb::run_exe(exe_release, release_args);
+        if (plain.exit_code != optimised.exit_code || plain.out != optimised.out || plain.err != optimised.err) {
+            std::fprintf(stderr, "    the release build disagrees\n      -O0: %s      -O2: %s (exit %d)\n",
+                         plain.out.c_str(), optimised.out.c_str(), optimised.exit_code);
+            return false;
+        }
+    }
 
     if (has_answer) {
         lucb::RunResult native = lucb::run_exe(exe);

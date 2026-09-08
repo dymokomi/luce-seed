@@ -245,7 +245,8 @@ auto Emitter::emit_as_cspan(Node* n) -> string {
         int id = tmp();
         string buf = "_lb_wb" + std::to_string(id);
         string bn = "_lb_wf" + std::to_string(id);
-        string s = "({ char " + buf + "[1024]; lb_fmtbuf " + bn + " = { " + buf + ", 1024, 0 }; ";
+        format_decls.push_back("char " + buf + "[1024]; lb_fmtbuf " + bn + ";");
+        string s = "({ " + bn + " = (lb_fmtbuf){ " + buf + ", 1024, 0 }; ";
         for (Node* p = n->body; p != nullptr; p = p->next) {
             if (p->kind == NodeKind::FormatText) {
                 string d = unescape_format_braces(decode_lit(p->text));

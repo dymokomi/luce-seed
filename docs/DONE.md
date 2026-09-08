@@ -1,7 +1,16 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.45**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.46**, the seed `luce-base` is written against.
+
+## 0.46: a formatted text outlives its expression
+
+- The C emitter declares every format buffer at the top of the function, not inside the
+  statement expression that fills it: a `fmt` argument is read by the callee after that
+  expression has ended, which `-O2` showed by reusing the stack. The program tests take a
+  `# release: true` line to run the `-O2` build beside the `-O0` one and compare.
+- The specification's §3.5 says what both compilers do: a local or a parameter may not
+  shadow a declaration of its module either.
 
 ## 0.45: float literals rounded once, and finite
 

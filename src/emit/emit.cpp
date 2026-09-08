@@ -149,6 +149,9 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
     }
     line(sig + " {");
     indent++;
+    size_t decls_at = out.size();
+    vector<string> outer_decls = std::move(format_decls);
+    format_decls.clear();
     if ((fn->flags & FlagExport) != 0) {
         for (Node* p = fn->right; p != nullptr; p = p->next) {
             if (!is_span(p->ty)) {
@@ -172,6 +175,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
     }
     if ((fn->flags & FlagNaked) != 0) {
         emit_naked_body(fn);
+        format_decls = std::move(outer_decls);
         indent--;
         line("}");
         out += '\n';
@@ -197,10 +201,23 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
     } else if (ret != "void") {
         line("lb_trap(\"unreachable\");");
     }
+    insert_format_decls(decls_at);
+    format_decls = std::move(outer_decls);
     current_fn = saved_fn;
     indent--;
     line("}");
     out += '\n';
+}
+
+auto Emitter::insert_format_decls(size_t at) -> void {
+    if (format_decls.empty()) {
+        return;
+    }
+    string text;
+    for (const string& d : format_decls) {
+        text += string(static_cast<size_t>(indent) * 4, ' ') + d + "\n";
+    }
+    out.insert(at, text);
 }
 
 auto Emitter::emit_global(Node* g) -> void {
@@ -340,6 +357,9 @@ auto Emitter::emit_test_sig(Node* t, bool define) -> void {
     }
     line("lb_r_unit " + name + "(void) {");
     indent++;
+    size_t decls_at = out.size();
+    vector<string> outer_decls = std::move(format_decls);
+    format_decls.clear();
     Node* saved = current_fn;
     current_fn = t;
     t->flags |= FlagFallible;
@@ -357,6 +377,8 @@ auto Emitter::emit_test_sig(Node* t, bool define) -> void {
         scopes.pop_back();
     }
     line("return ((lb_r_unit){ .failed = false });");
+    insert_format_decls(decls_at);
+    format_decls = std::move(outer_decls);
     current_fn = saved;
     indent--;
     line("}");

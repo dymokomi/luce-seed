@@ -432,7 +432,9 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         int id = tmp();
         string buf = "_lb_fb" + std::to_string(id);
         string bn = "_lb_ff" + std::to_string(id);
-        string s = "({ char " + buf + "[1024]; lb_fmtbuf " + bn + " = { " + buf + ", 1024, 0 }; ";
+        // the buffer is the function's (`insert_format_decls`), not this expression's
+        format_decls.push_back("char " + buf + "[1024]; lb_fmtbuf " + bn + ";");
+        string s = "({ " + bn + " = (lb_fmtbuf){ " + buf + ", 1024, 0 }; ";
         for (Node* p = n->body; p != nullptr; p = p->next) {
             if (p->kind == NodeKind::FormatText) {
                 string d = unescape_format_braces(decode_lit(p->text));

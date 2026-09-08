@@ -1,0 +1,18 @@
+# release: true
+## A formatted text passed as `fmt` is read by the callee after the expression that made
+## it (§9.6): its bytes live as long as the caller's function, under -O2 as under -O0.
+func log(level: i64, message: fmt):
+    var buffer: u8[64]
+    let line = format(buffer, f"{level}: {message}") catch failure:
+        return
+    print(line)
+    forward(message)
+
+func forward(message: fmt):
+    print(message)
+
+pub func main(arguments: str[]) -> i32:
+    let lost = 129
+    log(3, f"lost {lost} packets")
+    log(4, "plain")
+    return 0

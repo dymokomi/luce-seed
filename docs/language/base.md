@@ -170,7 +170,7 @@ Types, interfaces, and unions are `PascalCase`; functions, methods, bindings, fi
 
 ### 3.5 Scope
 
-Names resolve lexically. A module's declarations share one namespace and are order-independent. Members of a type have their own namespace. Locals are sequential; use before declaration is rejected. A local may not shadow another visible local, parameter, or imported name; renaming is the repair. A loop, `catch`, `if let`, or `match` binding owns its nested scope. A loop label (§8.5) lives in its own namespace.
+Names resolve lexically. A module's declarations share one namespace and are order-independent. Members of a type have their own namespace. Locals are sequential; use before declaration is rejected. A local or a parameter may not shadow another visible local, a parameter, an imported name, or a declaration of its module; renaming is the repair. A loop, `catch`, `if let`, or `match` binding owns its nested scope. A loop label (§8.5) lives in its own namespace.
 
 The compiler-known core namespace cannot be redeclared: no declaration of any kind, a binding, a parameter, a function, a type, a field, an enum case, a label, or an alias, may take a core name, and a compiler carries exactly this dictionary:
 
