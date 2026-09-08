@@ -1619,7 +1619,7 @@ The Luce-owned native backends scheduled after stage 1 implement all of these na
 
 ### 19.4 Artifacts and build profiles
 
-A Base executable links a startup shim and a trap reporter and no Luce runtime (§1.3). By default the shim uses the host C library for process start, output, and exit; `--freestanding` drops it and the program supplies `_start` through a `naked func` or a module-level `asm` block. There are two build profiles: `default`, and `diagnostic`, selected with `luce build --profile diagnostic`. No profile changes overflow, bounds, evaluation order, or error behaviour. The diagnostic profile additionally fills `---` storage, quarantines released blocks in the standard allocators, and records allocation sites.
+A Base executable links a startup shim and a trap reporter and no Luce runtime (§1.3). By default the shim uses the host C library for process start, output, and exit; `--freestanding` drops it and the program supplies `_start` through a `naked func` or a module-level `asm` block. There are two build profiles: `default`, and `diagnostic`, selected with `luce build --profile diagnostic`. No profile changes overflow, bounds, evaluation order, or error behaviour. The diagnostic profile additionally fills `---` storage, records allocation sites (the most recent 256, oldest first), and quarantines released blocks: `CAllocator` and `PageAllocator` fill a released block with a pattern and hold it back, the last 64 blocks and the last 8 mappings, so a use after release reads the pattern; `Arena` and `FixedBuffer` fill a released block in place, since their memory returns all at once.
 
 ### 19.5 Targets
 

@@ -167,10 +167,14 @@ auto Parser::is_generic_call_ahead() const -> bool {
     if (!first.text.empty() && first.text[0] >= 'A' && first.text[0] <= 'Z') {
         return true;
     }
-    // `module.Type`: a lowercase module name, a dot, then a type name.
+    // `module.Type`: a lowercase module name, a dot, then a type name; `c.str` and the
+    // other members of the `c` module are types spelled in lowercase (base.md §5.2).
     if (peek_kind(pos + 2) == TokenKind::Dot && peek_kind(pos + 3) == TokenKind::Name) {
         Token qualified = tok[pos + 3];
         if (!qualified.text.empty() && qualified.text[0] >= 'A' && qualified.text[0] <= 'Z') {
+            return true;
+        }
+        if (first.text == "c") {
             return true;
         }
     }

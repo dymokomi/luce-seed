@@ -1253,3 +1253,7 @@ TEST(check_vector_arithmetic_ok) {
 TEST(check_vector_arithmetic_is_not_a_constant) {
     CHECK(check_has("let base: f32[4] = [1.0, 2.0, 3.0, 4.0]\nlet scaled = base * 2.0\npub func answer() -> i64:\n    return (i64)scaled[0]\n", "lucb.check.type"));
 }
+
+TEST(a_generic_argument_may_be_a_c_type) {
+    CHECK(check_ok("import c\nstruct Box[T]:\n    var item: T\n    static func of(item: T) -> Box[T]:\n        return Box[T](item = item)\npub func answer() -> i64:\n    let b = Box[c.str].of(\"x\")\n    discard(b.item)\n    return 40\n"));
+}

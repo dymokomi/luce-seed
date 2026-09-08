@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.47**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.48**, the seed `luce-base` is written against.
+
+## 0.48: a `c` type as a generic argument
+
+- `List[c.str]` reads as a type application: the parser's lookahead took `module.Name`
+  as a type only when the name was capitalised, and the `c` module's types are lowercase
+  (§5.2). `tests/check_test`.
 
 ## 0.47: the exported surface of §17.6
 
