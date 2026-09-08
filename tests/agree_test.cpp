@@ -1447,3 +1447,9 @@ TEST(agree_vector_float_fold_skips_nan) {
 TEST(agree_vector_splat_at_top_level) {
     CHECK(agrees("let ones = i32[4](1)\nlet base: f32[4] = [1.0, 2.0, 3.0, 4.0]\npub func answer() -> i64:\n    let scaled = base * 2.0\n    return (i64)ones.sum() + (i64)scaled[3] + 30\n"));
 }
+
+TEST(agree_untyped_shift_under_a_cast) {
+    // `(i64)((104 >> 2) >> 0)`: the untyped operands compute at 64 bits, so a count of 0 is
+    // in range, as it is for the compiled program
+    CHECK(agrees("pub func answer() -> i64:\n    let a: i64 = (i64)((104 >> 2) >> 0)\n    let b: i64 = (i64)(1 << 40)\n    return a + (b >> 39) + 12\n"));
+}

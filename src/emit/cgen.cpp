@@ -256,6 +256,11 @@ string c_type(Type* t) {
     if (t == nullptr) {
         return "void";
     }
+    // an untyped integer expression that reaches the C computes as `i64`, its default
+    // type (base.md §4.2): a shift of one inside a cast, for one
+    if (t->kind == TypeKind::UntypedInt) {
+        return "int64_t";
+    }
     if (t->kind == TypeKind::Struct && t->name == "FixedBuffer" && builtin_decl(t)) {
         return "lb_fixed";
     }

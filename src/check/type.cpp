@@ -374,6 +374,10 @@ int int_bits(const Type* t) {
         return 0;
     }
     switch (t->kind) {
+    case TypeKind::UntypedInt:
+        // an untyped integer computes as `i64` does, its default (base.md §4.2), so a
+        // shift inside a cast has a width to check the count against
+        return 64;
     case TypeKind::I8:
     case TypeKind::U8:
         return 8;

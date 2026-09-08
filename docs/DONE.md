@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.48**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.49**, the seed `luce-base` is written against.
+
+## 0.49: an untyped integer computes at sixty-four bits
+
+- `(i64)((104 >> 2) >> 0)`: an untyped integer expression under a cast had no width in the
+  interpreter, so every shift count was "out of range", and the C emitter spelled its
+  type `void`. Both now take `i64`'s width and spelling, the default of §4.2. Found by
+  luce-base's fuzzer, which compares the interpreter with the compiled program.
 
 ## 0.48: a `c` type as a generic argument
 
