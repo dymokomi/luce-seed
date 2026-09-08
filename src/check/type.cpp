@@ -892,11 +892,15 @@ bool is_zeroable(const Type* t) {
     if (t->kind != TypeKind::Struct || t->decl == nullptr) {
         return false;
     }
+    // a field default or a custom `init` establishes something the zero would bypass (§6.1)
     for (Node* m = t->decl->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
-            if (!is_zeroable(m->ty)) {
+            if (!is_zeroable(m->ty) || m->left != nullptr) {
                 return false;
             }
+        }
+        if (m->kind == NodeKind::Func && m->text == "init") {
+            return false;
         }
     }
     return true;

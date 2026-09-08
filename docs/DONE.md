@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.51**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.52**, the seed `luce-base` is written against.
+
+## 0.52: an `else` fallback is the payload; a struct with a default or an `init` has no zero value
+
+- `o = (o else 3)`: the fallback was checked under the optional the result is stored into,
+  so it became `i64?` and was refused as not matching the payload. It is checked as the
+  payload now. A struct that declares a field default or a custom `init` is no longer
+  zeroable (§6.1). Both from luce-base's widened fuzzer. Evidence: `tests/check_test.cpp`.
 
 ## 0.51: an identifier is at most 128 bytes
 

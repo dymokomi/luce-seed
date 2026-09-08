@@ -998,7 +998,9 @@ auto Checker::vector_operand(Node* side, Type** st, Type* vt) -> bool {
 auto Checker::check_else(Node* n, Type* expected) -> Type* {
     Type* left = check_expr(n->left, nullptr);
     if (is_opt(left)) {
-        Type* fb = check_expr(n->right, expected != nullptr ? expected : left->elem);
+        // the fallback is the payload: `o = o else 3` checks `3` as the payload's type, not as
+        // the optional the whole expression is stored into
+        Type* fb = check_expr(n->right, left->elem);
         if (!type_eq(fb, left->elem) && !can_widen(fb, left->elem) && !type_eq(fb, t_never())) {
             fail_n(n, "lucb.check.type", "`else` fallback must match the optional payload");
         }

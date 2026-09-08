@@ -1267,3 +1267,13 @@ TEST(every_literal_in_an_untyped_expression_must_fit) {
     CHECK(check_has("pub func answer() -> i64:\n    let x: i8 = -129\n    return 0\n", "lucb.check.number"));
     CHECK(check_ok("pub func answer() -> i64:\n    let x: i8 = -128\n    let y = -9223372036854775808\n    let z: u64 = (u64)18446744073709551615\n    return 0\n"));
 }
+
+TEST(a_struct_with_a_default_or_an_init_has_no_zero_value) {
+    CHECK(check_has("struct Style:\n    var width: i64 = 5\npub func answer() -> i64:\n    var s: Style\n    return s.width\n", "lucb.check.type"));
+    CHECK(check_has("struct Account:\n    var balance: i64\n\n    pub func init(start: i64):\n        self.balance = start\nvar a: Account\npub func answer() -> i64:\n    return a.balance\n", "lucb.check.type"));
+    CHECK(check_ok("struct Plain:\n    var width: i64\nvar p: Plain\npub func answer() -> i64:\n    var q: Plain\n    return p.width + q.width\n"));
+}
+
+TEST(an_else_fallback_is_the_payload_even_under_an_optional_context) {
+    CHECK(check_ok("var o: i64?\npub func answer() -> i64:\n    o = (o else (434 | 3))\n    return o else 0\n"));
+}
