@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.46**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.47**, the seed `luce-base` is written against.
+
+## 0.47: the exported surface of §17.6
+
+- A fallible function may be exported: the specification's status form is what
+  `luce-base` writes, and the checker no longer refuses it as "not in this slice".
+- A span inside a function pointer's signature is not C-representable; a span is only a
+  function's own parameter, which the wrapper takes as a pointer and a length.
 
 ## 0.46: a formatted text outlives its expression
 

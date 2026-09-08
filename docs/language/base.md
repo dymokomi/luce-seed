@@ -1476,14 +1476,16 @@ struct Cursor:
 
 Export is opt-in. `export func name(...)` gives a function C linkage under `name`, or under the manifest's `symbol_prefix` followed by `name`. `export` on a method exports it as `Type_method` with `self` first. A `pub` function that is not exported has hidden visibility and a module-qualified symbol and cannot collide with C. An `export` is a compile error when the signature is not C-representable or when two exports share a symbol.
 
-C-representable means: scalars, `bool`, `usize`/`isize`, `c.*` types, pointers, `c.str`, spans in parameter position (a pointer and a `usize` length, in that order; the wrapper normalises `(NULL, 0)` to the empty span), structs and unions of C-representable fields, integer-backed enums, and function pointers with C-representable signatures. Not representable: `T[N]` in a signature (C has no by-value array parameters), spans in result, field, or function-pointer positions, `str`, tagged optionals, interface views, `fmt`, and every generic. A fallible function exports in a status form: the C function returns an `int` status and writes the value through a final out-pointer.
+C-representable means: scalars, `bool`, `usize`/`isize`, `c.*` types, pointers, `c.str`, spans in parameter position (a pointer and a `usize` length, in that order, `name` and `name_len`; the wrapper reads a null pointer with any length as the empty span), structs and unions of C-representable fields, arrays as fields, integer-backed enums, and function pointers with C-representable signatures. Not representable: `T[N]` in a signature (C has no by-value array parameters), spans in result, field, or function-pointer positions, `str`, tagged optionals, interface views, `fmt`, and every generic. A fallible function exports in a status form: the C function returns an `int` status, 0 or the error's code, and writes the value through a final out-pointer named `out`; a fallible function without a value has no out-pointer. A function whose C face differs from its own signature, a fallible one or one with a span parameter, is reached through a wrapper the compiler writes; its own symbol stays internal.
 
 The generated header spells:
 
-- a struct as its C definition, with `__attribute__((packed))` or `__attribute__((aligned(N)))` where declared;
+- a struct as its C definition, with `__attribute__((packed))` or `__attribute__((aligned(N)))` where declared, and a field's `align(N)` as that attribute on the field;
 - `bool` as C's `bool`, `usize` as `size_t`, `isize` as `ptrdiff_t`;
 - `T*?` as the same pointer type with a comment that it may be null;
-- an integer-backed enum as `typedef uint32_t Flags;` with `enum { Flags_empty = 0, ... };` for C17, plus `enum Flags : uint32_t` under C23, because a C17 enum's compatible type is implementation-defined.
+- a function type as `typedef R (*luce_fn_N)(A, B);`, numbered in order of first use, before what uses it;
+- an integer-backed enum as `typedef uint32_t Flags;` with `enum { Flags_empty = 0, ... };` for C17, plus `enum Flags : uint32_t` under C23, because a C17 enum's compatible type is implementation-defined;
+- every `pub` error code of the package as `#define name ((int)CODEu)`, the value a status carries, with the package's identity in the high half (§11.3).
 
 `luce build --lib` produces a static or shared library plus the header for the package's exported surface.
 

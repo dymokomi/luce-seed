@@ -861,8 +861,18 @@ auto Checker::is_c_repr(Type* t) -> bool {
         t->kind == TypeKind::CStr) {
         return true;
     }
+    if (is_func(t)) {
+        // a function pointer's signature is C's as it is: no span, which only a function's
+        // own parameter may be, through the wrapper (base.md §17.6)
+        for (int i = 0; i < t->ntargs; i++) {
+            if (is_span(t->args[i]) || !is_c_repr(t->args[i])) {
+                return false;
+            }
+        }
+        return t->elem == nullptr || (!is_span(t->elem) && is_c_repr(t->elem));
+    }
     if (is_ptr(t) || t->kind == TypeKind::Struct || t->kind == TypeKind::Union || is_int_enum(t) ||
-        is_func(t) || is_span(t) || t->kind == TypeKind::ErrorCode) {
+        is_span(t) || t->kind == TypeKind::ErrorCode) {
         return true;
     }
     if (is_opt(t) && t->elem != nullptr && t->elem->kind == TypeKind::CStr) {

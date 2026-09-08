@@ -500,9 +500,6 @@ auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
         fail_n(fn, "lucb.check.unsupported", "a generic cannot be `extern` or `export`");
         return;
     }
-    if (exported && (fn->flags & FlagFallible) != 0) {
-        fail_n(fn, "lucb.check.unsupported", "a fallible `export` is not in this slice");
-    }
     const char* where = exported ? "an `export` signature cannot use `str`; write `c.str`"
                                  : "an `extern` signature cannot use `str`; write `c.str`";
     for (Node* p = fn->right; p != nullptr; p = p->next) {
