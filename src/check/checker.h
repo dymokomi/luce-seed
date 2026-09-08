@@ -253,7 +253,7 @@ struct Checker {
     void mark_if_member_local(Node* n);
     bool holds_view(const Type* t);
     void check_naked_body(Node* fn);
-    void propagate_untyped(Node* n, Type* dest);
+    bool propagate_untyped(Node* n, Type* dest, bool negated);
     Type* check_float_bits(Node* n, Node* obj);
     Type* check_float_from_bits(Node* n, Node* obj);
     void enter_loop(Node* n);

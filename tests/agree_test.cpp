@@ -1448,6 +1448,12 @@ TEST(agree_vector_splat_at_top_level) {
     CHECK(agrees("let ones = i32[4](1)\nlet base: f32[4] = [1.0, 2.0, 3.0, 4.0]\npub func answer() -> i64:\n    let scaled = base * 2.0\n    return (i64)ones.sum() + (i64)scaled[3] + 30\n"));
 }
 
+TEST(agree_cast_gives_its_operand_no_context) {
+    // `(u8)(200 + 100)` computes as `i64` and truncates to 44; `(u32)(1 << 40)` is 0; a bare
+    // literal is read in the cast's type; `-128` is an `i8` (§4.2, §7.5)
+    CHECK(agrees("pub func answer() -> i64:\n    let a: u8 = (u8)(200 + 100)\n    let b: u32 = (u32)(1 << 40)\n    let c: i8 = (i8)(-300)\n    let d: u64 = (u64)18446744073709551615\n    let e: i8 = -128\n    let f: u8 = (u8)(1024 >> 4)\n    return (i64)a + (i64)b + (i64)c + (i64)(d >> 60) + (i64)e + (i64)f + 63\n"));
+}
+
 TEST(agree_untyped_shift_under_a_cast) {
     // `(i64)((104 >> 2) >> 0)`: the untyped operands compute at 64 bits, so a count of 0 is
     // in range, as it is for the compiled program

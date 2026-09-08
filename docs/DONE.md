@@ -1,7 +1,17 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.49**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.50**, the seed `luce-base` is written against.
+
+## 0.50: a cast gives its operand no context
+
+- `(u8)(200 + 100)` was checked in `u8` and trapped; the operand of a plain cast now has no
+  context, computes as `i64`, and is converted after, so it is 44 and `(u32)(1 << 40)` is 0
+  (§7.5). A bare literal is still read in the cast's type: `(u64)18446744073709551615`.
+- Every literal in an untyped expression must fit the type the expression takes:
+  `18446744073709551615 - 1` as an `i64` and `-(9223372036854775808)` are refused, where
+  before they were read as negative values. Only `-literal` is a negative literal (§4.2).
+  Found by luce-base's fuzzer. Evidence: `tests/agree_test.cpp`, `tests/check_test.cpp`.
 
 ## 0.49: an untyped integer computes at sixty-four bits
 

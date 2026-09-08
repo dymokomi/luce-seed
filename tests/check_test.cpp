@@ -1257,3 +1257,13 @@ TEST(check_vector_arithmetic_is_not_a_constant) {
 TEST(a_generic_argument_may_be_a_c_type) {
     CHECK(check_ok("import c\nstruct Box[T]:\n    var item: T\n    static func of(item: T) -> Box[T]:\n        return Box[T](item = item)\npub func answer() -> i64:\n    let b = Box[c.str].of(\"x\")\n    discard(b.item)\n    return 40\n"));
 }
+
+TEST(every_literal_in_an_untyped_expression_must_fit) {
+    CHECK(check_has("pub func answer() -> i64:\n    let x = 18446744073709551615 - 1\n    return 0\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x: u64 = (u64)(18446744073709551615 - 1)\n    return 0\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = (18446744073709551615)\n    return 0\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x = -(9223372036854775808)\n    return 0\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x: i8 = -(128)\n    return 0\n", "lucb.check.number"));
+    CHECK(check_has("pub func answer() -> i64:\n    let x: i8 = -129\n    return 0\n", "lucb.check.number"));
+    CHECK(check_ok("pub func answer() -> i64:\n    let x: i8 = -128\n    let y = -9223372036854775808\n    let z: u64 = (u64)18446744073709551615\n    return 0\n"));
+}

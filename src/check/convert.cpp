@@ -38,16 +38,46 @@ auto Checker::int_fits(uint64_t mag, bool neg, Type* dest) -> bool {
 // An untyped arithmetic expression, `(256 << 32) | 7`, is typed as a whole when it meets a
 // concrete type; every untyped node under it takes that type too, so the backends see no
 // untyped operand (§7.5).
-auto Checker::propagate_untyped(Node* n, Type* dest) -> void {
-    if (n == nullptr || n->ty == nullptr || n->ty->kind != TypeKind::UntypedInt) {
-        return;
+// An untyped expression takes its type, and every literal in `1 << 40` or `-(2 * 3)` must fit
+// it (§4.2): the walk reaches each leaf that is still untyped. Only `-literal` is a negative
+// literal, so `-128` is `i8` where `-(128)` is not; `-` never applies to an unsigned type.
+static auto still_untyped(const Node* n) -> bool {
+    return n != nullptr && n->ty != nullptr && n->ty->kind == TypeKind::UntypedInt;
+}
+
+auto Checker::propagate_untyped(Node* n, Type* dest, bool negated) -> bool {
+    if (n == nullptr) {
+        return true;
     }
     n->ty = dest;
+    if (n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
+        ParsedInt p = parse_int_literal(n->text);
+        if (!p.ok) {
+            fail_n(n, "lucb.check.number", "invalid integer literal");
+            return false;
+        }
+        if (!int_fits(p.value, negated, dest)) {
+            fail_n(n, "lucb.check.number",
+                   "integer literal does not fit in `" + type_name(dest) + "`");
+            return false;
+        }
+        return true;
+    }
+    if (n->kind == NodeKind::Unary && n->op == TokenKind::Minus) {
+        if (is_unsigned_int(dest)) {
+            fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
+            return false;
+        }
+        bool direct = n->left != nullptr && n->left->kind == NodeKind::Literal &&
+                      n->left->op == TokenKind::IntLit;
+        return !still_untyped(n->left) || propagate_untyped(n->left, dest, direct);
+    }
     if (n->kind == NodeKind::Binary || n->kind == NodeKind::Unary ||
         n->kind == NodeKind::Conditional || n->kind == NodeKind::Group) {
-        propagate_untyped(n->left, dest);
-        propagate_untyped(n->right, dest);
+        bool ok = !still_untyped(n->left) || propagate_untyped(n->left, dest, false);
+        return (!still_untyped(n->right) || propagate_untyped(n->right, dest, false)) && ok;
     }
+    return true;
 }
 
 auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
@@ -76,42 +106,9 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
                    "expected `" + type_name(expected) + "`, got an integer literal");
             return t_error();
         }
-        if (n != nullptr && n->kind == NodeKind::Unary && n->op == TokenKind::Minus &&
-            n->left != nullptr && n->left->kind == NodeKind::Literal &&
-            n->left->op == TokenKind::IntLit) {
-            // `-literal` that stayed untyped: the negative value must fit, so the most
-            // negative value of a signed type is accepted although its magnitude alone is not
-            ParsedInt p = parse_int_literal(n->left->text);
-            if (!p.ok) {
-                fail_n(n, "lucb.check.number", "invalid integer literal");
-                return t_error();
-            }
-            if (is_unsigned_int(dest)) {
-                fail_n(n, "lucb.check.type", "unary `-` is rejected on unsigned types; use `-%`");
-                return t_error();
-            }
-            if (p.value > static_cast<uint64_t>(int_max_signed(int_bits(dest))) + 1) {
-                fail_n(n, "lucb.check.number",
-                       "integer literal does not fit in `" + type_name(dest) + "`");
-                return t_error();
-            }
-            n->left->ty = dest;
-            n->ty = dest;
-            return is_opt(expected) ? expected : dest;
+        if (!propagate_untyped(n, dest, false)) {
+            return t_error();
         }
-        if (n != nullptr && n->kind == NodeKind::Literal && n->op == TokenKind::IntLit) {
-            ParsedInt p = parse_int_literal(n->text);
-            if (!p.ok) {
-                fail_n(n, "lucb.check.number", "invalid integer literal");
-                return t_error();
-            }
-            if (!int_fits(p.value, false, dest)) {
-                fail_n(n, "lucb.check.number",
-                       "integer literal does not fit in `" + type_name(dest) + "`");
-                return t_error();
-            }
-        }
-        propagate_untyped(n, dest);
         return is_opt(expected) ? expected : dest;
     }
     if (got->kind == TypeKind::Never) {
@@ -356,12 +353,15 @@ auto Checker::convert_ok(Node* n, Type* src, Type* dest, bool checked) -> bool {
     }
     if (src->kind == TypeKind::UntypedInt) {
         bool negated = srcn != nullptr && srcn->kind == NodeKind::Unary && srcn->op == TokenKind::Minus;
+        bool literal = srcn != nullptr && srcn->kind == NodeKind::Literal;
         if (checked && is_int(dest)) {
             src = coerce(srcn, src, dest);
-        } else if (is_int(dest) && !negated) {
+        } else if (is_int(dest) && !negated && literal) {
+            // a bare literal is read in the cast's type: `(u64)18446744073709551615`
             src = dest;
         } else {
-            // `(i8)(-300)` truncates as C does: the negated literal is an `i64` first
+            // the operand has no context (§7.5): `(i8)(-300)` and `(u8)(200 + 100)` compute
+            // as `i64` and truncate as C does
             src = coerce(srcn, src, t_i64());
         }
         if (srcn != nullptr) {

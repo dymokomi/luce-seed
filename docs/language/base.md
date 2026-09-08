@@ -207,7 +207,7 @@ Contextual words, meaningful only in the positions stated: `void` before `*`; `p
 42        1_000_000     0xff     0o755     0b1010_1100     255u8     -20i32
 ```
 
-Underscores may separate digits. Based prefixes are lowercase. Context chooses the integer type; absent context the default is `i64`, except in a variadic C argument position, where it is `c.int` (§17.2), and as the bound of a `for` range, where it is `usize` (§8.3). A suffix names an exact type. A literal outside the contextual type's range is a compile error. A negative literal is unary minus applied to a positive literal; `-9223372036854775808` is accepted as `i64` although its positive part alone is out of range.
+Underscores may separate digits. Based prefixes are lowercase. Context chooses the integer type; absent context the default is `i64`, except in a variadic C argument position, where it is `c.int` (§17.2), and as the bound of a `for` range, where it is `usize` (§8.3). A suffix names an exact type. An untyped expression computes in the contextual type, `3 -| 7` as `u8`, and a literal outside that type's range is a compile error wherever it sits in the expression. A negative literal is unary minus applied directly to a positive literal; `-9223372036854775808` is accepted as `i64` although its positive part alone is out of range, where `-(9223372036854775808)` is not a negative literal and is refused.
 
 ### 4.3 Floats
 
@@ -547,6 +547,8 @@ Integers, including `usize` and `isize`, support `&`, `|`, `^`, `~`, `<<`, `>>`.
 `==` and `!=` exist for scalars, `char`, `str` (by bytes), tuples, arrays, structs, enums, optionals, and pointers (by address), when every component supports equality. A struct or enum whose components are hashable is hashable, and `hash(value) -> u64` is process-seeded and not stable across runs. Pointers hash by address. Unions and interface views have neither. No user type overloads an operator; a domain with unusual equality exposes a named method.
 
 ### 7.5 Conversions and casts
+
+A cast converts the value of its operand and gives the operand no context: an untyped operand computes as `i64`, or `f64`, and is converted after, so `(u8)(200 + 100)` is 44 and `(u32)(1 << 40)` is 0, where `let x: u8 = 200 + 100` computes in `u8` and traps (§4.2). A bare literal is read in the cast's type: `(u64)18446744073709551615`.
 
 Base has two conversion spellings with two meanings.
 
