@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.52**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.53**, the seed `luce-base` is written against.
+
+## 0.53: a cast inside an index is an index
+
+- `ap[(usize)i].x` was read as a generic instantiation because a bracket beginning with `(`
+  counted as a type argument list; only `(func(...) -> R)` begins one. From luce-base's
+  fuzzer, which had worked around it. Evidence: `tests/check_test.cpp`.
 
 ## 0.52: an `else` fallback is the payload; a struct with a default or an `init` has no zero value
 

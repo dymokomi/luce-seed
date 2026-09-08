@@ -1277,3 +1277,8 @@ TEST(a_struct_with_a_default_or_an_init_has_no_zero_value) {
 TEST(an_else_fallback_is_the_payload_even_under_an_optional_context) {
     CHECK(check_ok("var o: i64?\npub func answer() -> i64:\n    o = (o else (434 | 3))\n    return o else 0\n"));
 }
+
+TEST(a_cast_inside_an_index_followed_by_a_member_is_an_index) {
+    CHECK(check_ok("struct P:\n    var x: i64\nvar ap: P[2]\nvar a0: i64\npub func answer() -> i64:\n    let q = ap[(usize)(a0 & 1)].x\n    let r = ap[(usize)a0].x\n    return q + r\n"));
+    CHECK(check_ok("func twice(f: (func(i64) -> i64)) -> i64:\n    return f(2)\npub func answer() -> i64:\n    return twice((x) => x * 21)\n"));
+}

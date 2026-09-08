@@ -155,8 +155,12 @@ auto Parser::is_generic_call_ahead() const -> bool {
         return false;
     }
     Token first = peek(1);
-    if (first.kind == TokenKind::KwFunc || first.kind == TokenKind::LParen) {
+    if (first.kind == TokenKind::KwFunc) {
         return true;
+    }
+    if (first.kind == TokenKind::LParen) {
+        // `[(func(i64) -> i64)]` is a type argument; `[(usize)i]` is an index with a cast
+        return peek_kind(pos + 2) == TokenKind::KwFunc;
     }
     if (first.kind != TokenKind::Name) {
         return false;
