@@ -436,9 +436,21 @@ auto Emitter::emit_stmt(Node* n) -> void {
             }
             bool is_out = op->text == "out" || op->text == "inout";
             bool is_in = op->text == "in" || op->text == "inout";
-            bool clobber_only = is_out && op->left != nullptr && op->left->kind == NodeKind::Name &&
-                                op->left->text == "_";
-            if (clobber_only) {
+            bool discarded = is_out && op->left != nullptr && op->left->kind == NodeKind::Name &&
+                             op->left->text == "_";
+            // a discarded output is a clobber, unless the block also reads that register: C
+            // refuses a clobber of an input's register, so it is then a dummy output operand
+            bool read_too = false;
+            for (Node* other = n->left; discarded && other != nullptr; other = other->next) {
+                if ((other->text == "in" || other->text == "inout") && other->type != nullptr) {
+                    string p = string(other->type->text);
+                    if (p.size() >= 2 && p.front() == '"' && p.back() == '"') {
+                        p = p.substr(1, p.size() - 2);
+                    }
+                    read_too = read_too || (!place.empty() && p == place);
+                }
+            }
+            if (discarded && !read_too) {
                 if (!place.empty()) {
                     clobs += ", \"" + place + "\"";
                 }
@@ -460,7 +472,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
                 line("register " + ty + " " + rn + " asm(\"" + place +
                      "\") = " + emit_expr(op->left) + ";");
             } else {
-                line("register " + ty + " " + rn + " asm(\"" + place + "\");");
+                line("register " + ty + " " + rn + " asm(\"" + place + "\")" +
+                     (discarded ? " __attribute__((unused))" : "") + ";");
             }
             // a `reg` operand whose expression is a name is the named operand `[name]`, which
             // the text reaches as `{name}` (§8.9)

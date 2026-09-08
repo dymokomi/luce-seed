@@ -1,7 +1,18 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.41**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.44**, the seed `luce-base` is written against.
+
+## 0.44: a discarded asm output on a register the block reads
+
+- `out("eax") _` beside `in("eax") 1u32` (`cpuid`) is a dummy output operand in the C, not
+  a clobber: GCC refuses a clobber of a register an input variable is bound to, clang
+  does not, which is how the Linux gate found it; the seed's gate is green on Linux.
+
+## 0.43, 0.42: instruction-set levels and vectors
+
+- recorded in the commit log: vectors (§5.12) with eleven tests, and the `platform`
+  module carrying the instruction-set level (§19.5).
 
 ## 0.41: the seed on Linux x86_64
 
