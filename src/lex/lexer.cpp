@@ -476,6 +476,9 @@ class Tokenizer {
         while (is_ident_continue(peek_byte())) {
             pos_ += 1;
         }
+        if (pos_ - start > 128) {
+            error("lucb.lex.identifier", "an identifier is at most 128 bytes");
+        }
         const std::string_view word = slice(start, pos_);
         const TokenKind kind = keyword_kind(word);
         if (kind == TokenKind::KwAsm) {

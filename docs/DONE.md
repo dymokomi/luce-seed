@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.50**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.51**, the seed `luce-base` is written against.
+
+## 0.51: an identifier is at most 128 bytes
+
+- The lexer refuses a longer identifier (`lucb.lex.identifier`, §3.1), and a module's file
+  name without `.lucb` must be an identifier (§16.1), so a diagnostic quoting a name has
+  a bound and a file name never reaches C as a bad symbol. Both rules came from luce-base's
+  fuzzer. Evidence: `tests/lex_test.cpp`, luce-base's conformance rejections.
 
 ## 0.50: a cast gives its operand no context
 

@@ -405,3 +405,11 @@ TEST(lex_core_type_names_are_names) {
     CHECK(kinds_eq(lexed,
                    {"name", "name", "name", "name", "name", "name", "name", "newline", "eof"}));
 }
+
+TEST(lex_identifier_is_at_most_128_bytes) {
+    // a diagnostic quoting a name fits its buffer (§3.1)
+    Lexed fits(std::string("let ") + std::string(128, 'a') + " = 1\n");
+    CHECK(!fits.has("lucb.lex.identifier"));
+    Lexed toolong(std::string("let ") + std::string(129, 'a') + " = 1\n");
+    CHECK(toolong.has("lucb.lex.identifier"));
+}

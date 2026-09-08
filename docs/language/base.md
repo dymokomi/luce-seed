@@ -128,7 +128,7 @@ These are the tests every rule in the rest of the document had to pass.
 
 Source is UTF-8. A byte-order mark is accepted and ignored only at byte zero. NUL bytes, invalid UTF-8, the Unicode bidirectional format characters (U+202A to U+202E and U+2066 to U+2069), and characters confusable with ASCII punctuation are rejected. CRLF is normalised for parsing while source positions keep correct byte and line mappings.
 
-Identifiers are ASCII: a letter or `_`, followed by letters, digits, or `_`. The standalone `_` is the pattern wildcard; `_unused` is an ordinary name. Unicode is fully supported inside text and comments.
+Identifiers are ASCII: a letter or `_`, followed by letters, digits, or `_`, at most 128 bytes long. The standalone `_` is the pattern wildcard; `_unused` is an ordinary name. Unicode is fully supported inside text and comments.
 
 ### 3.2 Layout
 
@@ -1310,7 +1310,7 @@ pub func main(arguments: str[]) -> i32!:
 
 ### 16.1 Files and modules
 
-One file is one module; its path is its package-relative path: `src/image/color.lucb` is `image.color`. There is no module declaration and no re-export. Module cycles are errors. Declarations are private unless `pub`, and a public signature may mention only public types.
+One file is one module; its path is its package-relative path: `src/image/color.lucb` is `image.color`, so a file's name without `.lucb` is an identifier. There is no module declaration and no re-export. Module cycles are errors. Declarations are private unless `pub`, and a public signature may mention only public types.
 
 ### 16.2 The three module kinds
 

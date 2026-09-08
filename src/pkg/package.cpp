@@ -243,6 +243,29 @@ bool load_bytes(Program& program, const string& path, const string& name, const 
     return ok && diagnostics.empty();
 }
 
+// A module's file name without `.lucb` is an identifier (§16.1): a letter or `_`, then
+// letters, digits, or `_`, so it names the module and its C symbols.
+bool file_names_a_module(const string& path) {
+    size_t start = path.rfind('/');
+    start = start == string::npos ? 0 : start + 1;
+    size_t end = path.find('.', start);
+    if (end == string::npos) {
+        end = path.size();
+    }
+    if (end == start) {
+        return false;
+    }
+    for (size_t i = start; i < end; i++) {
+        const char c = path[i];
+        const bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+        const bool digit = c >= '0' && c <= '9';
+        if (!letter && !(digit && i > start)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool load_one(Program& program, const string& path, const string& name, DiagnosticBag& diagnostics,
               vector<string>& stack) {
     if (find_loaded(program, name) != nullptr) {
@@ -252,6 +275,11 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     string bytes = slurp_file(path, &error);
     if (!error.empty()) {
         diagnostics.add("lucb.check.import", path, Span{}, error);
+        return false;
+    }
+    if (!file_names_a_module(path)) {
+        diagnostics.add("lucb.check.import", path, Span{},
+                        "a module's file name is an identifier (§16.1)");
         return false;
     }
     return load_bytes(program, path, name, bytes, diagnostics, stack);
