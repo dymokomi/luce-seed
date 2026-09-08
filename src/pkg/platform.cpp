@@ -42,7 +42,8 @@ const char* lucb_std_platform() {
 #else
            "pub let arm64: bool = false\npub let x86_64: bool = true\n"
 #endif
-           "pub let pointer_bits: u32 = 64\n";
+           "pub let pointer_bits: u32 = 64\n"
+           "pub let cpu_level: u32 = 1\n";
 }
 
 } // namespace lucb
