@@ -366,6 +366,12 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         if (n->resolved != nullptr && n->resolved->kind == NodeKind::ExternVar) {
             return string(n->text);
         }
+        if (at_file_scope && n->resolved != nullptr && n->resolved->kind == NodeKind::Const &&
+            n->resolved->left != nullptr) {
+            // C reads no global in a file-scope initialiser: the constant's value stands in
+            // for its name (§6.4)
+            return "(" + emit_expr(n->resolved->left) + ")";
+        }
         if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
             string nm = name_ident(n);
             char nbuf[32];
@@ -851,6 +857,21 @@ auto Emitter::emit_arith(Type* t, TokenKind op, const string& L, const string& R
         const char* cop = op == TokenKind::Amp ? "&" : op == TokenKind::Pipe ? "|" : "^";
         return down_cast(t, "(" + L + " " + cop + " " + R + ")");
     }
+    if (at_file_scope) {
+        // a file-scope initialiser is a constant expression the checker has already
+        // evaluated without overflow (§6.4); C wants the plain operator there
+        const char* cop = op == TokenKind::Plus || op == TokenKind::PlusPercent || op == TokenKind::PlusPipe ? "+"
+                          : op == TokenKind::Minus || op == TokenKind::MinusPercent || op == TokenKind::MinusPipe ? "-"
+                          : op == TokenKind::Star || op == TokenKind::StarPercent || op == TokenKind::StarPipe ? "*"
+                          : op == TokenKind::SlashSlash ? "/"
+                          : op == TokenKind::Percent ? "%"
+                          : op == TokenKind::LtLt ? "<<"
+                          : op == TokenKind::GtGt ? ">>"
+                                                  : nullptr;
+        if (cop != nullptr) {
+            return "((" + c_type(t) + ")(" + L + " " + cop + " " + R + "))";
+        }
+    }
     const char* helper = nullptr;
     if (op == TokenKind::Plus) {
         helper = "add";
@@ -1092,7 +1113,12 @@ auto Emitter::emit_member(Node* n) -> string {
         if (ot->name == "files" && n->text == "missing") {
             return "2";
         }
-        // `module.constant`: a public top-level binding of another module.
+        // `module.constant`: a public top-level binding of another module; in a file-scope
+        // initialiser its value stands in for its name (§6.4)
+        if (at_file_scope && n->resolved != nullptr && n->resolved->kind == NodeKind::Const &&
+            n->resolved->left != nullptr) {
+            return "(" + emit_expr(n->resolved->left) + ")";
+        }
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Const || n->resolved->kind == NodeKind::Global)) {
             return global_ident(n->resolved);

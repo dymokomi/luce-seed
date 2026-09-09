@@ -1,7 +1,15 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.64**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.65**, the seed `luce-base` is written against.
+
+## 0.65: a constant's value stands in for its name in a file-scope initialiser
+
+- `var g: S = S(f = flag)` and `var h = consts.base * 2` (§6.4): C reads no global in a
+  file-scope initialiser, so the `let`'s initialiser is written in its place, qualified or
+  not; the interpreter binds the globals in passes, so one may name a constant of a module
+  loaded after its own. Found by luce's immortal text literals. Evidence:
+  `tests/agree_test.cpp`, luce-base's `16_modules/constant_initialisers`.
 
 ## 0.64: a tuple is a type argument
 

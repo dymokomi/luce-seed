@@ -66,19 +66,34 @@ auto Interp::load_globals() -> void {
     if (mods.empty() && module != nullptr) {
         mods.push_back(module);
     }
+    // A global's initialiser may name a constant of a module loaded after its own (§6.4),
+    // so the globals are bound in passes: one whose initialiser names something not yet
+    // bound waits for a later pass, until a pass binds nothing more.
+    vector<Node*> pending;
     for (size_t i = 0; i < mods.size(); i++) {
         if (mods[i] == nullptr) {
             continue;
         }
         for (Node* d = mods[i]->body; d != nullptr; d = d->next) {
-            if (d->kind != NodeKind::Global && d->kind != NodeKind::Const) {
-                continue;
+            if (d->kind == NodeKind::Global || d->kind == NodeKind::Const) {
+                pending.push_back(d);
             }
+        }
+    }
+    while (!pending.empty()) {
+        vector<Node*> later;
+        for (Node* d : pending) {
             Slot s;
             s.name = d->text;
             s.decl = d;
             if (d->left != nullptr) {
                 s.value = eval(d->left);
+                if (trapped && trap == "unknown name at runtime") {
+                    trapped = false;
+                    trap.clear();
+                    later.push_back(d);
+                    continue;
+                }
             } else {
                 s.value = zero_of(d->ty);
             }
@@ -88,6 +103,11 @@ auto Interp::load_globals() -> void {
             }
             globals.slots.push_back(s);
         }
+        if (later.size() == pending.size()) {
+            fail("unknown name at runtime");
+            return;
+        }
+        pending.swap(later);
     }
 }
 

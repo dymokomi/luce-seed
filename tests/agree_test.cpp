@@ -668,6 +668,18 @@ TEST(agree_tuple_type_argument) {
                  "    return n + (i64)s.length + b.v.0 - 40\n"));
 }
 
+TEST(agree_constant_in_a_global_initialiser) {
+    CHECK(agrees("let flag: u8 = 32\n"
+                 "let base: i64 = 40\n"
+                 "struct S:\n"
+                 "    var f: u8\n"
+                 "    var n: i64\n"
+                 "var g: S = S(f = flag, n = base + 2)\n"
+                 "var h: i64 = base * 2\n"
+                 "pub func answer() -> i64:\n"
+                 "    return (i64)g.f + g.n + h - 112\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"
