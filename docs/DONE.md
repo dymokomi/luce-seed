@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.54**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.55**, the seed `luce-base` is written against.
+
+## 0.55: an array literal passed as a span is an array of the function
+
+- `total(["a", "b"])` was written as a brace list cast to a span, which C refuses; the literal
+  is now an array declared at the function's top, as format buffers are, and the span views
+  it. Found compiling luce's runtime through luce-base, whose C backend had the sister
+  defect (a block-scoped temporary). Evidence: `tests/agree_test.cpp`.
 
 ## 0.54: a C string literal escapes what C could misread
 

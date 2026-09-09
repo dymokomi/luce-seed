@@ -1464,3 +1464,8 @@ TEST(agree_text_that_c_could_misread) {
     // `??)` is a trigraph, a NUL ends a C string, `\r` and a non-ASCII byte are octal in C
     CHECK(agrees("pub func answer() -> i64:\n    let a = \"a?\?)b\"\n    let b = \"x\\0y\"\n    let c = \"\\r\"\n    let d = \"\\u{e9}\"\n    assert(\"?\?=\".length == 3)\n    return (i64)a.length * 1000 + (i64)b.length * 100 + (i64)c.length * 10 + (i64)d.length + 4\n"));
 }
+
+TEST(agree_array_literal_passed_as_a_span) {
+    // the literal is an array of the function's, so the span reaches the callee intact
+    CHECK(agrees("func total(pieces: const str[]) -> i64:\n    var n: i64 = 0\n    for p in pieces:\n        n += (i64)p.length\n    return n\nfunc first(values: const i64[]) -> i64:\n    return values[0] + values[2]\npub func answer() -> i64:\n    return total([\"a\", \" \", \"bcd\"]) + first([10, 20, 30]) - 3\n"));
+}

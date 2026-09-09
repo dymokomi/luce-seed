@@ -1181,6 +1181,29 @@ auto Emitter::emit_slice(Node* n) -> string {
 }
 
 auto Emitter::emit_array_lit(Node* n) -> string {
+    if (n->ty != nullptr && n->ty->kind == TypeKind::Span) {
+        // a literal where a span is wanted (§5.4): an array of the function's, declared at
+        // its top like a format buffer, so the span outlives the expression that filled it
+        int count = 0;
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            count++;
+        }
+        const string span_ty = n->ty->is_const ? "lb_cspan" : "lb_span";
+        if (count == 0) {
+            return "((" + span_ty + "){(void*)8, 0})";
+        }
+        int id = tmp();
+        string name = "_lb_ad" + std::to_string(id);
+        format_decls.push_back(c_type(n->ty->elem) + " " + name + "[" + std::to_string(count) + "];");
+        string s = "(";
+        int i = 0;
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            s += name + "[" + std::to_string(i) + "] = " + emit_expr(e) + ", ";
+            i++;
+        }
+        s += "(" + span_ty + "){(void*)" + name + ", " + std::to_string(count) + "})";
+        return s;
+    }
     string s = "(" + c_type(n->ty) + "){{";
     bool first = true;
     for (Node* e = n->body; e != nullptr; e = e->next) {
