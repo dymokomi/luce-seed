@@ -608,6 +608,22 @@ TEST(agree_catch_into_optional) {
                  "    let c: i64? = parse(-5) catch failure:\n"
                  "        recover 99\n"
                  "    return (1 if a == none else 0) * 100 + (b else 0) * 10 + (c else 0) - 90\n"));
+    // a payload that is an optional already keeps its own presence
+    CHECK(agrees("let bad: ErrorCode = ErrorCode.package(1)\n"
+                 "func lookup(n: i64) -> i64?!:\n"
+                 "    if n < 0:\n"
+                 "        error(bad, \"negative\")\n"
+                 "    if n == 0:\n"
+                 "        return none\n"
+                 "    return n\n"
+                 "pub func answer() -> i64:\n"
+                 "    let some = lookup(7) catch e:\n"
+                 "        recover none\n"
+                 "    let empty = lookup(0) catch e:\n"
+                 "        recover 1\n"
+                 "    let failed = lookup(-1) catch e:\n"
+                 "        recover 2\n"
+                 "    return (some else 0) * 100 + (1 if empty == none else 0) * 10 + (failed else 0) - 670\n"));
 }
 
 TEST(agree_print_formatted) {

@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.60**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.61**, the seed `luce-base` is written against.
+
+## 0.61: a caught optional keeps its own presence
+
+- `let empty = lookup(0) catch: recover 1` with `lookup` returning `i64?!`: the
+  interpreter of 0.60 marked the good value present because the expression is an
+  optional; only a `T` becoming the expected `T?` is. Found by luce-base's conformance
+  suite. Evidence: `tests/agree_test.cpp`.
 
 ## 0.60: a `catch` takes the optional expected of it
 

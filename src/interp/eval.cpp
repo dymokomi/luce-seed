@@ -925,8 +925,11 @@ auto Interp::eval_catch(Node* n) -> Value {
     }
     if (!v.failed) {
         if (n->ty != nullptr) {
-            // a `T` becoming the `T?` expected of the expression is present (§11.4)
-            if (is_opt(n->ty) && v.kind != TypeKind::Optional) {
+            // a `T` becoming the `T?` expected of the expression is present (§11.4); a
+            // payload that was an optional already keeps its own presence
+            Type* ft = n->left != nullptr ? n->left->ty : nullptr;
+            Type* payload = is_fail(ft) ? ft->elem : nullptr;
+            if (is_opt(n->ty) && payload != nullptr && !is_opt(payload)) {
                 v.present = true;
             }
             v.kind = n->ty->kind;
