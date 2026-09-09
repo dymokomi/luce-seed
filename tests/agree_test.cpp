@@ -626,6 +626,20 @@ TEST(agree_catch_into_optional) {
                  "    return (some else 0) * 100 + (1 if empty == none else 0) * 10 + (failed else 0) - 670\n"));
 }
 
+TEST(agree_instance_over_a_parameter) {
+    CHECK(agrees("struct Box[T]:\n"
+                 "    var v: T\n"
+                 "func as_box[T](p: void*) -> Box[T]*:\n"
+                 "    return (Box[T]*)p\n"
+                 "func first[T](p: Box[T]*) -> T:\n"
+                 "    let q: Box[T]* = p\n"
+                 "    return q.v\n"
+                 "pub func answer() -> i64:\n"
+                 "    var b = Box[i64](v = 21)\n"
+                 "    let q = as_box[i64]((void*)&b)\n"
+                 "    return q.v + first[i64](q)\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"

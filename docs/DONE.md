@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.61**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.62**, the seed `luce-base` is written against.
+
+## 0.62: an instance over another generic's parameter is not emitted
+
+- `Box[T]*` written inside `first[T]`, as a cast or a binding's type: the instance over
+  `first`'s parameter types the template's body and is substituted per real instantiation;
+  0.61 emitted it as a C struct with a `void` field. Found by luce's runtime. Evidence:
+  `tests/agree_test.cpp`.
 
 ## 0.61: a caught optional keeps its own presence
 

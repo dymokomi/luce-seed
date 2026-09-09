@@ -482,6 +482,26 @@ auto Checker::leave_module_scope(ScopeSwap& saved) -> void {
     current_module = saved.module;
 }
 
+// Whether a type mentions a generic's parameter, so an instance over it belongs to a
+// template's checking pass and is never emitted itself.
+static auto mentions_param(const Type* t) -> bool {
+    if (t == nullptr) {
+        return false;
+    }
+    if (t->kind == TypeKind::Param) {
+        return true;
+    }
+    if (mentions_param(t->elem)) {
+        return true;
+    }
+    for (int i = 0; i < t->ntargs && t->args != nullptr; i++) {
+        if (mentions_param(t->args[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) -> Type* {
     if (st == nullptr) {
         return t_error();
@@ -526,7 +546,16 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
     in.type = t;
     in.args = args;
     insts.push_back(in);
-    pending_clones.push_back(clone);
+    // `Box[T]` inside `first[T]` is an instance over another generic's parameter: it
+    // types the template's body and is substituted at each real instantiation, so it is
+    // not emitted
+    bool abstract = false;
+    for (Type* a : args) {
+        abstract = abstract || mentions_param(a);
+    }
+    if (!abstract) {
+        pending_clones.push_back(clone);
+    }
     inst_depth++;
     int i = 0;
     for (Node* g = st->left; g != nullptr; g = g->next) {
