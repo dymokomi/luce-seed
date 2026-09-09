@@ -465,6 +465,23 @@ TEST(check_extern_handle_ok) {
                    "    return 0\n"));
 }
 
+TEST(check_name_is_not_a_pattern) {
+    CHECK(check_has("let one: u8 = 1\n"
+                    "func name(k: u8) -> str:\n"
+                    "    match k:\n"
+                    "        one: return \"one\"\n"
+                    "        _: return \"other\"\n",
+                    "lucb.check.match"));
+}
+
+TEST(check_bracketed_value_times_operand) {
+    CHECK(check_ok("let NPtr: i64 = 2\n"
+                   "func twice(n: i64) -> i64:\n"
+                   "    return (NPtr) * n\n"
+                   "func less(n: i64) -> i64:\n"
+                   "    return (NPtr) - n\n"));
+}
+
 TEST(check_handle_destroy) {
     CHECK(check_ok("pub handle File:\n"
                    "    destroy close\n"

@@ -942,3 +942,10 @@ returning `unit` without failing; an opaque handle converts to and from `void*` 
 `(Counter)(void*)p` is a cast of a cast: a capitalised name in parentheses before `(` is
 a type (§3.4), as luce-base reads it; the parser took it for a call of a value. Evidence:
 `tests/parse_test.cpp` (`parse_cast_of_a_cast_to_a_named_type`).
+
+## 0.71 — bracketed values and name patterns
+
+`(NPtr) * n` with `NPtr` a value: the parser's cast (0.70) is rewritten by the checker
+into the binary expression, as luce-base does (§7.5). A bare name is not a pattern (§8.4):
+the checker rejects it instead of compiling a comparison no reader expects. Evidence:
+`tests/check_test.cpp` (`check_bracketed_value_times_operand`, `check_name_is_not_a_pattern`).

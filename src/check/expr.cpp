@@ -1196,6 +1196,11 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
                         fail_n(pat, "lucb.check.call", "wrong number of payload fields");
                     }
                 }
+            } else if (!pat->text.empty() && pat->text != "_" && pat->left == nullptr) {
+                // patterns are closed (§8.4): a bare name on a scrutinee that is no enum
+                // would read as a binding to one reader and a constant to another
+                fail_n(pat, "lucb.check.match",
+                       "a name is not a pattern; patterns are literals, ranges and cases (§8.4)");
             } else if (pat->left != nullptr) {
                 if (pat->left->kind == NodeKind::Literal) {
                     if (pat->left->op == TokenKind::KwTrue) {

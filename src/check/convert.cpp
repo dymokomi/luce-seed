@@ -320,6 +320,31 @@ auto Checker::check_checked_conv(Node* n, Type* dest) -> Type* {
 }
 
 auto Checker::check_cast(Node* n, bool checked) -> Type* {
+    // `(NPtr) * n`, `(Limit) - x`: the parser reads a capitalised name in parentheses as a
+    // cast; when the name is a value, the operator is binary (§7.5)
+    if (n->type != nullptr && n->type->kind == NodeKind::Type && !n->type->text.empty() &&
+        n->type->body == nullptr && n->type->left == nullptr && n->type->flags == 0 &&
+        n->left != nullptr && n->left->kind == NodeKind::Unary &&
+        (n->left->op == TokenKind::Star || n->left->op == TokenKind::Minus)) {
+        Binding* b = lookup(n->type->text);
+        bool value = b != nullptr && b->decl != nullptr &&
+                     (b->decl->kind == NodeKind::Const || b->decl->kind == NodeKind::Global ||
+                      b->decl->kind == NodeKind::Param || b->decl->kind == NodeKind::Let ||
+                      b->decl->kind == NodeKind::Var || b->decl->kind == NodeKind::Field);
+        if (value) {
+            Node* name = arena->make<Node>();
+            name->kind = NodeKind::Name;
+            name->span = n->type->span;
+            name->text = n->type->text;
+            Node* operand = n->left->left;
+            n->kind = NodeKind::Binary;
+            n->op = n->left->op;
+            n->left = name;
+            n->right = operand;
+            n->type = nullptr;
+            return check_expr(n, nullptr);
+        }
+    }
     Type* dest = resolve_type(n->type);
     if (n->type != nullptr) {
         n->type->ty = dest; // the written target; n->ty may later widen to `T?`
