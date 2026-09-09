@@ -981,3 +981,10 @@ directive, and a bare `#:` restores the file's own. The interpreter keeps the st
 per frame; the C output sets a thread-local `lb_pos` before each statement and restores
 the caller's when a function returns. Evidence: `tests/eval_test.cpp`
 (`eval_trap_names_its_statement`).
+
+## 0.76 — the position names are runtime names
+
+A local named `pos`, `restore_pos` or `saved_pos` took the C name of the runtime's
+statement position (0.75) and shadowed it; the three join the runtime names a local's C
+name avoids with a trailing underscore. Evidence: luce-base's own source, which the seed
+compiles, holds such locals.

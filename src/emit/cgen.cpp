@@ -24,7 +24,8 @@ namespace lucb {
 static auto runtime_name(string_view name) -> bool {
     static const char* const names[] = {"span",  "str",  "error", "cspan", "out",  "fmtbuf",
                                         "hash_bytes", "hash_mix", "hash_seed", "utf8_ok",
-                                        "r_str", "trap", "check_index", "unknown"};
+                                        "r_str", "trap", "check_index", "unknown",
+                                        "pos", "restore_pos", "saved_pos"};
     for (const char* n : names) {
         if (name == n) {
             return true;
