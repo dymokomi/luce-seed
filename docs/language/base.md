@@ -1053,7 +1053,7 @@ let text = files.read(path) catch failure:
     error(failure.code, failure.message)
 ```
 
-`expression catch name:` handles only that expression's failure. The handler must `recover value`, terminate with `error` or `trap`, `return`, or, inside a loop, `break` or `continue`. `catch` binds more loosely than any operator.
+`expression catch name:` handles only that expression's failure. The handler must `recover value`, terminate with `error` or `trap`, `return`, or, inside a loop, `break` or `continue`. `catch` binds more loosely than any operator. Where a `T?` is expected and the handled value is a `T`, the `catch` expression is a `T?` and the handler may `recover none`: `let n: i64? = parse(text) catch: recover none`.
 
 ### 11.5 Traps
 

@@ -925,6 +925,10 @@ auto Interp::eval_catch(Node* n) -> Value {
     }
     if (!v.failed) {
         if (n->ty != nullptr) {
+            // a `T` becoming the `T?` expected of the expression is present (§11.4)
+            if (is_opt(n->ty) && v.kind != TypeKind::Optional) {
+                v.present = true;
+            }
             v.kind = n->ty->kind;
             v.type = n->ty;
         }

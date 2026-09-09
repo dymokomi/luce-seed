@@ -1039,10 +1039,20 @@ auto Checker::check_catch(Node* n, Type* expected) -> Type* {
         return t_error();
     }
     Type* payload = left->elem != nullptr ? left->elem : t_unit();
+    // where a `T?` is expected and the value is a `T`, the expression is the `T?` and the
+    // handler may `recover none` (§11.4)
+    Type* result = payload;
+    if (expected != nullptr && is_opt(expected) && expected->elem != nullptr &&
+        type_eq(expected->elem, payload)) {
+        result = expected;
+    } else if (expected != nullptr && is_null_niche(expected) && !is_opt(payload) &&
+               can_ptr_convert(payload, expected, nullptr)) {
+        result = expected; // `Node*` into the `Node*?` expected: the same word
+    }
     bool saved = in_catch;
     Type* saved_ct = catch_type;
     in_catch = true;
-    catch_type = payload;
+    catch_type = result;
     push_scope();
     if (!n->text.empty()) {
         bind(n->text, ty_err, false, n);
@@ -1056,8 +1066,7 @@ auto Checker::check_catch(Node* n, Type* expected) -> Type* {
         fail_n(n, "lucb.check.type",
                "a `catch` handler must `recover` a value or leave with `return`, `error`, `trap`, `break`, or `continue`");
     }
-    (void)expected;
-    return payload;
+    return result;
 }
 
 // A handler's every path ends in `recover`, `return`, `error`, `trap`, `break`, or `continue`.

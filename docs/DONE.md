@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.59**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.60**, the seed `luce-base` is written against.
+
+## 0.60: a `catch` takes the optional expected of it
+
+- `let n: i64? = parse(text) catch: recover none` (§11.4): where a `T?` is expected and the
+  handled value is a `T`, the expression is the `T?`, the handler recovers with it, and the
+  value on the good path is wrapped. Checker, C emitter and interpreter. Evidence:
+  `tests/agree_test.cpp`.
 
 ## 0.59: an interface method is called through a pointer to the view
 

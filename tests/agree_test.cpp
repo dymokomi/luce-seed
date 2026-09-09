@@ -594,6 +594,22 @@ TEST(agree_interface_call_through_a_pointer) {
                  "    return twice(&c)\n"));
 }
 
+TEST(agree_catch_into_optional) {
+    CHECK(agrees("let bad: ErrorCode = ErrorCode.package(1)\n"
+                 "func parse(n: i64) -> i64!:\n"
+                 "    if n < 0:\n"
+                 "        error(bad, \"negative\")\n"
+                 "    return n\n"
+                 "pub func answer() -> i64:\n"
+                 "    let a: i64? = parse(-1) catch failure:\n"
+                 "        recover none\n"
+                 "    let b: i64? = parse(3) catch failure:\n"
+                 "        recover none\n"
+                 "    let c: i64? = parse(-5) catch failure:\n"
+                 "        recover 99\n"
+                 "    return (1 if a == none else 0) * 100 + (b else 0) * 10 + (c else 0) - 90\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"

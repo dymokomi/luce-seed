@@ -65,6 +65,9 @@ auto Emitter::produces_opt(Node* n) -> bool {
     if (n->kind == NodeKind::Unary && n->op == TokenKind::KwTry) {
         return true; // `try f()` of a `T?!` yields the `T?` itself
     }
+    if (n->kind == NodeKind::Catch) {
+        return true; // a `catch` typed `T?` builds the optional itself (§11.4)
+    }
     if (n->kind == NodeKind::Binary &&
         (n->op == TokenKind::PlusQuestion || n->op == TokenKind::MinusQuestion ||
          n->op == TokenKind::StarQuestion)) {
@@ -291,7 +294,12 @@ auto Emitter::emit_catch(Node* n) -> string {
     s += "_lb_cd" + std::to_string(id) + ": __attribute__((unused));";
     s += " } else { ";
     if (payload != nullptr && payload->kind != TypeKind::Unit) {
-        s += vn + " = " + rn + ".value; ";
+        // the expression may be the `T?` expected of it while the value is a `T` (§11.4)
+        if (is_opt(n->ty) && !is_opt(payload)) {
+            s += vn + " = " + wrap_opt(n->ty, rn + ".value") + "; ";
+        } else {
+            s += vn + " = " + rn + ".value; ";
+        }
     }
     s += "} ";
     s += vn + "; })";
