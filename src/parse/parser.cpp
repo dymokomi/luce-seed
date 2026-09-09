@@ -49,9 +49,14 @@ auto Parser::is_lambda_ahead() const -> bool {
     // a parameter list holds names, each with an optional type: `(n < 0) => x` in a match
     // arm is a guard's parenthesised condition, not a lambda (§9.6, §8.4)
     int depth = 0;
+    bool after_colon = false;
     for (int i = pos + 1; i < close; i++) {
         TokenKind k = tok[i].kind;
         if (k == TokenKind::LParen || k == TokenKind::LBracket) {
+            // a nested `(` opens a tuple type after `:`; `((n < 0))` is no parameter
+            if (k == TokenKind::LParen && depth == 0 && !after_colon) {
+                return false;
+            }
             depth++;
             continue;
         }
@@ -62,6 +67,7 @@ auto Parser::is_lambda_ahead() const -> bool {
         if (depth > 0) {
             continue;
         }
+        after_colon = k == TokenKind::Colon;
         switch (k) {
         case TokenKind::Name: case TokenKind::Comma: case TokenKind::Colon: case TokenKind::Star:
         case TokenKind::StarQuestion: case TokenKind::Question: case TokenKind::Bang: case TokenKind::Arrow:

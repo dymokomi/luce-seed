@@ -1475,5 +1475,6 @@ TEST(agree_tuple_members_by_position) {
 }
 
 TEST(agree_parenthesised_guard_is_not_a_lambda) {
+    CHECK(agrees("func pair_sum(f: func((i64, i64)) -> i64, p: (i64, i64)) -> i64:\n    return f(p)\npub func answer() -> i64:\n    let s = pair_sum((p: (i64, i64)) => p.0 + p.1, (20, 22))\n    return match s:\n        _ if ((s > 10) and (s < 50)) => s\n        _ => 0\n"));
     CHECK(agrees("func describe(n: i64) -> i64:\n    return match n:\n        0 => 0\n        _ if (n < 0) => 1\n        _ if (n > 100 and n < 1000) => 2\n        _ => 3\nfunc apply(f: func(i64) -> i64, x: i64) -> i64:\n    return f(x)\npub func answer() -> i64:\n    return describe(0) * 1000 + describe(-5) * 100 + describe(500) * 10 + describe(7) + apply((v) => v * 2, 3) + apply((v: i64) => v + 1, 1)\n"));
 }

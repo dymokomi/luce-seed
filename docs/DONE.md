@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.57**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.58**, the seed `luce-base` is written against.
+
+## 0.58: a doubly parenthesised guard is not a lambda either
+
+- `_ if ((a > b)) => x`: a `(` inside a would-be parameter list opens a tuple type only after
+  `:`, `(p: (i64, i64)) => p.0 + p.1`; anywhere else the parentheses hold an expression.
+  Evidence: `tests/agree_test.cpp`.
 
 ## 0.57: a parenthesised guard is not a lambda
 
