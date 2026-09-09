@@ -284,7 +284,10 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         // while `(Name)(x)` stays a call
         return true;
     }
-    if (stars == 0 && !is_scalar_type(name.text) && name.text != "c") {
+    // a capitalised name is a type (§3.4): `(Counter)(void*)p` casts twice, as luce-base
+    // reads it; a lowercase one before `(` is a value being called
+    bool type_word = !name.text.empty() && name.text[0] >= 'A' && name.text[0] <= 'Z';
+    if (stars == 0 && !is_scalar_type(name.text) && name.text != "c" && !type_word) {
         return false;
     }
     return operand == TokenKind::LParen || operand == TokenKind::Minus ||

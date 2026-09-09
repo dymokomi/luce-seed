@@ -936,3 +936,9 @@ the destroyer; the checker requires a `pub` function of the module taking the ha
 returning `unit` without failing; an opaque handle converts to and from `void*` by cast
 (§7.5), which the seed always allowed. Evidence: `tests/parse_test.cpp` (`parse_handle`),
 `tests/check_test.cpp` (`check_handle_destroy`).
+
+## 0.70 — a cast to a named type before a parenthesised operand
+
+`(Counter)(void*)p` is a cast of a cast: a capitalised name in parentheses before `(` is
+a type (§3.4), as luce-base reads it; the parser took it for a call of a value. Evidence:
+`tests/parse_test.cpp` (`parse_cast_of_a_cast_to_a_named_type`).

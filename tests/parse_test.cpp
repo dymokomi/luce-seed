@@ -236,6 +236,16 @@ TEST(parse_union) {
     CHECK(p.dump().find("(union \"Value\"") != std::string::npos);
 }
 
+TEST(parse_cast_of_a_cast_to_a_named_type) {
+    Parsed p("extern type Counter\n"
+             "func wrap(p: void*) -> Counter:\n"
+             "    return (Counter)(void*)p\n"
+             "func call(f: func(i64) -> i64) -> i64:\n"
+             "    return (f)(1)\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(cast (type (type \"Counter\")) (cast") != std::string::npos);
+}
+
 TEST(parse_handle) {
     Parsed p("pub handle File:\n"
              "    destroy close\n"
