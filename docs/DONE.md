@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.67**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.68**, the seed `luce-base` is written against.
+
+## 0.68: a tuple is not a pattern
+
+- `match p: (0, 0) => ...` (§8.4): the parser refuses a tuple literal where a pattern is
+  expected, and the checker now refuses one too should a tree carry it; a pattern is a
+  literal, a case, a range, a name or `_`. Evidence: `tests/parse_test.cpp`.
 
 ## 0.67: a chain may be three hundred links
 

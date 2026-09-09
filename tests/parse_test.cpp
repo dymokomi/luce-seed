@@ -179,6 +179,11 @@ TEST(parse_cast_chain_nests_too_deeply) {
     CHECK(q.has("lucb.parse.limit"));
 }
 
+TEST(parse_tuple_is_not_a_pattern) {
+    Parsed p("func pair(p: (i64, i64)) -> i64:\n    return match p:\n        (0, 0) => 0\n        _ => -1\n");
+    CHECK(p.has("lucb.parse.expect"));
+}
+
 TEST(parse_chained_comparison_is_an_error) {
     Parsed p("func f(a: i64, b: i64, c: i64) -> bool:\n    return a < b < c\n");
     CHECK(p.has("lucb.parse.chain"));

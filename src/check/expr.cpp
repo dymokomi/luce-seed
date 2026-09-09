@@ -1120,6 +1120,11 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
             if (saw_rest) {
                 fail_n(pat, "lucb.check.match", "this pattern is unreachable: an earlier `_` arm takes everything");
             }
+            if (pat->kind == NodeKind::Tuple) {
+                // a tuple is not a pattern (§8.4): no backend compares one, so none pretends to
+                fail_n(pat, "lucb.check.match", "a tuple is not a pattern; match one member at a time, or compare with `==`");
+                continue;
+            }
             size_t bound = 0;
             auto bind_name = [&](Node* at, string_view name, Type* t) {
                 bound++;
