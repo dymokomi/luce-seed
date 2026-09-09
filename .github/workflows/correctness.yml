@@ -49,7 +49,9 @@ jobs:
           ./test.sh 2>&1 | tee build/gate.log
       - name: Record final dependency provenance
         if: always()
-        run: python3 tools/ci_provenance.py > build/provenance-final.json
+        run: |
+          mkdir -p build
+          python3 tools/ci_provenance.py > build/provenance-final.json
       - name: Retain diagnostics and replay records
         if: always()
         uses: actions/upload-artifact@v7
