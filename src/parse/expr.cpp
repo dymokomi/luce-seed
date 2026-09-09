@@ -116,11 +116,18 @@ auto Parser::parse_binary(int min_prec) -> Node* {
 auto Parser::parse_binary_rest(Node* left, int min_prec) -> Node* {
     bool used_cmp = false;
     bool used_range = false;
+    int chain = 0;
     while (true) {
         TokenKind op = cur().kind;
         int prec = prec_of(op);
         if (prec < min_prec || prec == 0) {
             break;
+        }
+        // an operator chain deepens the tree by one level per operator
+        chain++;
+        if (nest + chain > k_max_nest) {
+            fail("lucb.parse.limit", "expression nests too deeply");
+            return left;
         }
         if (is_compare(op) && used_cmp) {
             fail("lucb.parse.chain", "comparison operators cannot be chained");
@@ -176,6 +183,17 @@ static uint32_t span_end(Node* n) {
 }
 
 auto Parser::parse_unary() -> Node* {
+    // casts and prefix operators recurse without passing `parse_expression`, so the
+    // nesting bound is kept here too: `(u8)(u8)(u8)...x` is a diagnostic, not a stack fault
+    struct Nest {
+        Parser* p;
+        explicit Nest(Parser* q) : p(q) { p->nest++; }
+        ~Nest() { p->nest--; }
+    } guard(this);
+    if (nest > k_max_nest) {
+        fail("lucb.parse.limit", "expression nests too deeply");
+        return make(NodeKind::Literal, cur().span);
+    }
     Token start = cur();
     if (at(TokenKind::KwTry) || at(TokenKind::KwNot) || at(TokenKind::Plus) ||
         at(TokenKind::Minus) || at(TokenKind::MinusPercent) || at(TokenKind::Tilde) ||
@@ -202,7 +220,15 @@ auto Parser::parse_unary() -> Node* {
 auto Parser::parse_postfix() -> Node* {
     Token start = cur();
     Node* value = parse_primary();
+    // every postfix deepens the tree by one level, and the passes after the parser
+    // recurse over that depth: a chain counts like nesting
+    int chain = 0;
     while (true) {
+        if (nest + chain > k_max_nest) {
+            fail("lucb.parse.limit", "expression nests too deeply");
+            return value;
+        }
+        chain++;
         if (eat(TokenKind::Dot)) {
             Node* m = make(NodeKind::Member, start.span);
             m->left = value;

@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.65**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.66**, the seed `luce-base` is written against.
+
+## 0.66: a cast chain is bounded like any nesting
+
+- `(u8)(u8)(u8)...x`: casts and prefix operators recurse without the expression entry
+  that counts nesting, so a long chain was a stack fault; the bound, 100 levels, is
+  kept in `parse_unary` too. Found by luce-base's mutation fuzzer. Evidence:
+  `tests/parse_test.cpp`.
 
 ## 0.65: a constant's value stands in for its name in a file-scope initialiser
 

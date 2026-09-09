@@ -166,6 +166,19 @@ TEST(parse_wrapping_operators) {
     CHECK(p.dump().find("*|") != std::string::npos);
 }
 
+TEST(parse_cast_chain_nests_too_deeply) {
+    std::string src = "func f(x: u8) -> u8:\n    return ";
+    for (int i = 0; i < 150; i++) src += "(u8)";
+    src += "x\n";
+    Parsed p(src.c_str());
+    CHECK(p.has("lucb.parse.limit"));
+    std::string calls = "func g(x: u8) -> u8:\n    return x";
+    for (int i = 0; i < 150; i++) calls += "(x)";
+    calls += "\n";
+    Parsed q(calls.c_str());
+    CHECK(q.has("lucb.parse.limit"));
+}
+
 TEST(parse_chained_comparison_is_an_error) {
     Parsed p("func f(a: i64, b: i64, c: i64) -> bool:\n    return a < b < c\n");
     CHECK(p.has("lucb.parse.chain"));
