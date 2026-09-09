@@ -970,6 +970,15 @@ auto Interp::eval_call(Node* n) -> Value {
             if (trapped) {
                 return v_unit();
             }
+            // `view.method()` on a `Writer*` auto-dereferences (§7.3): the view is read out
+            // of the pointee
+            if (is_ptr(callee->left->ty) && view.kind == TypeKind::Pointer && view.ptr != nullptr) {
+                view = *view.ptr;
+                if (view.kind == TypeKind::Pointer) {
+                    view.kind = TypeKind::Interface;
+                    view.type = ot;
+                }
+            }
             if (view.ptr == nullptr && view.kind == TypeKind::Allocator) {
                 return heap_view_call(callee->text, n); // `memory.heap` as a view (§12.3)
             }

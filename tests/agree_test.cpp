@@ -577,6 +577,23 @@ TEST(agree_interface_view) {
                  "    return c.bump()\n"));
 }
 
+TEST(agree_interface_call_through_a_pointer) {
+    CHECK(agrees("interface Counter:\n"
+                 "    mutating func bump() -> i64\n"
+                 "struct Box: Counter:\n"
+                 "    var n: i64\n"
+                 "    mutating func bump() -> i64:\n"
+                 "        self.n += 1\n"
+                 "        return self.n\n"
+                 "func twice(c: Counter*) -> i64:\n"
+                 "    discard(c.bump())\n"
+                 "    return c.bump()\n"
+                 "pub func answer() -> i64:\n"
+                 "    var b = Box(n = 40)\n"
+                 "    var c: Counter = &b\n"
+                 "    return twice(&c)\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"

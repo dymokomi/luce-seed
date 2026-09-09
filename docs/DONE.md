@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.58**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.59**, the seed `luce-base` is written against.
+
+## 0.59: an interface method is called through a pointer to the view
+
+- `out.write(...)` where `out: Writer*` auto-dereferences (§7.3): the C emitter copied the
+  pointer where the fat pointer belonged and the C compiler refused it. Found building luce's
+  compiler through C. Evidence: `tests/agree_test.cpp`.
 
 ## 0.58: a doubly parenthesised guard is not a lambda either
 

@@ -813,8 +813,10 @@ auto Emitter::emit_call(Node* n) -> string {
         Node* method = callee->resolved;
         Node* obj = callee->left;
         Type* ot = obj != nullptr ? obj->ty : nullptr;
+        bool through_pointer = false;
         if (ot != nullptr && is_ptr(ot) && ot->elem != nullptr) {
             ot = ot->elem;
+            through_pointer = true;
         }
         if (ot != nullptr && ot->kind == TypeKind::Interface && method != nullptr) {
             int id = tmp();
@@ -827,7 +829,10 @@ auto Emitter::emit_call(Node* n) -> string {
                 call += ", " + args;
             }
             call += ")";
-            return "({ lb_iface " + vn + " = " + emit_expr(obj) + "; " + prefix + call + "; })";
+            // `view.method()` on a `Writer*` auto-dereferences the pointer (§7.3): the fat
+            // pointer is copied out of it first
+            string view = through_pointer ? "(*(" + emit_expr(obj) + "))" : emit_expr(obj);
+            return "({ lb_iface " + vn + " = " + view + "; " + prefix + call + "; })";
         }
         if (callee->text == "bits" && method == nullptr && obj != nullptr) {
             return emit_float_bits(obj, n);
