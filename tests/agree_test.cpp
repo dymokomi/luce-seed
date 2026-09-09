@@ -640,6 +640,23 @@ TEST(agree_instance_over_a_parameter) {
                  "    return q.v + first[i64](q)\n"));
 }
 
+TEST(agree_const_span_of_pointers) {
+    CHECK(agrees("struct Node:\n"
+                 "    var n: i64\n"
+                 "func total[T](items: const T[], f: func(T) -> i64) -> i64:\n"
+                 "    var sum: i64 = 0\n"
+                 "    for item in items:\n"
+                 "        sum += f(item)\n"
+                 "    return sum\n"
+                 "func weight(p: Node*) -> i64:\n"
+                 "    return p.n\n"
+                 "pub func answer() -> i64:\n"
+                 "    var a = Node(n = 40)\n"
+                 "    var b = Node(n = 2)\n"
+                 "    let both: Node*[2] = [&a, &b]\n"
+                 "    return total[Node*](both, weight)\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"

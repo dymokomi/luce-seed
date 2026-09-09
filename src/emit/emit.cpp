@@ -133,8 +133,12 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         first = false;
         if ((fn->flags & FlagExport) != 0 && is_span(p->ty)) {
             string q = p->ty->is_const ? "const " : "";
-            sig += q + c_type(p->ty->elem) + "* " + string(p->text) + ", size_t " +
-                   string(p->text) + "_len";
+            string et = c_type(p->ty->elem);
+            if (p->ty->is_const && (is_ptr(p->ty->elem) || is_func(p->ty->elem))) {
+                q = "";
+                et += " const";
+            }
+            sig += q + et + "* " + string(p->text) + ", size_t " + string(p->text) + "_len";
         } else {
             sig += c_type(p->ty) + " " + ident("lb_", p->text);
         }

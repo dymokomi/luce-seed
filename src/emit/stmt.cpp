@@ -354,20 +354,17 @@ auto Emitter::emit_stmt(Node* n) -> void {
             elem_e = "lb_utf8_scalar(" + seq + ".data, " + seq + ".length, " + idx + ", &" + width + ")";
         } else {
             len = seq + ".length";
-            string et =
-                n->ty != nullptr
-                    ? c_type((n->flags & FlagByPtr) != 0 && is_ptr(n->ty) ? n->ty->elem : n->ty)
-                    : "uint8_t";
-            if (n->ty != nullptr && is_ptr(n->ty)) {
-                et = c_type(n->ty->elem);
-            }
-            string q =
-                (is_span(it) && it->is_const) || (n->ty != nullptr && n->ty->kind == TypeKind::U8 &&
-                                                  is_span(it) && it->is_const)
-                    ? "const "
-                    : "";
+            // the element type is the span's own, whether the loop binds the element or
+            // a pointer to it; a `const` span of pointers has `T* const` elements (§5.3)
+            Type* elem_t = is_span(it) ? it->elem : nullptr;
+            string et = elem_t != nullptr ? c_type(elem_t) : "uint8_t";
+            string q;
             if (is_span(it) && it->is_const) {
-                q = "const ";
+                if (elem_t != nullptr && (is_ptr(elem_t) || is_func(elem_t))) {
+                    et += " const";
+                } else {
+                    q = "const ";
+                }
             }
             elem_e = "((" + q + et + "*)" + seq + ".data)[" + idx + "]";
         }

@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.62**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.63**, the seed `luce-base` is written against.
+
+## 0.63: a `const` span of pointers iterates
+
+- `for item in items` over a `const T[]` with `T` a pointer: the loop's element type came
+  from the loop variable and dropped the pointer, and the qualifier sat on the pointee; C
+  wants `T* const` (§5.3). Found by luce's runtime. Evidence: `tests/agree_test.cpp`.
 
 ## 0.62: an instance over another generic's parameter is not emitted
 

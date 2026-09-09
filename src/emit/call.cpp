@@ -977,8 +977,13 @@ auto Emitter::emit_span_end(Node* obj, Node* n, bool first) -> string {
         elem = sn + ".d[" + (first ? string("0") : std::to_string(st->length - 1)) + "]";
     } else {
         len = sn + ".length";
-        const string q = st->is_const ? "const " : "";
-        elem = "((" + q + c_type(st->elem) + "*)" + sn + ".data)[" + (first ? string("0") : sn + ".length - 1") + "]";
+        string q = st->is_const ? "const " : "";
+        string et = c_type(st->elem);
+        if (st->is_const && (is_ptr(st->elem) || is_func(st->elem))) {
+            q = "";
+            et += " const";
+        }
+        elem = "((" + q + et + "*)" + sn + ".data)[" + (first ? string("0") : sn + ".length - 1") + "]";
     }
     return "({ " + c_type(st) + " " + sn + " = " + emit_expr(obj) + "; " + c_type(n->ty) + " " + rn +
            "; if (" + len + " > 0) { " + rn + ".present = true; " + rn + ".value = " + elem + "; } else { " +
