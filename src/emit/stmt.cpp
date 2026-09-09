@@ -135,6 +135,10 @@ auto Emitter::emit_stmt(Node* n) -> void {
     if (n == nullptr) {
         return;
     }
+    if (n->kind != NodeKind::Block) {
+        // a trap names the statement it stopped at (§11.5)
+        line("lb_pos = " + c_escape(position_text(current_module, n->span.line, n->span.column)) + ";");
+    }
     switch (n->kind) {
     case NodeKind::Block:
         emit_block(n);

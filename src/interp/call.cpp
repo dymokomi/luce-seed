@@ -28,12 +28,10 @@
 
 namespace lucb {
 
-// `path:line: assert failed: condition`: what a failed `assert` reports (§11.6).
+// `assert failed: condition`: what a failed `assert` reports, after the trap's position
+// (§11.5, §11.6).
 auto Interp::assert_message(Node* call) -> string {
-    string file = module != nullptr && module->left != nullptr && !module->left->text.empty()
-                      ? string(module->left->text)
-                      : (module != nullptr && !module->text.empty() ? string(module->text) : string("t.lucb"));
-    string msg = file + ":" + std::to_string(call->span.line) + ": assert failed";
+    string msg = "assert failed";
     if (!call->text.empty()) {
         msg += ": " + string(call->text);
     }

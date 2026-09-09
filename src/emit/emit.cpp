@@ -187,6 +187,8 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
     }
     Node* saved_fn = current_fn;
     current_fn = fn;
+    // the statement position a trap names is the caller's again once this returns (§11.5)
+    line("const char* lb_saved_pos __attribute__((cleanup(lb_restore_pos), unused)) = lb_pos;");
     scopes.reserve(64);
     scopes.push_back(Scope{});
     if (fn->body != nullptr && fn->body->kind == NodeKind::Block) {
@@ -317,6 +319,7 @@ auto Emitter::emit_defs(Node* mod) -> void {
     if (mod == nullptr) {
         return;
     }
+    current_module = mod;
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->left != nullptr && d->left->kind == NodeKind::GenericParam) {
             continue;
@@ -480,6 +483,7 @@ auto Emitter::emit_c_main(Node* fn) -> void {
 }
 
 auto Emitter::emit_module(Node* mod) -> void {
+    current_module = mod;
     if (mod != nullptr && !mod->text.empty()) {
         // `luce.file` is the path the compiler was given (§6.4)
         src_file = mod->left != nullptr && !mod->left->text.empty() ? string(mod->left->text) : string(mod->text);

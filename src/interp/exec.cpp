@@ -19,6 +19,9 @@ auto Interp::exec(Node* n) -> void {
     if (n == nullptr || trapped || returning) {
         return;
     }
+    if (n->kind != NodeKind::Block && !frames.empty()) {
+        frames.back().stmt = n;
+    }
     switch (n->kind) {
     case NodeKind::Block:
         defers.emplace_back();

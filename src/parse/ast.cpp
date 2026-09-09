@@ -11,6 +11,29 @@
 #include "parse/ast.h"
 
 namespace lucb {
+
+string position_text(const Node* module, uint32_t line, uint32_t column) {
+    string file = "t.lucb";
+    if (module != nullptr) {
+        if (module->left != nullptr && !module->left->text.empty()) {
+            file = string(module->left->text);
+        } else if (!module->text.empty()) {
+            file = string(module->text);
+        }
+        const Directive* found = nullptr;
+        for (uint32_t i = 0; i < module->ndirectives; i++) {
+            if (module->directives[i].base_line <= line) {
+                found = &module->directives[i];
+            }
+        }
+        if (found != nullptr && !found->file.empty()) {
+            return string(found->file) + ":" + std::to_string(found->line) + ":" +
+                   std::to_string(found->column);
+        }
+    }
+    return file + ":" + std::to_string(line) + ":" + std::to_string(column);
+}
+
 namespace {
 
 void dump(const Node* n, string& out);

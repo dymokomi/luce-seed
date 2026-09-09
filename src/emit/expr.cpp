@@ -26,8 +26,8 @@ auto Emitter::emit_src_file() -> string {
 
 // `path:line: assert failed: condition`: what a failed `assert` reports (§11.6).
 auto Emitter::assert_message(Node* call) -> string {
-    string file = src_file.empty() ? string("t.lucb") : src_file;
-    string msg = file + ":" + std::to_string(call->span.line) + ": assert failed";
+    // the position is the trap's (§11.5, §11.6)
+    string msg = "assert failed";
     if (!call->text.empty()) {
         msg += ": " + string(call->text);
     }

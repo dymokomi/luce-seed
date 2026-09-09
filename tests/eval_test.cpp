@@ -137,6 +137,34 @@ TEST(eval_overflow_traps) {
     CHECK(r.trap.find("overflow") != std::string::npos);
 }
 
+// §11.5: a trap names the statement it stopped at, the callee's inside a call, and the
+// position directive (§3.3) maps it until a bare `#:` restores the file's own
+TEST(eval_trap_names_its_statement) {
+    EvalResult r = run("func bump(n: i64) -> i64:\n"
+                       "    let big: i64 = 9223372036854775807\n"
+                       "    return big + n\n"
+                       "\n"
+                       "pub func answer() -> i64:\n"
+                       "    return bump(1)\n");
+    CHECK(r.trapped);
+    CHECK_STREQ(r.trap, "t.lucb:3:5: integer overflow");
+    EvalResult d = run("pub func answer() -> i64:\n"
+                       "    let big: i64 = 9223372036854775807\n"
+                       "    #: main.luc:12:8\n"
+                       "    let again = big\n"
+                       "    return again + 1\n");
+    CHECK(d.trapped);
+    CHECK_STREQ(d.trap, "main.luc:12:8: integer overflow");
+    EvalResult b = run("pub func answer() -> i64:\n"
+                       "    let big: i64 = 9223372036854775807\n"
+                       "    #: main.luc:12:8\n"
+                       "    let again = big\n"
+                       "    #:\n"
+                       "    return again + 1\n");
+    CHECK(b.trapped);
+    CHECK_STREQ(b.trap, "t.lucb:6:5: integer overflow");
+}
+
 TEST(eval_div_by_zero_traps) {
     EvalResult r = run("pub func answer() -> i64:\n    return 1 // 0\n");
     CHECK(r.trapped);

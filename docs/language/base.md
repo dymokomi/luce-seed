@@ -164,6 +164,8 @@ pub func area(width: f64, height: f64) -> f64:
 
 `#` begins a comment outside a string. Consecutive `##` comments immediately before a declaration are its documentation. A `##` block at the top of a file, separated from what follows by a blank line, documents the module.
 
+A line holding only `#: file:line:column` is a position directive: the lines after it, until the next directive, were compiled from that position of another source, and a trap on them reports it (§11.5); a bare `#:` restores the file's own positions. To everything else it is a comment. A compiler that writes Base from another language writes one before each statement it emits, so the program's traps name the author's source.
+
 ### 3.4 Naming
 
 Types, interfaces, and unions are `PascalCase`; functions, methods, bindings, fields, cases, modules, and packages are `snake_case`; acronyms are words, `HttpClient`. Violations are formatter and linter diagnostics, never a change of meaning.
@@ -1058,11 +1060,11 @@ let text = files.read(path) catch failure:
 
 ### 11.5 Traps
 
-`trap(message)` stops the program with a diagnostic and a source trace. The compiler inserts traps for: out-of-bounds indexing, checked overflow, division by zero, shift by width, a failed `T(x)` conversion, `else trap`, `assert`, a zero arriving in a bare pointer slot at a C boundary (§17.1), invalid UTF-8 in `main`'s `str[]` arguments, `new` or `alloc` with no allocator set (§12.3), and stack exhaustion. Stack exhaustion is detected by a guard page that the startup shim installs; a `--freestanding` program that supplies its own `_start` installs its own or has none. Traps are never recoverable; `defer` does not run.
+`trap(message)` stops the program with a diagnostic and a source trace. A trap writes `trap: file:line:column: message` to standard error and exits with status 1: the position is that of the statement the program was running, the innermost one when the trap is inside a called function, and every execution of the language reports the same one; a position directive (§3.3) maps it to the source the statement was compiled from. The compiler inserts traps for: out-of-bounds indexing, checked overflow, division by zero, shift by width, a failed `T(x)` conversion, `else trap`, `assert`, a zero arriving in a bare pointer slot at a C boundary (§17.1), invalid UTF-8 in `main`'s `str[]` arguments, `new` or `alloc` with no allocator set (§12.3), and stack exhaustion. Stack exhaustion is detected by a guard page that the startup shim installs; a `--freestanding` program that supplies its own `_start` installs its own or has none. Traps are never recoverable; `defer` does not run.
 
 ### 11.6 Assertions
 
-`assert(condition)` and `assert(condition, message)` trap when the condition is false, saying where and what: `file:line: assert failed: condition`, with the message appended when given. The condition must be side-effect-free. Assertions are never removed by a build profile. An `assert` at module level, outside any function, is evaluated at compile time and its condition must be a constant expression; it is C's `static_assert`:
+`assert(condition)` and `assert(condition, message)` trap when the condition is false, saying where and what: `trap: file:line:column: assert failed: condition`, with the message appended when given. The condition must be side-effect-free. Assertions are never removed by a build profile. An `assert` at module level, outside any function, is evaluated at compile time and its condition must be a constant expression; it is C's `static_assert`:
 
 ```luce
 assert(sizeof(Header) == 32, "Header must match the wire format")

@@ -156,7 +156,15 @@ struct Node {
                                // module's name, which qualifies its C symbols (§16.3)
     // Filled by the oracle the first time a literal is evaluated:
     uint64_t cached = 0;
+    // A Module: its source's position directives (§3.3), copied into the arena
+    const Directive* directives = nullptr;
+    uint32_t ndirectives = 0;
 };
+
+// `file:line:column` for a statement of `module` (§11.5): the last position directive
+// above the line names what the line was compiled from; without one, or after a bare
+// `#:`, the file's own position.
+string position_text(const Node* module, uint32_t line, uint32_t column);
 
 // Field map, by kind:
 //   Module:            body = decls

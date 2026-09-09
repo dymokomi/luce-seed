@@ -346,6 +346,15 @@ ParseResult parse(const Source& source, const vector<Token>& tokens, Arena& aren
     p.arena = &arena;
     p.diag = &diagnostics;
     result.module = p.parse_module();
+    if (result.module != nullptr && !source.directives().empty()) {
+        const vector<Directive>& ds = source.directives();
+        Directive* copy = static_cast<Directive*>(arena.alloc(sizeof(Directive) * ds.size(), alignof(Directive)));
+        for (size_t i = 0; i < ds.size(); i++) {
+            new (copy + i) Directive(ds[i]);
+        }
+        result.module->directives = copy;
+        result.module->ndirectives = static_cast<uint32_t>(ds.size());
+    }
     result.ok = diagnostics.empty();
     return result;
 }

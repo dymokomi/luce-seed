@@ -970,3 +970,14 @@ or a `catch`. An expression whose last operand ended a suite is complete. Eviden
 arguments knew a tuple type only by a type word after `(`; a nested `(` opens one too
 (§13.2), as luce-base reads it. Evidence: `tests/parse_test.cpp`
 (`parse_nested_tuple_type_argument`).
+
+## 0.75 — a trap names its statement, and the position directive
+
+Every trap reports `trap: file:line:column: message`, the position being the statement
+the program was running, the innermost one inside a called function (§11.5); `assert`'s
+message is `assert failed: condition` after it (§11.6). A `#: file:line:column` line is
+a position directive (§3.3): the lines after it report that position until the next
+directive, and a bare `#:` restores the file's own. The interpreter keeps the statement
+per frame; the C output sets a thread-local `lb_pos` before each statement and restores
+the caller's when a function returns. Evidence: `tests/eval_test.cpp`
+(`eval_trap_names_its_statement`).

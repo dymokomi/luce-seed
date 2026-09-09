@@ -68,10 +68,21 @@ struct Interp {
         current_alloc.u = 0;
     }
 
+    // A trap names the statement the current frame is running (§11.5); the one internal
+    // signal the loader inspects by text stays bare.
     void fail(const string& message) {
         trapped = true;
-        trap = message;
+        if (message == "unknown name at runtime" || frames.empty() || frames.back().stmt == nullptr) {
+            trap = message;
+            return;
+        }
+        const Node* stmt = frames.back().stmt;
+        trap = position_text(module_of(current_fn), stmt->span.line, stmt->span.column) + ": " + message;
     }
+
+    // The module a function was declared in, a method's owner's included; the entry
+    // module for what is found nowhere.
+    Node* module_of(Node* fn);
 
     Value make_array(Type* t, vector<Value> elems);
     Value eval_float_bits(Node* callee, Node* n);

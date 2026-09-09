@@ -172,6 +172,7 @@ struct Slot {
 
 struct Frame {
     std::deque<Slot> slots;
+    Node* stmt = nullptr; // the statement being run: what a trap names (§11.5)
 };
 
 } // namespace lucb

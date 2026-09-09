@@ -183,6 +183,26 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
     return result;
 }
 
+auto Interp::module_of(Node* fn) -> Node* {
+    if (fn != nullptr) {
+        for (Node* m : all_modules) {
+            for (Node* d = m->body; d != nullptr; d = d->next) {
+                if (d == fn) {
+                    return m;
+                }
+                if (d->kind != NodeKind::Func) {
+                    for (Node* member = d->body; member != nullptr; member = member->next) {
+                        if (member == fn) {
+                            return m;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return module;
+}
+
 EvalResult eval_module(Node* module, const vector<Node*>& modules) {
     EvalResult result;
     if (module == nullptr) {

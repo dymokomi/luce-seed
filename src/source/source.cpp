@@ -180,11 +180,74 @@ const char* named_foreign_bom(std::string_view bytes) {
 
 } // namespace
 
+// The position directives of the text (§3.3): `#:` first on its line, then
+// `file:line:column` or nothing; anything else after `#:` is a comment like any other.
+static void scan_directives(const std::string& bytes, std::vector<Directive>& out) {
+    uint32_t line = 1;
+    size_t at = 0;
+    while (at < bytes.size()) {
+        size_t end = bytes.find('\n', at);
+        if (end == std::string::npos) {
+            end = bytes.size();
+        }
+        size_t i = at;
+        while (i < end && bytes[i] == ' ') {
+            i++;
+        }
+        if (i + 1 < end && bytes[i] == '#' && bytes[i + 1] == ':') {
+            size_t s = i + 2;
+            while (s < end && bytes[s] == ' ') {
+                s++;
+            }
+            size_t e = end;
+            while (e > s && (bytes[e - 1] == ' ' || bytes[e - 1] == '\r')) {
+                e--;
+            }
+            Directive d;
+            d.base_line = line + 1;
+            bool valid = s == e;
+            if (!valid) {
+                string_view rest(bytes.data() + s, e - s);
+                size_t c2 = rest.rfind(':');
+                if (c2 != string_view::npos && c2 > 0) {
+                    size_t c1 = rest.rfind(':', c2 - 1);
+                    if (c1 != string_view::npos && c1 > 0) {
+                        auto number = [](string_view t, uint32_t& v) {
+                            if (t.empty()) {
+                                return false;
+                            }
+                            uint64_t n = 0;
+                            for (char c : t) {
+                                if (c < '0' || c > '9' || n > 100000000) {
+                                    return false;
+                                }
+                                n = n * 10 + static_cast<uint64_t>(c - '0');
+                            }
+                            v = static_cast<uint32_t>(n);
+                            return true;
+                        };
+                        if (number(rest.substr(c1 + 1, c2 - c1 - 1), d.line) && number(rest.substr(c2 + 1), d.column)) {
+                            d.file = rest.substr(0, c1);
+                            valid = true;
+                        }
+                    }
+                }
+            }
+            if (valid) {
+                out.push_back(d);
+            }
+        }
+        line += 1;
+        at = end + 1;
+    }
+}
+
 Source Source::from_bytes(std::string path, std::string bytes, DiagnosticBag& diagnostics) {
     Source source;
     source.path_ = std::move(path);
     source.bytes_ = std::move(bytes);
     source.ok_ = true;
+    scan_directives(source.bytes_, source.directives_);
 
     if (source.bytes_.size() > max_bytes) {
         add_at(diagnostics, source.path_, 0, 1, 1, "lucb.source.too_large",

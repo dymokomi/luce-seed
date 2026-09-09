@@ -29,6 +29,10 @@
 #define LB_STR(x) LB_STR2(x)
 #define LB_SYMBOL(name) __asm__(LB_STR(__USER_LABEL_PREFIX__) name)
 
+/* The statement the thread is running, `file:line:column`, set by the code before each
+   statement and restored when a function returns: what a trap names (§11.5). */
+extern _Thread_local const char* lb_pos;
+void lb_restore_pos(const char** saved);
 LB_NORETURN void lb_trap(const char* message);
 LB_NORETURN void lb_trap_two(const char* message, const char* detail);
 void lb_pause(void);

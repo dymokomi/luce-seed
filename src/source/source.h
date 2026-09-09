@@ -21,6 +21,16 @@ struct Span {
     uint32_t line = 1;   // 1-based
     uint32_t column = 1; // 1-based, BOM not counted
 };
+// A position directive (§3.3): a line holding only `#: file:line:column` says that the
+// lines after it, until the next directive, were compiled from that position of another
+// source; a bare `#:` restores the file's own positions (`file` empty). A trap on such a
+// line reports the mapped position (§11.5).
+struct Directive {
+    uint32_t base_line = 0; // the first line the directive applies to
+    string_view file;       // into the source bytes; empty for a bare `#:`
+    uint32_t line = 0;
+    uint32_t column = 0;
+};
 
 struct Source {
     static constexpr size_t max_bytes = 64 * 1024 * 1024;
@@ -44,10 +54,14 @@ struct Source {
     }
 
     Span span_at(size_t byte, size_t end_byte) const;
+    const vector<Directive>& directives() const {
+        return directives_;
+    }
 
   private:
     string path_;
     string bytes_;
+    vector<Directive> directives_;
     size_t scan_start_ = 0;
     bool ok_ = true;
 };
