@@ -173,7 +173,7 @@ TEST(parse_cast_chain_nests_too_deeply) {
     Parsed p(src.c_str());
     CHECK(p.has("lucb.parse.limit"));
     std::string calls = "func g(x: u8) -> u8:\n    return x";
-    for (int i = 0; i < 150; i++) calls += "(x)";
+    for (int i = 0; i < 350; i++) calls += "(x)";
     calls += "\n";
     Parsed q(calls.c_str());
     CHECK(q.has("lucb.parse.limit"));

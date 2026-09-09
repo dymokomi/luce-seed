@@ -16,6 +16,8 @@
 namespace lucb {
 
 const int k_max_nest = 100;
+// a chain of calls or operators, one level per link, may be longer than nesting may be deep
+const int k_max_chain = 300;
 
 inline int prec_of(TokenKind k) {
     switch (k) {

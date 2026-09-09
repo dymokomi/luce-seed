@@ -125,7 +125,7 @@ auto Parser::parse_binary_rest(Node* left, int min_prec) -> Node* {
         }
         // an operator chain deepens the tree by one level per operator
         chain++;
-        if (nest + chain > k_max_nest) {
+        if (nest + chain > k_max_chain) {
             fail("lucb.parse.limit", "expression nests too deeply");
             return left;
         }
@@ -224,7 +224,7 @@ auto Parser::parse_postfix() -> Node* {
     // recurse over that depth: a chain counts like nesting
     int chain = 0;
     while (true) {
-        if (nest + chain > k_max_nest) {
+        if (nest + chain > k_max_chain) {
             fail("lucb.parse.limit", "expression nests too deeply");
             return value;
         }

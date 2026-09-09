@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.66**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.67**, the seed `luce-base` is written against.
+
+## 0.67: a chain may be three hundred links
+
+- Calls and operators chained, `a + a + ...`, deepen the tree one level per link and are
+  bounded at three hundred, where nesting proper is bounded at a hundred: luce-base's
+  `long_assert` conformance program is a real one. Evidence: `tests/parse_test.cpp`.
 
 ## 0.66: a cast chain is bounded like any nesting
 
