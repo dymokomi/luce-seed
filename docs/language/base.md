@@ -1625,17 +1625,26 @@ The verifier checks each. `new`, `alloc`, and `free` lower to calls through the 
 
 ### 19.3 Backends and bridges
 
-The stage-1 backend is QBE, and every Base construct is planned to compile through it. Where QBE lacks a native form, the backend bridges, at a stated cost:
+The Base compiler uses its native backend by default. It lowers checked Base through
+its own IR, optimization passes and register allocation to target assembly, then
+assembles and links the result. Native executable, test-runner and static-library
+builds support arm64 macOS and x86-64 Linux. `--native` is an explicit alias for the
+default; `--opt 0` through `--opt 3` select native optimization levels.
 
-- **Atomics** lower to calls of the size-suffixed `__atomic_*` library functions (`__atomic_load_4`, `__atomic_fetch_add_8`, `__atomic_compare_exchange_4`, with C's memory-order encoding), which compiler-rt supplies on macOS and libatomic supplies on Linux, where the driver adds `-latomic`. A call is an opaque barrier to QBE, so ordering is preserved. `weak = true` lowers to the strong call. `wait` and `wake` are the host's futex or equivalent. One call per operation.
-- **Fences** have no library function; they lower to a one-instruction out-of-line assembly function per target (`mfence` or `lock addl $0, (%rsp)` on x86-64, `dmb ish` on ARM64).
-- **`volatile`** lowers to the relaxed `__atomic_load_N` and `__atomic_store_N` calls, because QBE's load optimiser forwards stores to loads and removes repeated loads of one address. Widths 1, 2, 4, and 8.
-- **`asm`** blocks are emitted as out-of-line assembly functions with the C calling convention. Named-register operands are moved into their registers by a generated prologue and out by a generated epilogue; `reg` operands use argument registers; registers named as outputs or destroyed are saved and restored if the convention requires. A block cannot observe the caller's frame or flags; `naked` functions and `nostack` blocks are honoured as written, because they are whole functions. One call per block.
-- **Variadic calls** and **by-value aggregates** use QBE's native support.
-- **`noalias`**, `inline`, `noinline`, and `cold` are carried but have no effect on QBE, which has no inliner and no alias analysis; §1.2's cost claim holds on the native backends.
-- **WebAssembly** supports atomics where the host enables threads, rejects `asm`, and passes variadic arguments through a shadow-stack buffer as Clang does.
+The bootstrap starts with a C snapshot compiled by the host C compiler, or with a
+compiler built by luce-seed. That initial compiler builds the next compiler using
+the native backend, and the resulting compiler self-hosts natively again. The native
+assembly must reach a fixpoint.
 
-The Luce-owned native backends scheduled after stage 1 implement all of these natively with no source change.
+The existing C emitter is retained as an explicitly selected comparison and snapshot
+facility: `--backend=c` compiles its output through the host C compiler, and
+`--backend=c --release` selects the optimized C comparison. `--release` alone retains
+the native default. `--emit=c`, `--emit=asm`, and `--emit=ir` select their corresponding
+backend and text output independently of backend-flag order.
+
+C interoperability is part of native compilation: C ABI calls, linked C libraries,
+and manifest C sources do not require translating Base code to C. Unsupported native
+targets report an error; they do not silently fall back to C emission.
 
 ### 19.4 Artifacts and build profiles
 
