@@ -1,0 +1,64 @@
+name: Correctness
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+permissions:
+  contents: read
+jobs:
+  gate:
+    name: Gate (${{ matrix.host }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            host: arm64-macos
+          - runner: ubuntu-24.04
+            host: x86_64-linux
+    defaults:
+      run:
+        shell: bash
+        working-directory: luce-seed
+    env:
+      CC: clang
+      CXX: clang++
+      LUCE_CI_HOST: ${{ matrix.host }}
+      LUCE_TEST_GPU: optional
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: luce-seed
+          fetch-depth: 0
+      - name: Select Clang for generated C
+        run: |
+          mkdir -p "$RUNNER_TEMP/luce-bin"
+          ln -s "$(command -v clang)" "$RUNNER_TEMP/luce-bin/cc"
+          echo "$RUNNER_TEMP/luce-bin" >> "$GITHUB_PATH"
+      - name: Record toolchain and dependency provenance
+        run: |
+          mkdir -p build
+          python3 tools/ci_provenance.py | tee build/provenance.json
+      - name: Run the gate
+        run: |
+          set -o pipefail
+          ./test.sh 2>&1 | tee build/gate.log
+      - name: Record final dependency provenance
+        if: always()
+        run: python3 tools/ci_provenance.py > build/provenance-final.json
+      - name: Retain diagnostics and replay records
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: luce-seed-${{ matrix.host }}-${{ github.sha }}
+          path: |
+            luce-seed/build/*.log
+            luce-seed/build/provenance*.json
+            luce-seed/build/failures/
+            luce-seed/build/fuzz/
+            luce-seed/build/hardware-skip.txt
+          retention-days: 14
