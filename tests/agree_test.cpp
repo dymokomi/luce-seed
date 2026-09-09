@@ -1459,3 +1459,8 @@ TEST(agree_untyped_shift_under_a_cast) {
     // in range, as it is for the compiled program
     CHECK(agrees("pub func answer() -> i64:\n    let a: i64 = (i64)((104 >> 2) >> 0)\n    let b: i64 = (i64)(1 << 40)\n    return a + (b >> 39) + 12\n"));
 }
+
+TEST(agree_text_that_c_could_misread) {
+    // `??)` is a trigraph, a NUL ends a C string, `\r` and a non-ASCII byte are octal in C
+    CHECK(agrees("pub func answer() -> i64:\n    let a = \"a?\?)b\"\n    let b = \"x\\0y\"\n    let c = \"\\r\"\n    let d = \"\\u{e9}\"\n    assert(\"?\?=\".length == 3)\n    return (i64)a.length * 1000 + (i64)b.length * 100 + (i64)c.length * 10 + (i64)d.length + 4\n"));
+}

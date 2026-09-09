@@ -1,7 +1,14 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.53**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.54**, the seed `luce-base` is written against.
+
+## 0.54: a C string literal escapes what C could misread
+
+- `??)` in a Base text reached C as a trigraph and clang refused it under `-Werror`; a NUL,
+  a `\r`, a control or a non-ASCII byte were written raw. Every such byte is escaped now,
+  `\?` and three-digit octal. Found by luce-base compiling luce. Evidence:
+  `tests/agree_test.cpp`.
 
 ## 0.53: a cast inside an index is an index
 

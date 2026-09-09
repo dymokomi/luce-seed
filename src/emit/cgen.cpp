@@ -401,19 +401,28 @@ string down_cast(Type* t, const string& e) {
     return "(" + c_type(t) + ")(" + e + ")";
 }
 
+// A C string literal for `s`: every byte C could misread is escaped, so `??)` is not a
+// trigraph, a NUL does not end the text, and a control or non-ASCII byte is its octal.
 string c_escape(string_view s) {
     string out = "\"";
     for (size_t i = 0; i < s.size(); i++) {
-        char c = s[i];
-        if (c == '\\' || c == '"') {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == '\\' || c == '"' || c == '?') {
             out += '\\';
-            out += c;
+            out += static_cast<char>(c);
         } else if (c == '\n') {
             out += "\\n";
         } else if (c == '\t') {
             out += "\\t";
+        } else if (c == '\r') {
+            out += "\\r";
+        } else if (c < 32 || c >= 127) {
+            out += '\\';
+            out += static_cast<char>('0' + (c >> 6));
+            out += static_cast<char>('0' + ((c >> 3) & 7));
+            out += static_cast<char>('0' + (c & 7));
         } else {
-            out += c;
+            out += static_cast<char>(c);
         }
     }
     out += '"';
