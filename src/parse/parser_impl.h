@@ -163,6 +163,13 @@ struct Parser {
 
     // `catch` and `match` consume their terminating newline via the suite.
 
+    // Whether the operand just parsed ended with a suite (a `match` expression's arms):
+    // the expression ends with it, and what follows on the next line is a statement, not
+    // an operator, a conditional, an `else` or a `catch` of it (§7.8).
+    bool ended_suite() const {
+        return pos > 0 && tok[pos - 1].kind == TokenKind::Dedent;
+    }
+
     Token cur() const {
         if (pos >= n) {
             return tok[n - 1];

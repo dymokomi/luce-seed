@@ -137,6 +137,23 @@ TEST(parse_while_and_for) {
     CHECK(p.dump().find("..<") != std::string::npos);
 }
 
+// §7.8: a match expression ends with its arms; the next line is a statement of its own
+TEST(parse_match_expression_ends_its_line) {
+    Parsed p("func f(n: i64, p: i64*) -> i64:\n"
+             "    let w = match n:\n"
+             "        0 => 1\n"
+             "        _ => 2\n"
+             "    if w == 1:\n"
+             "        return 3\n"
+             "    let v = match n:\n"
+             "        0 => 1\n"
+             "        _ => 2\n"
+             "    *p = v\n"
+             "    return w\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(if") != std::string::npos);
+}
+
 TEST(parse_match) {
     Parsed p("enum Color:\n"
              "    red\n"

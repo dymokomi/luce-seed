@@ -956,3 +956,10 @@ An enum whose payload holds the enum by value, directly or through an optional, 
 an array or a struct, is rejected as a struct is (§10.2); the checker accepted it and
 emitted C that never compiled. Evidence: `tests/check_test.cpp`
 (`check_enum_contains_itself`).
+
+## 0.73 — a `match` expression ends with its arms
+
+`let w = match n: ...` followed by `if w == 1:` on the next line: the parser read the `if`
+as a conditional continuing the last arm (§7.8), and the same for an operator, an `else`
+or a `catch`. An expression whose last operand ended a suite is complete. Evidence:
+`tests/parse_test.cpp` (`parse_match_expression_ends_its_line`).

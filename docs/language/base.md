@@ -624,7 +624,7 @@ let kind = match c:
     _ => "other"
 ```
 
-The conditional expression requires both branches and one common type. A `match` expression yields the chosen arm's value with `=>`; §8.4 states the pattern rules, which are shared with the statement form.
+The conditional expression requires both branches and one common type. A `match` expression yields the chosen arm's value with `=>`; §8.4 states the pattern rules, which are shared with the statement form. A `match` expression ends with its arms: the line after them is the next statement, never an operator, a conditional, an `else` or a `catch` continuing it.
 
 ### 7.9 Discarded values
 

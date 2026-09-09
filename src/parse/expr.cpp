@@ -21,7 +21,7 @@ auto Parser::parse_expression() -> Node* {
         return make(NodeKind::Name, cur().span);
     }
     Node* n = parse_else_expr();
-    if (eat(TokenKind::KwCatch)) {
+    if (!ended_suite() && eat(TokenKind::KwCatch)) {
         Node* c = make(NodeKind::Catch, n->span);
         c->left = n;
         if (at(TokenKind::Name)) {
@@ -39,7 +39,7 @@ auto Parser::finish_expression(Node* unary) -> Node* {
     Node* n = parse_binary_rest(unary, 1);
     n = parse_conditional_rest(n);
     n = parse_else_rest(n);
-    if (eat(TokenKind::KwCatch)) {
+    if (!ended_suite() && eat(TokenKind::KwCatch)) {
         Node* c = make(NodeKind::Catch, n->span);
         c->left = n;
         if (at(TokenKind::Name)) {
@@ -58,7 +58,7 @@ auto Parser::parse_else_expr() -> Node* {
 }
 
 auto Parser::parse_else_rest(Node* n) -> Node* {
-    if (!at(TokenKind::KwElse)) {
+    if (ended_suite() || !at(TokenKind::KwElse)) {
         return n;
     }
     // `else` after a conditional's `if` is consumed there.
@@ -97,7 +97,7 @@ auto Parser::parse_conditional() -> Node* {
 }
 
 auto Parser::parse_conditional_rest(Node* n) -> Node* {
-    if (!eat(TokenKind::KwIf)) {
+    if (ended_suite() || !eat(TokenKind::KwIf)) {
         return n;
     }
     Node* c = make(NodeKind::Conditional, n->span);
@@ -117,7 +117,7 @@ auto Parser::parse_binary_rest(Node* left, int min_prec) -> Node* {
     bool used_cmp = false;
     bool used_range = false;
     int chain = 0;
-    while (true) {
+    while (!ended_suite()) {
         TokenKind op = cur().kind;
         int prec = prec_of(op);
         if (prec < min_prec || prec == 0) {
@@ -223,7 +223,7 @@ auto Parser::parse_postfix() -> Node* {
     // every postfix deepens the tree by one level, and the passes after the parser
     // recurse over that depth: a chain counts like nesting
     int chain = 0;
-    while (true) {
+    while (!ended_suite()) {
         if (nest + chain > k_max_chain) {
             fail("lucb.parse.limit", "expression nests too deeply");
             return value;
