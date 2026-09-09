@@ -1469,3 +1469,7 @@ TEST(agree_array_literal_passed_as_a_span) {
     // the literal is an array of the function's, so the span reaches the callee intact
     CHECK(agrees("func total(pieces: const str[]) -> i64:\n    var n: i64 = 0\n    for p in pieces:\n        n += (i64)p.length\n    return n\nfunc first(values: const i64[]) -> i64:\n    return values[0] + values[2]\npub func answer() -> i64:\n    return total([\"a\", \" \", \"bcd\"]) + first([10, 20, 30]) - 3\n"));
 }
+
+TEST(agree_tuple_members_by_position) {
+    CHECK(agrees("func pair() -> (i64, str):\n    return (40, \"ab\")\npub func answer() -> i64:\n    let t = (1, 2.5, \"xyz\")\n    let p = pair()\n    return t.0 + i64(t.1 * 2.0) + (i64)t.2.length + p.0 - (i64)p.1.length - 5\n"));
+}

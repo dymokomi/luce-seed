@@ -1230,6 +1230,15 @@ auto Checker::check_member(Node* n, bool as_call) -> Type* {
     if (is_ptr(ot) && ot->elem != nullptr) {
         ot = ot->elem;
     }
+    if (ot != nullptr && ot->kind == TypeKind::Tuple && !n->text.empty() && n->text[0] >= '0' && n->text[0] <= '9') {
+        // `pair.0`: a member by position (§5.7)
+        ParsedInt p = parse_int_literal(n->text);
+        if (!p.ok || p.value >= static_cast<uint64_t>(ot->ntargs)) {
+            fail_n(n, "lucb.check.name", "no such tuple member");
+            return t_error();
+        }
+        return ot->args[static_cast<int>(p.value)];
+    }
     if (n->text == "length") {
         if (is_span(ot) || is_array(ot) || (ot != nullptr && ot->kind == TypeKind::Str) ||
             is_span(n->left != nullptr ? n->left->ty : nullptr) ||

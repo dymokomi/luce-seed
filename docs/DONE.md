@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.55**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.56**, the seed `luce-base` is written against.
+
+## 0.56: a tuple member is read by position
+
+- `pair.0`, `pair.1` (§5.7), in the parser, the checker, the interpreter and the C emitter,
+  which names the member `a0`, `a1` as it always has. Luce reads tuples this way.
+  Evidence: `tests/agree_test.cpp`.
 
 ## 0.55: an array literal passed as a span is an array of the function
 

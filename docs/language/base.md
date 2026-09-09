@@ -375,7 +375,7 @@ A formatted string `f"..."` has no value of its own. It is consumed in one of fo
 
 ### 5.7 Tuples
 
-`(i64, str)` is a fixed-size anonymous value used for local grouping and multiple results (§9.3). Tuples have no field names, no methods, and no one-element form; `()` is the value of `unit`. A tuple has C's layout as a struct of its components.
+`(i64, str)` is a fixed-size anonymous value used for local grouping and multiple results (§9.3). Tuples have no field names, no methods, and no one-element form; `()` is the value of `unit`. A member is read by its position, `pair.0`, `pair.1`, or the tuple is destructured, `let (a, b) = pair`; a member is not assigned. A tuple has C's layout as a struct of its components.
 
 ### 5.8 Optionals
 

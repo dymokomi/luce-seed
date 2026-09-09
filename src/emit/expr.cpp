@@ -1116,6 +1116,9 @@ auto Emitter::emit_member(Node* n) -> string {
     if (n->text == "bytes" && raw != nullptr && raw->kind == TypeKind::Str) {
         return "((lb_cspan){(void*)(" + base + acc + "data), " + base + acc + "length})";
     }
+    if (raw != nullptr && raw->kind == TypeKind::Tuple && !n->text.empty() && n->text[0] >= '0' && n->text[0] <= '9') {
+        return "(" + base + acc + "a" + string(n->text) + ")";
+    }
     if (n->left != nullptr && n->left->kind == NodeKind::Self) {
         return "self->" + string(n->text);
     }

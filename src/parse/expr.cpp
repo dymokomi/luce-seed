@@ -206,7 +206,9 @@ auto Parser::parse_postfix() -> Node* {
         if (eat(TokenKind::Dot)) {
             Node* m = make(NodeKind::Member, start.span);
             m->left = value;
-            if (!at_ident()) {
+            if (at(TokenKind::IntLit)) {
+                m->text = take().text; // `pair.0`: a tuple member by position (§5.7)
+            } else if (!at_ident()) {
                 fail("lucb.parse.expect", "expected a member name");
             } else {
                 m->text = take().text;

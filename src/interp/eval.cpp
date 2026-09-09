@@ -670,6 +670,12 @@ auto Interp::eval_member(Node* n) -> Value {
     if (is_ptr(raw) && raw->elem != nullptr) {
         raw = raw->elem;
     }
+    if (raw != nullptr && raw->kind == TypeKind::Tuple && !n->text.empty() && n->text[0] >= '0' && n->text[0] <= '9') {
+        ParsedInt p = parse_int_literal(n->text);
+        if (p.ok && p.value < obj.fields.size()) {
+            return obj.fields[static_cast<size_t>(p.value)];
+        }
+    }
     bool view = raw != nullptr && (raw->kind == TypeKind::Str || is_span(raw) || is_array(raw) ||
                                    obj.kind == TypeKind::Str || obj.kind == TypeKind::Span ||
                                    obj.kind == TypeKind::Array);
