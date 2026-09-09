@@ -1189,6 +1189,33 @@ auto Checker::module_of(Node* decl) -> Node* {
     return nullptr;
 }
 
+// A handle's `destroy` is a public function of the module taking the handle and
+// returning nothing, never failing (§17.7): full Luce calls it at the last reference.
+auto Checker::check_handle(Node* d) -> void {
+    Node* name = d->right;
+    Binding* b = lookup(name->text);
+    Node* fn = b != nullptr ? b->decl : nullptr;
+    if (fn == nullptr || fn->kind != NodeKind::Func) {
+        fail_n(name, "lucb.check.handle", "a handle's `destroy` names a function of this module (§17.7)");
+        return;
+    }
+    if ((fn->flags & FlagPub) == 0) {
+        fail_n(name, "lucb.check.handle", "a handle's `destroy` function is `pub` (§17.7)");
+        return;
+    }
+    // a function's `ty` is its result; its parameters are its `right` nodes
+    Node* p = fn->right;
+    Type* pt = p != nullptr ? (p->ty != nullptr ? p->ty : resolve_type(p->type)) : nullptr;
+    bool takes_handle = p != nullptr && p->next == nullptr && pt != nullptr &&
+                        pt->kind == TypeKind::Pointer && pt->decl == d && !pt->is_nullable;
+    bool returns_nothing = fn->ty != nullptr && fn->ty->kind == TypeKind::Unit &&
+                           (fn->flags & FlagFallible) == 0;
+    if (!takes_handle || !returns_nothing) {
+        fail_n(name, "lucb.check.handle",
+               "a handle's `destroy` takes the handle and returns nothing, without failing (§17.7)");
+    }
+}
+
 // Bind every top-level declaration of `mod`, as its own bodies see them.
 auto Checker::bind_module_names(Node* mod) -> void {
     for (Node* d = mod != nullptr ? mod->body : nullptr; d != nullptr; d = d->next) {
@@ -1442,6 +1469,11 @@ auto Checker::check_module(Node* mod) -> void {
             }
         } else if (d->kind == NodeKind::Asm) {
             check_asm(d);
+        }
+    }
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind == NodeKind::ExternType && d->right != nullptr) {
+            check_handle(d);
         }
     }
     vector<string> export_syms;

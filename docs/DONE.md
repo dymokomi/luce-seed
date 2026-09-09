@@ -928,3 +928,11 @@ Recursive-descent parser for `base.md` §21, with layered expression
 precedence. Arena AST, sibling lists, s-expression dump (`lucb dump`).
 Chained comparisons, `not a == b`, `class`/`spawn`, and `goto` are refused
 with stable codes. Evidence: `tests/parse_test.cpp`, `./test.sh`.
+
+## 0.69 — `handle` declarations (§17.7)
+
+`pub handle Name:` with `destroy function` parses to an extern type whose `right` names
+the destroyer; the checker requires a `pub` function of the module taking the handle and
+returning `unit` without failing; an opaque handle converts to and from `void*` by cast
+(§7.5), which the seed always allowed. Evidence: `tests/parse_test.cpp` (`parse_handle`),
+`tests/check_test.cpp` (`check_handle_destroy`).

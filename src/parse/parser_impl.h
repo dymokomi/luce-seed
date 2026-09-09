@@ -301,6 +301,7 @@ struct Parser {
     Node* parse_union(uint32_t flags);
     Node* parse_interface(uint32_t flags);
     Node* parse_extern(uint32_t flags);
+    Node* parse_handle(uint32_t flags);
     Node* parse_test();
     Node* parse_assert();
     Node* parse_asm();

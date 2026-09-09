@@ -570,6 +570,7 @@ Base has two conversion spellings with two meanings.
 | `(str)bytes` | text reinterpretation with no check (§5.5) |
 | `(c.str)text` | the text's data pointer, after a check that the byte following the text is NUL, since C's text ends at one; a view cut from the middle of longer text traps rather than reading past its end |
 | `(T*)p` from `U*`, `void*`, `const T*`, `const void*` | pointer conversion; removing `const` is permitted and explicit, and modifying an object that was declared `let` or `const` through the result is undefined as in C |
+| `(Handle)p` from `void*`, `(void*)h` | an opaque handle (§17.1, §17.7) is pointer-shaped: it converts to and from `void*` by cast, so a Base module can hand out a handle over its own memory |
 | `(T*?)n` from `usize` | integer to pointer; nullable because zero is a valid integer |
 | `(usize)p` | pointer to integer |
 | `(func(...) -> R)p` from `void*`, `(void*)f` | function-pointer conversion, target-dependent, provided for `dlsym` |
@@ -1400,6 +1401,7 @@ extern union Event:
 
 - `extern func` binds a C function. `out` parameters become extra results, received as a tuple after the declared return. `blocking` marks a call that may park the thread; in a Base artifact it is informational, and inside a full Luce program it is the contract full Luce's workers rely on. `as "name"` binds a C symbol under a Base-style name.
 - `extern type` declares an opaque pointer-shaped handle; bare it is never null, `?` is the null niche. `extern type Handle = u32` declares an integer-shaped one.
+- `handle Name:` with `destroy function` beneath declares an opaque pointer-shaped type the same way and names the `pub` function of the module, taking the handle and returning nothing without failing, that releases it (§17.7).
 - `extern struct` and `extern union` declare C layout and may carry `packed` or `align(N)`. Fields may be any C-representable type (§17.6): `name: c.char[32]`, `next: Node*?`, `callback: func(void*) -> unit`. An `extern struct` may be passed and returned by value, because the backend performs the target's aggregate classification.
 - `extern var` binds a C global of scalar or pointer type; reads and writes are direct.
 - Pointers and function pointers in signatures are written as Base pointers and `func` types. `str` is not admitted in an `extern` signature; C text is `c.str`, and `str(value)` validates it.
@@ -1492,6 +1494,20 @@ The generated header spells:
 `luce build --lib` produces a static or shared library plus the header for the package's exported surface.
 
 **Why opt-in.** Making every `pub` function a global C symbol would make two modules' `pub func init` a link error and a `pub func read` an interposition of libc for the whole process. Export is a linkage decision, and it is written explicitly.
+
+### 17.7 Handles
+
+```luce
+pub handle File:
+    destroy close
+
+pub func open(path: str) -> File!: ...
+pub func close(file: File): ...
+```
+
+A handle is a pointer-shaped opaque type, as `extern type` declares one, that names the function releasing it. Inside Base it is an `extern type`: never null bare, `?` for the niche, passed and returned by value. The declaration exists for what imports the module: a full Luce program sees a handle as a class whose `close()` calls `destroy` once, and calls it at the last reference itself (its specification, §16.4). `destroy` is a `pub` function of the same module taking exactly the handle and returning nothing, without failing, since the caller may be a destructor.
+
+`luce describe module.lucb` prints the module's public declarations, one per line, for a tool that must know them without parsing Base: `handle File destroy close`, `func open(path: str) -> File!`, `let limit: i64`, `struct Point` followed by its public fields indented as `field x: i64`, `enum Mode as u32` followed by `case read = 0`, and `type Name = T` for an alias; types are spelled as this document spells them. Private declarations, and public ones whose signature mentions a type the description cannot spell, are left out.
 
 ## 18. Working with full Luce
 
@@ -1640,7 +1656,7 @@ A target has an **instruction-set level** beyond its family's baseline: on x86-6
 
 ### 19.6 Tooling
 
-`luce fmt`, `luce check`, `luce build`, `luce test`, and `luce bind` apply to Base modules. `-W` on `check`, `build`, or `test` prints the checker's warnings: an unused local (a name beginning with `_` is exempt), an unused import, a private function nothing references, a statement no path reaches, and a branch or loop whose literal condition rules it out. Each is also pruned from the program by the checker, so nothing after the checker sees it. A condition that is a constant expression without being a literal, `if os.arm64:` or `if os.pointer_bits == 64:`, is decided the same way and its ruled-out branch pruned, silently, since the program meant it: this is how a program covers several targets in one source; an unused binding whose initialiser may have an effect stays as that expression. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target NAME` selects a target (§19.5); `--target` with no argument lists the targets above and the `asm` architectures a package covers.
+`luce fmt`, `luce check`, `luce build`, `luce test`, `luce describe` (§17.7), and `luce bind` apply to Base modules. `-W` on `check`, `build`, or `test` prints the checker's warnings: an unused local (a name beginning with `_` is exempt), an unused import, a private function nothing references, a statement no path reaches, and a branch or loop whose literal condition rules it out. Each is also pruned from the program by the checker, so nothing after the checker sees it. A condition that is a constant expression without being a literal, `if os.arm64:` or `if os.pointer_bits == 64:`, is decided the same way and its ruled-out branch pruned, silently, since the program meant it: this is how a program covers several targets in one source; an unused binding whose initialiser may have an effect stays as that expression. `luce build --lib` produces a library and header. `luce build --freestanding` drops the shim. `luce build --costs` prints the adapter and allocation report of §18.1. `luce build --target NAME` selects a target (§19.5); `--target` with no argument lists the targets above and the `asm` architectures a package covers.
 
 ## 20. Exclusions
 
@@ -1670,7 +1686,8 @@ module_path     = IDENT, { ".", IDENT } ;
 
 top_decl        = [ "pub" ], ( constant_decl | global_decl | type_alias
                              | function_decl | struct_decl | enum_decl
-                             | union_decl | interface_decl | extern_decl )
+                             | union_decl | interface_decl | extern_decl
+                             | handle_decl )
                 | "export", function_decl
                 | test_decl
                 | "assert", argument_list, NEWLINE
@@ -1721,6 +1738,7 @@ asm_module_decl = "asm", IDENT, ":", NEWLINE, INDENT, RAW_LINE, { RAW_LINE }, DE
 extern_decl     = "extern", ( extern_type | extern_func | extern_var
                             | extern_struct | extern_union ) ;
 extern_type     = "type", TYPE_IDENT, [ "=", ( "u32" | "i32" | "u64" | "i64" ) ], NEWLINE ;
+handle_decl     = "handle", TYPE_IDENT, ":", NEWLINE, INDENT, "destroy", IDENT, NEWLINE, DEDENT ;
 extern_func     = [ "blocking" ], "func", IDENT, [ "as", STRING_LITERAL ],
                   "(", [ extern_parameter, { ",", extern_parameter } ], [ ",", "..." ], ")",
                   result_clause, NEWLINE ;

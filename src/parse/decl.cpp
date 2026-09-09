@@ -251,9 +251,45 @@ auto Parser::parse_top() -> Node* {
     if (at(TokenKind::KwExtern)) {
         return parse_extern(flags);
     }
+    if (at_name("handle") && peek(1).kind == TokenKind::Name && peek(2).kind == TokenKind::Colon) {
+        return parse_handle(flags);
+    }
     fail("lucb.parse.expect", "expected a declaration");
     sync_line();
     return nullptr;
+}
+
+// `handle Name:` with `destroy function` beneath (§17.7): an opaque pointer-shaped type,
+// as `extern type` declares one, whose `right` names the function that releases it.
+auto Parser::parse_handle(uint32_t flags) -> Node* {
+    Token start = cur();
+    take();
+    Node* n = make(NodeKind::ExternType, start.span);
+    n->flags = flags;
+    n->text = take().text;
+    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
+    expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    expect(TokenKind::Indent, "lucb.parse.expect", "expected an indented body");
+    if (!at_name("destroy")) {
+        fail("lucb.parse.expect", "a handle names its `destroy` function (§17.7)");
+    } else {
+        take();
+        Token name = cur();
+        if (!at(TokenKind::Name)) {
+            fail("lucb.parse.expect", "expected the destroying function's name");
+        } else {
+            take();
+            Node* destroy = make(NodeKind::Name, name.span);
+            destroy->text = name.text;
+            n->right = destroy;
+        }
+    }
+    expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    while (at(TokenKind::Newline)) {
+        take();
+    }
+    expect(TokenKind::Dedent, "lucb.parse.expect", "a handle declares `destroy` and nothing else (§17.7)");
+    return n;
 }
 
 auto Parser::parse_const(uint32_t flags) -> Node* {

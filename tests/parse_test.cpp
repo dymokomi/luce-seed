@@ -236,6 +236,18 @@ TEST(parse_union) {
     CHECK(p.dump().find("(union \"Value\"") != std::string::npos);
 }
 
+TEST(parse_handle) {
+    Parsed p("pub handle File:\n"
+             "    destroy close\n"
+             "pub func close(file: File):\n"
+             "    discard(file)\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(extern_type pub \"File\"") != std::string::npos);
+    CHECK(p.dump().find("\"close\"") != std::string::npos);
+    Parsed q("handle File:\n    close\n");
+    CHECK(q.has("lucb.parse.expect"));
+}
+
 TEST(parse_extern_func) {
     Parsed p("extern func printf(format: c.str, ...) -> i32\n"
              "func f() -> i32:\n"

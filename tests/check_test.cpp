@@ -465,6 +465,28 @@ TEST(check_extern_handle_ok) {
                    "    return 0\n"));
 }
 
+TEST(check_handle_destroy) {
+    CHECK(check_ok("pub handle File:\n"
+                   "    destroy close\n"
+                   "pub func close(file: File):\n"
+                   "    discard(file)\n"
+                   "pub func open() -> File?:\n"
+                   "    return none\n"));
+    CHECK(check_has("pub handle File:\n"
+                    "    destroy close\n"
+                    "func close(file: File):\n"
+                    "    discard(file)\n",
+                    "lucb.check.handle"));
+    CHECK(check_has("pub handle File:\n"
+                    "    destroy close\n"
+                    "pub func close(file: File) -> !:\n"
+                    "    discard(file)\n",
+                    "lucb.check.handle"));
+    CHECK(check_has("pub handle File:\n"
+                    "    destroy shut\n",
+                    "lucb.check.handle"));
+}
+
 TEST(check_variadic_str_rejected) {
     CHECK(check_has("import c\nextern func printf(format: c.str, ...) -> i32\n"
                     "pub func answer() -> i64:\n"

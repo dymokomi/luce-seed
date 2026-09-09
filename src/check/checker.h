@@ -106,6 +106,7 @@ struct Checker {
     vector<Node*> program_modules; // every module of the program, for module_of
     Node* module_of(Node* decl);
     void bind_module_names(Node* mod);
+    void check_handle(Node* d);
     bool checking_generic_template = false;
     int inst_depth = 0;
     int hidden_count = 0; // `__iter1`, ...: names no source can spell
