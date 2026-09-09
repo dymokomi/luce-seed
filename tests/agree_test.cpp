@@ -1581,3 +1581,39 @@ TEST(agree_parenthesised_guard_is_not_a_lambda) {
     CHECK(agrees("func pair_sum(f: func((i64, i64)) -> i64, p: (i64, i64)) -> i64:\n    return f(p)\npub func answer() -> i64:\n    let s = pair_sum((p: (i64, i64)) => p.0 + p.1, (20, 22))\n    return match s:\n        _ if ((s > 10) and (s < 50)) => s\n        _ => 0\n"));
     CHECK(agrees("func describe(n: i64) -> i64:\n    return match n:\n        0 => 0\n        _ if (n < 0) => 1\n        _ if (n > 100 and n < 1000) => 2\n        _ => 3\nfunc apply(f: func(i64) -> i64, x: i64) -> i64:\n    return f(x)\npub func answer() -> i64:\n    return describe(0) * 1000 + describe(-5) * 100 + describe(500) * 10 + describe(7) + apply((v) => v * 2, 3) + apply((v: i64) => v + 1, 1)\n"));
 }
+
+TEST(agree_recover_cleans_only_handler_scopes) {
+    Both both;
+    CHECK(compile_source(R"lucb(# `recover` evaluates its value, then runs only cleanup belonging to its catch.
+let bad = ErrorCode.package(1)
+var log: i32 = 0
+func record(n: i32):
+    log = log * 10 + n
+func fail() -> i32!:
+    error(bad, "failure")
+func recovering() -> i32!:
+    defer record(4)
+    let result = fail() catch outer:
+        defer record(3)
+        errdefer record(9)
+        discard(fail() catch inner:
+            defer record(1)
+            recover 0)
+        assert(log == 1)
+        if true:
+            defer record(2)
+            recover log
+        recover -1
+    assert(log == 123)
+    return result
+pub func answer() -> i64!:
+    assert((try recovering()) == 1)
+    assert(log == 1234)
+    return 1234
+)lucb", &both));
+    CHECK(both.interp.ok);
+    CHECK(!both.interp.trapped);
+    CHECK_EQ(both.interp.answer, 1234);
+    CHECK_EQ(both.native.exit_code, 0);
+    CHECK_EQ(both.native.out, "1234\n");
+}

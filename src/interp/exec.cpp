@@ -38,6 +38,8 @@ auto Interp::exec(Node* n) -> void {
                 bool failing = returning && ret.failed;
                 // a deferred call runs whole on every exit (§8.8): the `break`, `continue`, or
                 // `return` in flight is set aside while it runs and restored after
+                const bool was_recovered = recovered;
+                const Value pending_recovery = recover_val;
                 const bool was_returning = returning;
                 const bool was_breaking = breaking;
                 const bool was_continuing = continuing;
@@ -63,6 +65,8 @@ auto Interp::exec(Node* n) -> void {
                         break;
                     }
                 }
+                recovered = was_recovered;
+                recover_val = pending_recovery;
                 returning = was_returning;
                 breaking = was_breaking;
                 continuing = was_continuing;
@@ -293,6 +297,7 @@ auto Interp::exec(Node* n) -> void {
     }
     case NodeKind::Recover:
         recover_val = n->left != nullptr ? eval(n->left) : v_unit();
+        ret = v_unit();
         recovered = true;
         returning = true;
         break;

@@ -915,6 +915,7 @@ auto Interp::run_catch_handler(Node* n, const Value& errv) -> void {
     in_catch = saved;
     if (recovered) {
         returning = false;
+        recovered = false;
     }
 }
 

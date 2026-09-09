@@ -53,6 +53,7 @@ struct Emitter {
     void insert_format_decls(size_t at);
     string catch_var;
     string catch_done;
+    int catch_scope = 0;
 
     struct Scope {
         vector<Node*> defers;

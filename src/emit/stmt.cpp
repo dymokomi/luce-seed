@@ -316,6 +316,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             } else {
                 line(catch_var + " = " + emit_expr(n->left) + ";");
             }
+            run_defers_from(catch_scope, false);
             if (!catch_done.empty()) {
                 line("goto " + catch_done + ";");
             }

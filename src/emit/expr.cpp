@@ -269,9 +269,11 @@ auto Emitter::emit_catch(Node* n) -> string {
     }
     string saved_catch = catch_var;
     string saved_done = catch_done;
+    int saved_scope = catch_scope;
     string saved_out;
     saved_out.swap(out);
     int saved_indent = indent;
+    catch_scope = static_cast<int>(scopes.size());
     catch_var = vn;
     catch_done = "_lb_cd" + std::to_string(id);
     indent = 0;
@@ -282,6 +284,7 @@ auto Emitter::emit_catch(Node* n) -> string {
     indent = saved_indent;
     catch_var = saved_catch;
     catch_done = saved_done;
+    catch_scope = saved_scope;
     Type* payload = is_fail(ft) ? ft->elem : nullptr;
     string s = "({ ";
     s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
