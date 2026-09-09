@@ -1112,6 +1112,23 @@ TEST(check_struct_contains_itself) {
                    "pub func answer() -> i64:\n    let n = N(value = 1, next = none)\n    return n.value\n"));
 }
 
+// §10.2: an enum cannot contain itself by value through a case's payload, an optional,
+// a tuple or a struct; a pointer breaks the cycle
+TEST(check_enum_contains_itself) {
+    CHECK(check_has("enum Tree:\n    leaf(value: i64)\n    pair(left: Tree?, right: Tree?)\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("enum Chain:\n    end\n    link(pair: (i64, Chain))\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_has("struct Cell:\n    var inner: Tree?\nenum Tree:\n    leaf(value: i64)\n    node(cell: Cell)\n"
+                    "pub func answer() -> i64:\n    return 0\n",
+                    "lucb.check.type"));
+    CHECK(check_ok("enum Tree:\n    leaf(value: i64)\n    pair(left: Tree*, right: Tree*?)\n"
+                   "pub func answer() -> i64:\n    let t = Tree.leaf(value = 1)\n    match t:\n"
+                   "        .leaf(value): return value\n        .pair(left, right): return 0\n"));
+}
+
 // §7.4, §10.4: a union has no equality, nor does a struct holding one; a union has a member
 TEST(check_union_rules) {
     CHECK(check_has("union U:\n    a: i64\n    b: f64\nstruct S:\n    var u: U\n"

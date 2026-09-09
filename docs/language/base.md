@@ -965,7 +965,7 @@ pub enum Command:
     quit
 ```
 
-A case is written `Direction.north` or `.north` where the type is known. A payload is reached only by `match`. The tag and payload layout is the compiler's; ordinary code never sees an ordinal. Adding a case is a source-compatibility change because every exhaustive `match` must be updated, which is intended. A case may not be named `none`.
+A case is written `Direction.north` or `.north` where the type is known. A payload is reached only by `match`. The tag and payload layout is the compiler's; ordinary code never sees an ordinal. Adding a case is a source-compatibility change because every exhaustive `match` must be updated, which is intended. A case may not be named `none`. An enum cannot contain itself by value through a payload, whether directly, through an optional, a tuple, an array or a struct, as a struct cannot (§10.1); a pointer breaks the cycle.
 
 ### 10.3 Integer-backed enums
 

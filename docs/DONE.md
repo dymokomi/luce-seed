@@ -949,3 +949,10 @@ a type (§3.4), as luce-base reads it; the parser took it for a call of a value.
 into the binary expression, as luce-base does (§7.5). A bare name is not a pattern (§8.4):
 the checker rejects it instead of compiling a comparison no reader expects. Evidence:
 `tests/check_test.cpp` (`check_bracketed_value_times_operand`, `check_name_is_not_a_pattern`).
+
+## 0.72 — an enum cannot contain itself
+
+An enum whose payload holds the enum by value, directly or through an optional, a tuple,
+an array or a struct, is rejected as a struct is (§10.2); the checker accepted it and
+emitted C that never compiled. Evidence: `tests/check_test.cpp`
+(`check_enum_contains_itself`).

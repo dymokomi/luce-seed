@@ -866,9 +866,20 @@ auto Checker::collect_module(Node* mod) -> void {
                 }
             }
         }
+        // a payload's type is known before containment is checked, as a field's is
+        if (d->kind == NodeKind::Enum && !is_generic_decl(d)) {
+            for (Node* m = d->body; m != nullptr; m = m->next) {
+                if (m->kind == NodeKind::EnumCase) {
+                    for (Node* p = m->body; p != nullptr; p = p->next) {
+                        p->ty = resolve_type(p->type);
+                    }
+                }
+            }
+        }
     }
     for (Node* d = mod->body; d != nullptr; d = d->next) {
-        if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union) && !is_generic_decl(d)) {
+        if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union || d->kind == NodeKind::Enum) &&
+            !is_generic_decl(d)) {
             check_containment(d);
         }
     }
@@ -891,7 +902,9 @@ auto Checker::collect_module(Node* mod) -> void {
                     }
                     m->ty = d->ty;
                     for (Node* p = m->body; p != nullptr; p = p->next) {
-                        p->ty = resolve_type(p->type);
+                        if (p->ty == nullptr) {
+                            p->ty = resolve_type(p->type);
+                        }
                     }
                 }
             }
@@ -1006,13 +1019,22 @@ auto Checker::collect_module(Node* mod) -> void {
     }
 }
 
-// A struct or union cannot contain itself by value; a pointer, span, or optional pointer
-// breaks the cycle (§10.1). The offending field loses its type so no layout recurses.
+// A struct, union or enum cannot contain itself by value, an enum through a case's payload;
+// a pointer, span, or optional pointer breaks the cycle (§10.1, §10.2). The offending field
+// or payload loses its type so no layout recurses.
 auto Checker::check_containment(Node* d) -> void {
     for (Node* m = d->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field && contains_by_value(m->ty, d)) {
             fail_n(m, "lucb.check.type", "`" + string(d->text) + "` contains itself; use a pointer");
             m->ty = t_error();
+        }
+        if (m->kind == NodeKind::EnumCase) {
+            for (Node* p = m->body; p != nullptr; p = p->next) {
+                if (contains_by_value(p->ty, d)) {
+                    fail_n(p, "lucb.check.type", "`" + string(d->text) + "` contains itself; use a pointer");
+                    p->ty = t_error();
+                }
+            }
         }
     }
 }
@@ -1037,7 +1059,8 @@ auto Checker::contains_by_value(Type* t, Node* d, vector<Node*>& seen) -> bool {
         }
         return false;
     }
-    if ((t->kind == TypeKind::Struct || t->kind == TypeKind::Union) && t->decl != nullptr) {
+    if ((t->kind == TypeKind::Struct || t->kind == TypeKind::Union || t->kind == TypeKind::Enum) &&
+        t->decl != nullptr) {
         if (t->decl == d) {
             return true;
         }
@@ -1050,6 +1073,13 @@ auto Checker::contains_by_value(Type* t, Node* d, vector<Node*>& seen) -> bool {
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field && contains_by_value(m->ty, d, seen)) {
                 return true;
+            }
+            if (m->kind == NodeKind::EnumCase) {
+                for (Node* p = m->body; p != nullptr; p = p->next) {
+                    if (contains_by_value(p->ty, d, seen)) {
+                        return true;
+                    }
+                }
             }
         }
     }
