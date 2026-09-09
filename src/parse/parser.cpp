@@ -147,8 +147,14 @@ auto Parser::is_array_suffix_ahead() const -> bool {
     if (bracket_holds_expression(pos)) {
         return true;
     }
-    if (k == TokenKind::IntLit || k == TokenKind::LParen || k == TokenKind::KwSelf) {
-        return true; // `T[N]`, `T[(n)]`, `T[self.count]`
+    if (k == TokenKind::LParen) {
+        // `T[(n)]` is an array; `Box[(i64, str)]` holds a tuple type argument
+        bool tuple_type = peek_kind(pos + 2) == TokenKind::Name && is_type_path_ident(peek(2).text) &&
+                          peek_kind(pos + 3) == TokenKind::Comma;
+        return !tuple_type;
+    }
+    if (k == TokenKind::IntLit || k == TokenKind::KwSelf) {
+        return true; // `T[N]`, `T[self.count]`
     }
     if (k == TokenKind::Name) {
         string_view t = peek(1).text;
@@ -190,8 +196,13 @@ auto Parser::is_generic_call_ahead() const -> bool {
         return true;
     }
     if (first.kind == TokenKind::LParen) {
-        // `[(func(i64) -> i64)]` is a type argument; `[(usize)i]` is an index with a cast
-        return peek_kind(pos + 2) == TokenKind::KwFunc;
+        // `[(func(i64) -> i64)]` and `[(i64, str)]` are type arguments, a function type
+        // and a tuple type; `[(usize)i]` is an index with a cast
+        if (peek_kind(pos + 2) == TokenKind::KwFunc) {
+            return true;
+        }
+        return peek_kind(pos + 2) == TokenKind::Name && is_type_path_ident(tok[pos + 2].text) &&
+               peek_kind(pos + 3) == TokenKind::Comma;
     }
     if (first.kind != TokenKind::Name) {
         return false;

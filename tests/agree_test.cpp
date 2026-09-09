@@ -657,6 +657,17 @@ TEST(agree_const_span_of_pointers) {
                  "    return total[Node*](both, weight)\n"));
 }
 
+TEST(agree_tuple_type_argument) {
+    CHECK(agrees("struct Box[T]:\n"
+                 "    var v: T\n"
+                 "func first[T](b: Box[T]*) -> T:\n"
+                 "    return b.v\n"
+                 "pub func answer() -> i64:\n"
+                 "    var b = Box[(i64, str)](v = (40, \"xy\"))\n"
+                 "    let (n, s) = first[(i64, str)](&b)\n"
+                 "    return n + (i64)s.length + b.v.0 - 40\n"));
+}
+
 TEST(agree_print_formatted) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    print(f\"n={40}\")\n"

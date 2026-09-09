@@ -1169,7 +1169,7 @@ func largest[T: Comparable](left: T, right: T) -> T:
 
 Type parameters are declared in square brackets and inferred from argument types; when no argument mentions a parameter, it is written at the call, `decode[Header](bytes)`. A constraint is one or more interfaces joined by `&`. A generic body type-checks from its declaration and written constraints alone; it never accepts syntax that happens to work for one instantiation. Generic code is monomorphised: each instantiation is compiled separately, and the compiler reports every instantiation's origin and size and rejects an infinite chain.
 
-A type argument to a Base generic may be any type a Base module can spell: scalars, pointers, spans, structs, enums, unions, interface views, function types. It may not be a runtime-dependent type of full Luce. Inside Base this is automatic; at the boundary, §18.11 states it.
+A type argument to a Base generic may be any type a Base module can spell: scalars, pointers, spans, tuples, structs, enums, unions, interface views, function types. It may not be a runtime-dependent type of full Luce. Inside Base this is automatic; at the boundary, §18.11 states it.
 
 There are no value parameters (array length is the one built-in exception), no variadic generics, no specialisation, no compile-time code execution, and no associated types; an interface that needs a second type takes it as a parameter, as `Iterable[T, I]` does (§14.4).
 

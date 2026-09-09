@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.63**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.64**, the seed `luce-base` is written against.
+
+## 0.64: a tuple is a type argument
+
+- `Box[(i64, str)]`, in an expression and in a type (§13): the bracket lookahead read the
+  parenthesis as an index or an array length. The spec's list of what a type argument may
+  be now names tuples. Wanted by luce's lists of tuples. Evidence: `tests/agree_test.cpp`.
 
 ## 0.63: a `const` span of pointers iterates
 
