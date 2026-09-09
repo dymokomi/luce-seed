@@ -286,6 +286,7 @@ struct Parser {
     int find_match(int start, TokenKind open, TokenKind close) const;
     bool is_lambda_ahead() const;
     bool is_array_suffix_ahead() const;
+    bool tuple_type_at(int at) const;
     bool is_generic_call_ahead() const;
     bool is_scalar_cast_ahead() const;
     void sync_line();

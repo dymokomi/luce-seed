@@ -963,3 +963,10 @@ emitted C that never compiled. Evidence: `tests/check_test.cpp`
 as a conditional continuing the last arm (§7.8), and the same for an operator, an `else`
 or a `catch`. An expression whose last operand ended a suite is complete. Evidence:
 `tests/parse_test.cpp` (`parse_match_expression_ends_its_line`).
+
+## 0.74 — a nested tuple is a type argument
+
+`Box[((i64, i64), str)]`: the lookahead deciding between an array length and type
+arguments knew a tuple type only by a type word after `(`; a nested `(` opens one too
+(§13.2), as luce-base reads it. Evidence: `tests/parse_test.cpp`
+(`parse_nested_tuple_type_argument`).

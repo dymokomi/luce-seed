@@ -136,6 +136,38 @@ auto Parser::bracket_holds_expression(int open) const -> bool {
     return false;
 }
 
+// Whether a tuple type opens at `at`, just after a `(`: a type word, or a nested `(`
+// opening one, then a comma at the same depth before the close (§5.7).
+auto Parser::tuple_type_at(int at) const -> bool {
+    if (at >= n) {
+        return false;
+    }
+    if (tok[at].kind == TokenKind::LParen) {
+        return tuple_type_at(at + 1);
+    }
+    if (tok[at].kind != TokenKind::Name || !is_type_path_ident(tok[at].text)) {
+        return false;
+    }
+    int depth = 0;
+    for (int j = at + 1; j < n && j < at + 64; j++) {
+        TokenKind k = tok[j].kind;
+        if (k == TokenKind::Newline || k == TokenKind::EndOfFile) {
+            return false;
+        }
+        if (k == TokenKind::LParen || k == TokenKind::LBracket) {
+            depth++;
+        } else if (k == TokenKind::RParen || k == TokenKind::RBracket) {
+            if (depth == 0) {
+                return false;
+            }
+            depth--;
+        } else if (k == TokenKind::Comma && depth == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto Parser::is_array_suffix_ahead() const -> bool {
     if (!at(TokenKind::LBracket)) {
         return false;
@@ -149,9 +181,7 @@ auto Parser::is_array_suffix_ahead() const -> bool {
     }
     if (k == TokenKind::LParen) {
         // `T[(n)]` is an array; `Box[(i64, str)]` holds a tuple type argument
-        bool tuple_type = peek_kind(pos + 2) == TokenKind::Name && is_type_path_ident(peek(2).text) &&
-                          peek_kind(pos + 3) == TokenKind::Comma;
-        return !tuple_type;
+        return !tuple_type_at(pos + 2);
     }
     if (k == TokenKind::IntLit || k == TokenKind::KwSelf) {
         return true; // `T[N]`, `T[self.count]`
@@ -201,8 +231,7 @@ auto Parser::is_generic_call_ahead() const -> bool {
         if (peek_kind(pos + 2) == TokenKind::KwFunc) {
             return true;
         }
-        return peek_kind(pos + 2) == TokenKind::Name && is_type_path_ident(tok[pos + 2].text) &&
-               peek_kind(pos + 3) == TokenKind::Comma;
+        return tuple_type_at(pos + 2);
     }
     if (first.kind != TokenKind::Name) {
         return false;

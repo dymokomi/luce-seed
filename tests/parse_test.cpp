@@ -137,6 +137,16 @@ TEST(parse_while_and_for) {
     CHECK(p.dump().find("..<") != std::string::npos);
 }
 
+// §13.2: a tuple type argument may open with a nested tuple
+TEST(parse_nested_tuple_type_argument) {
+    Parsed p("struct Box[T]:\n"
+             "    var item: T\n"
+             "\n"
+             "func f() -> Box[((i64, i64), str)]:\n"
+             "    return Box[((i64, i64), str)](item = ((1, 2), \"s\"))\n");
+    CHECK(p.diagnostics.empty());
+}
+
 // §7.8: a match expression ends with its arms; the next line is a statement of its own
 TEST(parse_match_expression_ends_its_line) {
     Parsed p("func f(n: i64, p: i64*) -> i64:\n"
