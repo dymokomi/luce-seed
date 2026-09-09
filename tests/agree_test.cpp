@@ -1473,3 +1473,7 @@ TEST(agree_array_literal_passed_as_a_span) {
 TEST(agree_tuple_members_by_position) {
     CHECK(agrees("func pair() -> (i64, str):\n    return (40, \"ab\")\npub func answer() -> i64:\n    let t = (1, 2.5, \"xyz\")\n    let p = pair()\n    return t.0 + i64(t.1 * 2.0) + (i64)t.2.length + p.0 - (i64)p.1.length - 5\n"));
 }
+
+TEST(agree_parenthesised_guard_is_not_a_lambda) {
+    CHECK(agrees("func describe(n: i64) -> i64:\n    return match n:\n        0 => 0\n        _ if (n < 0) => 1\n        _ if (n > 100 and n < 1000) => 2\n        _ => 3\nfunc apply(f: func(i64) -> i64, x: i64) -> i64:\n    return f(x)\npub func answer() -> i64:\n    return describe(0) * 1000 + describe(-5) * 100 + describe(500) * 10 + describe(7) + apply((v) => v * 2, 3) + apply((v: i64) => v + 1, 1)\n"));
+}

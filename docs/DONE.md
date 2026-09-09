@@ -1,7 +1,13 @@
 # What exists
 
 Only committed, gate-green behavior. The plan lives in [`PLAN.md`](PLAN.md).
-This tree is **luce-seed-0.56**, the seed `luce-base` is written against.
+This tree is **luce-seed-0.57**, the seed `luce-base` is written against.
+
+## 0.57: a parenthesised guard is not a lambda
+
+- `_ if (n < 0) => x` in a match expression was read as a lambda `(n < 0) => x`; a lambda's
+  parameter list holds names with optional types, so anything else before `=>` is a
+  parenthesised expression. Found by luce's emitter. Evidence: `tests/agree_test.cpp`.
 
 ## 0.56: a tuple member is read by position
 

@@ -43,10 +43,35 @@ auto Parser::is_lambda_ahead() const -> bool {
         return false;
     }
     int after = close + 1;
-    if (after >= n) {
+    if (after >= n || tok[after].kind != TokenKind::FatArrow) {
         return false;
     }
-    return tok[after].kind == TokenKind::FatArrow;
+    // a parameter list holds names, each with an optional type: `(n < 0) => x` in a match
+    // arm is a guard's parenthesised condition, not a lambda (§9.6, §8.4)
+    int depth = 0;
+    for (int i = pos + 1; i < close; i++) {
+        TokenKind k = tok[i].kind;
+        if (k == TokenKind::LParen || k == TokenKind::LBracket) {
+            depth++;
+            continue;
+        }
+        if (k == TokenKind::RParen || k == TokenKind::RBracket) {
+            depth--;
+            continue;
+        }
+        if (depth > 0) {
+            continue;
+        }
+        switch (k) {
+        case TokenKind::Name: case TokenKind::Comma: case TokenKind::Colon: case TokenKind::Star:
+        case TokenKind::StarQuestion: case TokenKind::Question: case TokenKind::Bang: case TokenKind::Arrow:
+        case TokenKind::Dot: case TokenKind::KwFunc: case TokenKind::KwConst:
+            break;
+        default:
+            return false;
+        }
+    }
+    return true;
 }
 
 // Whether the bracket at `open` holds something no type can: an arithmetic or comparison
