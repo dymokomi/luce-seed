@@ -221,8 +221,6 @@ hands it source buffers. Same seam as the Zig stage-0 compiler.
 Every file opens with a banner saying what it owns; the implementation
 headers (`checker.h`, `parser_impl.h`, `interp_impl.h`, `emitter.h`) group
 their declarations by unit, so the banner and the header agree on the seams.
-`tools/split_units.py` is the script that moved functions between units;
-it is kept so the operation is reproducible.
 
 Parse the whole grammar once. Typecheck, interpret, and emit grow by slices.
 
