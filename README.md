@@ -15,8 +15,8 @@ luce-full  (written in Base)     compiles full Luce
 
 The language is specified in [`docs/language/base.md`](docs/language/base.md).
 That document is the law. Architecture of *this* compiler is
-[`docs/DESIGN.md`](docs/DESIGN.md). What to implement next is
-[`docs/PLAN.md`](docs/PLAN.md). What exists is [`docs/DONE.md`](docs/DONE.md).
+[`docs/DESIGN.md`](docs/DESIGN.md). What each section of the specification has here is
+[`docs/FEATURES.md`](docs/FEATURES.md); what stays out is [`docs/PLAN.md`](docs/PLAN.md).
 The freeze gate is `examples/` and `testdata/`: every program there is
 proved by both executions on every test run (see below).
 
@@ -75,14 +75,14 @@ interpreter and the binary must agree. A file says what it proves with
 
 ## Status
 
-**luce-seed-0.41.** Builds and passes its gate on arm64 macOS and x86_64 Linux (GCC or
-clang); `docs/DONE.md` has the ledger. The oracle audited against the specification (`docs/DONE.md`); M0–M14 landed and three earlier audits closed: every one of
-the fifteen `base.md` §24 programs checks, emits C that compiles under
-`-Wall -Werror`, and runs; the interpreter and the binary agree on the
-audit's sixty-two programs, including a three-module mini compiler
-(`examples/calc/`). This repo is the seed: enough Base to write
-`luce-base`. See `docs/PLAN.md` and `docs/FEATURES.md` for what stays out
-of seed, and `docs/DESIGN.md` for what the oracle does not model.
+Builds and passes its gate on arm64 macOS and x86_64 Linux (GCC or clang). Every
+`base.md` §24 program checks, emits C that compiles under `-Wall -Werror`, and runs; the
+interpreter and the binary agree on every program under `testdata/` and `examples/`,
+including a three-module mini compiler (`examples/calc/`). This repo is the seed: enough
+Base to write `luce-base`, which pins a tag of it. `VERSION` is the tree's version and a
+release is a tag `luce-seed-N`; `git log` is the history. See `docs/PLAN.md` and
+`docs/FEATURES.md` for what stays out of the seed, and `docs/DESIGN.md` for what the
+oracle does not model.
 
 ## License
 

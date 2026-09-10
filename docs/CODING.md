@@ -49,6 +49,5 @@ lowercase subject. No trailers.
 - Language programs live in `testdata/`.
 - `./test.sh` is the gate. A slice is not done until it is green.
 - Keep every pass linear in the program: no scan of a whole scope, list, or
-  output buffer per element. `tools/` and the perf numbers in DONE.md say
-  how to measure.
+  output buffer per element. `tools/` says how to measure.
 - A FEATURES.md row names its tests.
