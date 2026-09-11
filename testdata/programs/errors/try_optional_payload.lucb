@@ -1,0 +1,24 @@
+## Context may lift a successful try payload into an optional, exactly once.
+struct Value:
+    var number: i64
+
+func value() -> Value!:
+    return Value(19)
+
+func lifted() -> Value?!:
+    return try value()
+
+func optional(present: bool) -> Value?!:
+    if present:
+        return Value(21)
+    return none
+
+func forwarded(present: bool) -> Value?!:
+    return try optional(present)
+
+pub func answer() -> i64:
+    let first = (lifted() catch failure: recover none) else trap("missing lifted value")
+    let second = (forwarded(true) catch failure: recover none) else trap("missing forwarded value")
+    let absent = forwarded(false) catch failure: recover none
+    assert(absent == none)
+    return first.number + second.number

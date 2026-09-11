@@ -152,7 +152,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             int i = 0;
             for (Node* nm = n->body; nm != nullptr; nm = nm->next) {
                 if (nm->text != "_") { // a discarded element gets no name
-                    line(c_type(nm->ty) + " " + ident("lb_", nm->text) +
+                    line(c_type(nm->ty) + " " + ident("lv_", nm->text) +
                          " __attribute__((unused)) = " + tn + ".a" + std::to_string(i) + ";");
                 }
                 i++;
@@ -160,7 +160,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
             break;
         }
         string ty = c_type(n->ty);
-        string name = ident("lb_", n->text);
+        string name = ident("lv_", n->text);
         if (n->flags & FlagUninit) {
             line(ty + " " + name + " __attribute__((unused));");
             break;
@@ -380,14 +380,14 @@ auto Emitter::emit_stmt(Node* n) -> void {
         indent++;
         if ((n->flags & FlagIndexed) != 0 && n->left != nullptr) {
             // `for (i, x) in items.indexed()`: the index beside the element
-            line("size_t " + ident("lb_", n->text) + " __attribute__((unused)) = " + idx + ";");
-            line(c_type(n->left->ty) + " " + ident("lb_", n->left->text) +
+            line("size_t " + ident("lv_", n->text) + " __attribute__((unused)) = " + idx + ";");
+            line(c_type(n->left->ty) + " " + ident("lv_", n->left->text) +
                  " __attribute__((unused)) = " + elem_e + ";");
         } else if (n->flags & FlagByPtr) {
-            line(c_type(n->ty) + " " + ident("lb_", n->text) + " __attribute__((unused)) = &(" +
+            line(c_type(n->ty) + " " + ident("lv_", n->text) + " __attribute__((unused)) = &(" +
                  elem_e + ");");
         } else {
-            line(c_type(n->ty) + " " + ident("lb_", n->text) +
+            line(c_type(n->ty) + " " + ident("lv_", n->text) +
                  " __attribute__((unused)) = " + elem_e + ";");
         }
         emit_stmt(n->body);
@@ -637,10 +637,10 @@ auto Emitter::emit_while(Node* n) -> void {
         line("if (!(" + cond + ")) break;");
         if (let != nullptr && !let->text.empty()) {
             if (is_opt(ot) && ot->elem != nullptr) {
-                line(c_type(ot->elem) + " " + ident("lb_", let->text) +
+                line(c_type(ot->elem) + " " + ident("lv_", let->text) +
                      " __attribute__((unused)) = " + on + ".value;");
             } else {
-                line(c_type(ot) + " " + ident("lb_", let->text) +
+                line(c_type(ot) + " " + ident("lv_", let->text) +
                      " __attribute__((unused)) = " + on + ";");
             }
         }
@@ -670,7 +670,7 @@ auto Emitter::emit_for_range(Node* n) -> void {
     sc.label = n->label;
     scopes.push_back(sc);
     string ty = c_type(n->ty);
-    string name = ident("lb_", n->text);
+    string name = ident("lv_", n->text);
     string a = emit_expr(n->right->left);
     string b = emit_expr(n->right->right);
     string cmp = n->right->op == TokenKind::DotDotEq ? " <= " : " < ";
@@ -779,7 +779,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 Node* b0 = first_pay->body;
                 while (p0 != nullptr && b0 != nullptr) {
                     if (b0->text != "_") {
-                        line(c_type(p0->ty) + " " + ident("lb_", b0->text) +
+                        line(c_type(p0->ty) + " " + ident("lv_", b0->text) +
                              " __attribute__((unused)) = {0};");
                     }
                     p0 = p0->next;
@@ -803,7 +803,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                         Node* b = pat->body;
                         while (p != nullptr && b != nullptr) {
                             if (b->text != "_") {
-                                line(ident("lb_", b->text) + " = " + sv + ".u." +
+                                line(ident("lv_", b->text) + " = " + sv + ".u." +
                                      string(cse->text) + "." + string(p->text) + ";");
                             }
                             p = p->next;
@@ -822,7 +822,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                     Node* b = pat->body;
                     while (p != nullptr && b != nullptr) {
                         if (b->text != "_") {
-                            line(ident("lb_", b->text) + " = " + sv + ".u." + string(cse->text) +
+                            line(ident("lv_", b->text) + " = " + sv + ".u." + string(cse->text) +
                                  "." + string(p->text) + ";");
                         }
                         p = p->next;
@@ -867,7 +867,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                 } else if (pat->text == "some") {
                     cond = sv + ".present";
                     if (pat->body != nullptr && !pat->body->text.empty() && st->elem != nullptr) {
-                        bind = c_type(st->elem) + " " + ident("lb_", pat->body->text) +
+                        bind = c_type(st->elem) + " " + ident("lv_", pat->body->text) +
                                " __attribute__((unused)) = " + sv + ".value;";
                     }
                 }
@@ -927,10 +927,10 @@ auto Emitter::emit_if(Node* n) -> void {
         indent++;
         if (let != nullptr && !let->text.empty()) {
             if (is_opt(ot) && ot->elem != nullptr) {
-                line(c_type(ot->elem) + " " + ident("lb_", let->text) +
+                line(c_type(ot->elem) + " " + ident("lv_", let->text) +
                      " __attribute__((unused)) = " + on + ".value;");
             } else {
-                line(c_type(ot) + " " + ident("lb_", let->text) +
+                line(c_type(ot) + " " + ident("lv_", let->text) +
                      " __attribute__((unused)) = " + on + ";");
             }
         }

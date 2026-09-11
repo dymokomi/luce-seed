@@ -63,7 +63,9 @@ auto Emitter::produces_opt(Node* n) -> bool {
         return true;
     }
     if (n->kind == NodeKind::Unary && n->op == TokenKind::KwTry) {
-        return true; // `try f()` of a `T?!` yields the `T?` itself
+        Type* result = n->left != nullptr ? n->left->ty : nullptr;
+        // A successful T needs wrapping when context expects T?; T?! already has it.
+        return is_fail(result) && is_opt(result->elem);
     }
     if (n->kind == NodeKind::Catch) {
         return true; // a `catch` typed `T?` builds the optional itself (§11.4)
@@ -291,7 +293,7 @@ auto Emitter::emit_catch(Node* n) -> string {
     s += vty + " " + vn + " = {0}; ";
     s += "if (" + rn + ".failed) { ";
     if (!n->text.empty()) {
-        s += "lb_error " + ident("lb_", n->text) + " __attribute__((unused)) = " + rn + ".error; ";
+        s += "lb_error " + ident("lv_", n->text) + " __attribute__((unused)) = " + rn + ".error; ";
     }
     s += body;
     s += "_lb_cd" + std::to_string(id) + ": __attribute__((unused));";

@@ -140,7 +140,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
             }
             sig += q + et + "* " + string(p->text) + ", size_t " + string(p->text) + "_len";
         } else {
-            sig += c_type(p->ty) + " " + ident("lb_", p->text);
+            sig += c_type(p->ty) + " " + ident("lv_", p->text);
         }
     }
     if (first) {
@@ -161,7 +161,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
             if (!is_span(p->ty)) {
                 continue;
             }
-            string pn = ident("lb_", p->text);
+            string pn = ident("lv_", p->text);
             string data = string(p->text);
             string len = data + "_len";
             string cast = "(void*)"; // spans carry a void* data pointer
@@ -173,7 +173,7 @@ auto Emitter::emit_sig(Node* fn, Node* owner, bool define) -> void {
         }
         for (Node* p = fn->right; p != nullptr; p = p->next) {
             if (needs_null_foreign(p->ty)) {
-                line("if (" + ident("lb_", p->text) + " == NULL) lb_trap(\"null_foreign\");");
+                line("if (" + ident("lv_", p->text) + " == NULL) lb_trap(\"null_foreign\");");
             }
         }
     }

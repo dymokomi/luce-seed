@@ -82,7 +82,8 @@ string name_ident(Node* n) {
     if (n->resolved != nullptr && (n->resolved->kind == NodeKind::Global || n->resolved->kind == NodeKind::Const)) {
         return global_ident(n->resolved);
     }
-    return ident("lb_", n->text);
+    // Locals and parameters have a namespace separate from runtime and global names.
+    return ident("lv_", n->text);
 }
 
 static string g_export_prefix;

@@ -339,6 +339,12 @@ auto Checker::bind_memory() -> void {
     f_read->next = f_write;
     f_write->next = f_miss;
     f_miss->next = f_list;
+    Node* f_exists = syn_node(NodeKind::Func, "exists");
+    Node* ep = syn_node(NodeKind::Param, "path");
+    ep->ty = ty_cstr;
+    f_exists->right = ep;
+    f_exists->ty = t_bool();
+    f_list->next = f_exists;
     Node* files = syn_node(NodeKind::Module, "files");
     files->body = f_read;
     Type* files_t = make_type(TypeKind::Module, "files");

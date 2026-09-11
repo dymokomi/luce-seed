@@ -620,6 +620,10 @@ auto Emitter::emit_call(Node* n) -> string {
             if (lt->name == "c" && callee->text == "stderr") {
                 return "((void*)stderr)";
             }
+            if (lt->name == "files" && callee->text == "exists") {
+                Node* path = n->body != nullptr ? n->body->left : nullptr;
+                return "lb_files_exists(" + (path != nullptr ? emit_expr(path) : "NULL") + ")";
+            }
             if (lt->name == "files" && callee->text == "read") {
                 Node* parg = n->body != nullptr ? n->body->left : nullptr;
                 string p = parg != nullptr ? emit_expr(parg) : "NULL";

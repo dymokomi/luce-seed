@@ -1,0 +1,42 @@
+## File system paths as text, with `/` as the separator.
+
+import strings
+
+pub func is_absolute(path: str) -> bool:
+    return path.length > 0 and path.bytes[0] == '/'
+
+## Everything up to the last separator, or `.` when there is none.
+pub func directory(path: str) -> str:
+    let cut = strings.last(path, '/') else return "."
+    if cut == 0:
+        return "/"
+    return (str)path.bytes[..<cut]
+
+## The last component.
+pub func base(path: str) -> str:
+    let cut = strings.last(path, '/') else return path
+    return (str)path.bytes[cut + 1..]
+
+## The extension with its dot, or the empty text.
+pub func extension(path: str) -> str:
+    let name = base(path)
+    let dot = strings.last(name, '.') else return ""
+    if dot == 0:
+        return ""
+    return (str)name.bytes[dot..]
+
+## The last component without its extension.
+pub func stem(path: str) -> str:
+    let name = base(path)
+    let ext = extension(name)
+    return (str)name.bytes[..<name.length - ext.length]
+
+## Join with a separator only when needed; an absolute right path wins. This is
+## lexical joining, without normalization or filesystem access. The result is a
+## NUL-terminated current-allocator allocation, released with strings.release.
+pub func join(left: str, right: str) -> str!:
+    if is_absolute(right) or left.length == 0:
+        return try strings.copy(right)
+    let separator = "" if left.bytes[left.length - 1] == '/' else "/"
+    let pieces: str[2] = [left, right]
+    return try strings.join(pieces, separator)

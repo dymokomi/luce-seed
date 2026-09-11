@@ -338,6 +338,17 @@ TEST(parse_cast_vs_call) {
     CHECK(p.dump().find("(group") != std::string::npos);
 }
 
+TEST(parse_cast_of_try_expression) {
+    Parsed p("func f() -> i64!:\n"
+             "    let number = (i64)try read_number()\n"
+             "    let text = (c.str)try read_text()\n"
+             "    let operation = (func(i64) -> i64)try read_operation()\n"
+             "    return number\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("(cast") != std::string::npos);
+    CHECK(p.dump().find("(unary try") != std::string::npos);
+}
+
 TEST(parse_array_literal) {
     Parsed p("func f() -> i64:\n    let xs = [1, 2, 3]\n    return xs[0]\n");
     CHECK(p.diagnostics.empty());

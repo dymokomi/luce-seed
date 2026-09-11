@@ -1,0 +1,200 @@
+## Bootstrap text operations, kept identical to Base search and transform sources.
+## Allocated text uses the current allocator and is released with release().
+import memory
+
+pub func starts_with(text: str, prefix: str) -> bool:
+    if prefix.length > text.length:
+        return false
+    return (str)text.bytes[..<prefix.length] == prefix
+
+pub func ends_with(text: str, suffix: str) -> bool:
+    if suffix.length > text.length:
+        return false
+    return (str)text.bytes[text.length - suffix.length..] == suffix
+
+## The byte offset of the first exact needle, or none. Empty needles match at
+## zero. No allocation or UTF-8 validation occurs; embedded NUL bytes are ordinary
+## data. The search takes linear time and constant auxiliary space.
+pub func find(text: str, needle: str) -> usize?:
+    return search_bytes(text.bytes, needle.bytes, false)
+
+## Search at or after a byte offset. An offset past the end returns none, including
+## for an empty needle. This does not require a Unicode scalar boundary.
+pub func find_from(text: str, needle: str, start: usize) -> usize?:
+    if start > text.length:
+        return none
+    let offset = search_bytes(text.bytes[start..], needle.bytes, false) else return none
+    return start + offset
+
+## The last exact occurrence, including overlaps. Empty needles match at the end.
+## Like find, this uses byte offsets, linear time, constant space and no allocation.
+pub func find_last(text: str, needle: str) -> usize?:
+    let offset = search_bytes(text.bytes, needle.bytes, true) else return none
+    return text.length - needle.length - offset
+
+## The byte offset of the last `byte` in `text`.
+pub func last(text: str, byte: u8) -> usize?:
+    var i = text.length
+    while i > 0:
+        i -= 1
+        if text.bytes[i] == byte:
+            return i
+    return none
+
+pub func contains(text: str, needle: str) -> bool:
+    return find(text, needle) != none
+
+
+## Two-way matching splits the needle at a critical factorization. Match its right
+## part first, then the left; the period lets repeated prefixes be skipped without
+## comparing them again. Reversed indexing gives the same bound for find_last.
+func search_bytes(text: const u8[], needle: const u8[], reversed: bool) -> usize?:
+    if needle.length == 0:
+        return 0
+    if needle.length > text.length:
+        return none
+    let (forward_split, forward_period) = maximal_suffix(needle, reversed, false)
+    let (backward_split, backward_period) = maximal_suffix(needle, reversed, true)
+    var critical = forward_split
+    var period = forward_period
+    if backward_split > critical:
+        critical = backward_split
+        period = backward_period
+    var periodic = critical <= needle.length - period
+    var index: usize = 0
+    while periodic and index < critical:
+        if search_byte(needle, index, reversed) != search_byte(needle, period + index, reversed):
+            periodic = false
+        index += 1
+    var remembered: usize = 0
+    if periodic:
+        remembered = needle.length - period
+    else:
+        let right = needle.length - critical + 1
+        period = critical if critical > right else right
+    var position: usize = 0
+    var matched_prefix: usize = 0
+    while needle.length <= text.length - position:
+        var right = critical if critical > matched_prefix else matched_prefix
+        while right < needle.length and search_byte(needle, right, reversed) == search_byte(text, position + right, reversed):
+            right += 1
+        if right < needle.length:
+            position += right - critical + 1
+            matched_prefix = 0
+            continue
+        var left = critical
+        while left > matched_prefix and search_byte(needle, left - 1, reversed) == search_byte(text, position + left - 1, reversed):
+            left -= 1
+        if left <= matched_prefix:
+            return position
+        position += period
+        matched_prefix = remembered
+    return none
+
+## Positions represent suffix starts rather than signed -1 sentinels. Every
+## advance stays within the needle; no index arithmetic wraps at usize maximum.
+func maximal_suffix(needle: const u8[], reversed: bool, opposite_order: bool) -> (usize, usize):
+    var left: usize = 0
+    var right: usize = 1
+    var offset: usize = 0
+    var period: usize = 1
+    while right < needle.length and offset < needle.length - right:
+        let a = search_byte(needle, right + offset, reversed)
+        let b = search_byte(needle, left + offset, reversed)
+        if a == b:
+            if offset + 1 == period:
+                right += period
+                offset = 0
+            else:
+                offset += 1
+        elif (a < b) != opposite_order:
+            right += offset + 1
+            offset = 0
+            period = right - left
+        else:
+            left = right
+            right = left + 1
+            offset = 0
+            period = 1
+    return (left, period)
+
+func search_byte(bytes: const u8[], index: usize, reversed: bool) -> u8:
+    return bytes[bytes.length - index - 1] if reversed else bytes[index]
+func is_space(byte: u8) -> bool:
+    return byte == ' ' or byte == '\n' or byte == '\t' or byte == '\r'
+
+## `text` without leading and trailing spaces, tabs, and line ends: a view.
+pub func trim(text: str) -> str:
+    var start: usize = 0
+    var end = text.length
+    let b = text.bytes
+    while start < end and is_space(b[start]):
+        start += 1
+    while end > start and is_space(b[end - 1]):
+        end -= 1
+    return (str)b[start..<end]
+
+## The pieces joined with `separator` between them, NUL-terminated in the current
+## allocator; `release` gives it back.
+pub func join(pieces: const str[], separator: str) -> str!:
+    var total: usize = 0
+    var i: usize = 0
+    while i < pieces.length:
+        total = total +? pieces[i].length else error(memory.exhausted, "the joined text is too large")
+        if i + 1 < pieces.length:
+            total = total +? separator.length else error(memory.exhausted, "the joined text is too large")
+        i += 1
+    let out = try terminated_buffer(total)
+    var n: usize = 0
+    i = 0
+    while i < pieces.length:
+        memory.copy(out[n..], pieces[i].bytes, pieces[i].length)
+        n += pieces[i].length
+        if i + 1 < pieces.length:
+            memory.copy(out[n..], separator.bytes, separator.length)
+            n += separator.length
+        i += 1
+    out[n] = 0
+    return (str)out[..<n]
+
+## A copy of `text` in the current allocator, NUL-terminated so it may be a `c.str`;
+## `release` gives it back.
+pub func copy(text: str) -> str!:
+    let out = try terminated_buffer(text.length)
+    memory.copy(out, text.bytes, text.length)
+    out[text.length] = 0
+    return (str)out[..<text.length]
+
+## ASCII case folding; other bytes pass through. NUL-terminated in the current
+## allocator; `release` gives the text back.
+pub func to_upper(text: str) -> str!:
+    let out = try terminated_buffer(text.length)
+    var i: usize = 0
+    for b in text.bytes:
+        out[i] = b - 32 if b >= 'a' and b <= 'z' else b
+        i += 1
+    out[i] = 0
+    return (str)out[..<i]
+
+## ASCII lowercase; other bytes pass through unchanged. The result is a
+## NUL-terminated current-allocator allocation released with release.
+pub func to_lower(text: str) -> str!:
+    let out = try terminated_buffer(text.length)
+    var i: usize = 0
+    for b in text.bytes:
+        out[i] = b + 32 if b >= 'A' and b <= 'Z' else b
+        i += 1
+    out[i] = 0
+    return (str)out[..<i]
+
+## Give back text from join, copy, replace, to_upper or to_lower: the allocation is
+## one byte longer than the text, its NUL.
+pub func release(text: str):
+    free(u8[]((u8*)text.bytes.data, text.length + 1))
+
+## Allocate text storage including its terminator, reporting size overflow as the
+## same fallible outcome as an allocation refusal. Callers initialize every byte.
+func terminated_buffer(length: usize) -> u8[]!:
+    let size = length +? 1 else error(memory.exhausted, "the text is too large")
+    return try alloc u8[size]
+

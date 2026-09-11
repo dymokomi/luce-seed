@@ -1,0 +1,17 @@
+## A cast consumes the successful payload of try; failure still propagates.
+let refused: ErrorCode = ErrorCode.package(7)
+
+func small(fail: bool) -> u8!:
+    if fail:
+        error(refused, "cast operand failed")
+    return 17
+
+func widened(fail: bool) -> i64!:
+    return (i64)try small(fail)
+
+pub func answer() -> i64:
+    let value = widened(false) catch failure: recover -100
+    let recovered = widened(true) catch failure:
+        assert(failure.code == refused and failure.message == "cast operand failed")
+        recover 23
+    return value + recovered

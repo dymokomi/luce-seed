@@ -1,0 +1,28 @@
+## The bootstrap's text and path operations share Base's standard implementation.
+import c
+import files
+import paths
+import strings
+
+pub func answer() -> i64!:
+    assert(paths.directory("/a/file.lucb") == "/a")
+    assert(paths.base("/a/file.lucb") == "file.lucb")
+    assert(paths.stem("/a/file.lucb") == "file")
+    assert(paths.extension("/a/.hidden") == "")
+    assert(strings.trim(" \tentry\r\n") == "entry")
+    assert(strings.find("ababa", "aba") == 0)
+    assert(strings.find_last("ababa", "aba") == 2)
+    assert(strings.starts_with("entry", "en") and strings.ends_with("entry", "try"))
+    let joined = try paths.join("/a/", "file.lucb")
+    defer strings.release(joined)
+    assert(joined == "/a/file.lucb")
+    let absolute = try paths.join("ignored", "/absolute")
+    defer strings.release(absolute)
+    assert(absolute == "/absolute")
+    let copied = try strings.copy("copied")
+    defer strings.release(copied)
+    assert(copied == "copied")
+    assert(files.exists((c.str)"."))
+    assert(not files.exists((c.str)""))
+    assert(not files.exists((c.str)"/luce-seed-nonexistent-fixture-entry"))
+    return 40

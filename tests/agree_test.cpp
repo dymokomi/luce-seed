@@ -938,8 +938,8 @@ TEST(agree_c_distinct_types) {
                          "pub func log(pattern: c.str, args: c.va_list) -> i32:\n    return vprintf(pattern, args)\n"
                          "pub func answer() -> i64:\n    var n: c.long = 40\n    var w: c.wchar = 1\n    return i64(n) + i64(w) - 1\n");
     CHECK(c.find("va_list") != std::string::npos);
-    CHECK(c.find("long lb_n") != std::string::npos);
-    CHECK(c.find("wchar_t lb_w") != std::string::npos);
+    CHECK(c.find("long lv_n") != std::string::npos);
+    CHECK(c.find("wchar_t lv_w") != std::string::npos);
 }
 
 TEST(agree_export_twice) {

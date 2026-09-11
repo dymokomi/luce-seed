@@ -480,6 +480,18 @@ auto Interp::eval_call(Node* n) -> Value {
                 }
                 return v_unit();
             }
+            if (lt->name == "files" && callee->text == "exists") {
+                Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
+                if (trapped) {
+                    return v_unit();
+                }
+                string path = cstr_text(pv);
+                int result;
+                do {
+                    result = access(path.c_str(), F_OK);
+                } while (result < 0 && errno == EINTR);
+                return v_bool(result == 0);
+            }
             if (lt->name == "files" && callee->text == "list") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string path = cstr_text(pv);

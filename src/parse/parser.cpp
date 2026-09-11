@@ -265,7 +265,8 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         int close = find_match(pos, TokenKind::LParen, TokenKind::RParen);
         TokenKind operand = close > 0 ? peek_kind(close + 1) : TokenKind::EndOfFile;
         return operand == TokenKind::Name || operand == TokenKind::LParen ||
-               operand == TokenKind::Amp || operand == TokenKind::Star || operand == TokenKind::KwSelf;
+               operand == TokenKind::Amp || operand == TokenKind::Star || operand == TokenKind::KwSelf ||
+               operand == TokenKind::KwTry;
     }
     int i = pos + 1;
     while (peek_kind(i) == TokenKind::KwConst || peek_kind(i) == TokenKind::KwVolatile) {
@@ -308,7 +309,7 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
         operand == TokenKind::FloatLit || operand == TokenKind::CharLit ||
         operand == TokenKind::StringLit || operand == TokenKind::BytesLit ||
         operand == TokenKind::KwSelf || operand == TokenKind::KwTrue ||
-        operand == TokenKind::KwFalse) {
+        operand == TokenKind::KwFalse || operand == TokenKind::KwTry) {
         // `(Kind)n` casts to an integer-backed enum (§10.3); `(x) y` means nothing else,
         // while `(Name)(x)` stays a call
         return true;

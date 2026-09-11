@@ -37,6 +37,8 @@ add_custom_command(
         src/runtime/lucb_rt.c
         src/runtime/start.c
         std/math.lucb
+        std/paths.lucb
+        std/strings.lucb
         cmake/embed_runtime.cmake
     COMMENT "Embed lucb runtime sources"
 )

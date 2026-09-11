@@ -306,6 +306,7 @@ void lb_release_call(lb_iface a, lb_span block);
 int lb_utf8_ok(const char* s, size_t n);
 // The scalar starting at byte `i` of the valid UTF-8 text `s`, and its width in `*width`.
 uint32_t lb_utf8_scalar(const char* s, size_t n, size_t i, size_t* width);
+bool lb_files_exists(const char* path);
 int lb_files_list(lb_iface a, const char* path, lb_span* out);
 int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err);

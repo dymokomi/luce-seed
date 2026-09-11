@@ -73,6 +73,14 @@ interpreter and the binary must agree. A file says what it proves with
 `# answer: N`, `# args: ...`, or a sibling `.expect`; see
 `tests/programs_test.cpp`.
 
+## Bootstrap standard sources
+
+The seed embeds `math`, `paths`, and core `strings` operations as Base source.
+The path module and the string search/transform operations match luce-base's
+standard implementations. `files.exists` performs a non-opening, symlink-following
+lookup in both the interpreter and compiled runtime. These supply the compiler's
+package resolver without introducing a second implementation of its path logic.
+
 ## Status
 
 Builds and passes its gate on arm64 macOS and x86_64 Linux (GCC or clang). Every

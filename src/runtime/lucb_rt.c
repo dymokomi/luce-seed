@@ -607,6 +607,18 @@ static int lb_name_cmp(const void* a, const void* b) {
     return 0;
 }
 
+// Follow symlinks without opening the target; a FIFO lookup must never block.
+bool lb_files_exists(const char* path) {
+    if (path == NULL) {
+        return false;
+    }
+    int result;
+    do {
+        result = access(path, F_OK);
+    } while (result < 0 && errno == EINTR);
+    return result == 0;
+}
+
 int lb_files_list(lb_iface a, const char* path, lb_span* out) {
     if (out == NULL) {
         return 1;
