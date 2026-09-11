@@ -1326,22 +1326,3 @@ void lb_print_str(lb_str value) {
 void lb_print_f64(double value) {
     printf("%g\n", value);
 }
-
-int64_t lb_add_i64(int64_t a, int64_t b) {
-    return lb_add_s(a, b, 64);
-}
-int64_t lb_sub_i64(int64_t a, int64_t b) {
-    return lb_sub_s(a, b, 64);
-}
-int64_t lb_mul_i64(int64_t a, int64_t b) {
-    return lb_mul_s(a, b, 64);
-}
-int64_t lb_div_i64(int64_t a, int64_t b) {
-    return lb_div_s(a, b, 64);
-}
-int64_t lb_mod_i64(int64_t a, int64_t b) {
-    return lb_mod_s(a, b, 64);
-}
-int64_t lb_neg_i64(int64_t a) {
-    return lb_neg_s(a, 64);
-}

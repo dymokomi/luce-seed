@@ -352,11 +352,3 @@ int lb_qsub_s(int64_t a, int64_t b, int bits, int64_t* out);
 int lb_qsub_u(uint64_t a, uint64_t b, int bits, uint64_t* out);
 int lb_qmul_s(int64_t a, int64_t b, int bits, int64_t* out);
 int lb_qmul_u(uint64_t a, uint64_t b, int bits, uint64_t* out);
-
-/* Compatibility with the scalar-core helpers. */
-int64_t lb_add_i64(int64_t a, int64_t b);
-int64_t lb_sub_i64(int64_t a, int64_t b);
-int64_t lb_mul_i64(int64_t a, int64_t b);
-int64_t lb_div_i64(int64_t a, int64_t b);
-int64_t lb_mod_i64(int64_t a, int64_t b);
-int64_t lb_neg_i64(int64_t a);
