@@ -60,13 +60,13 @@ auto Emitter::run_defers_from(int from, bool failing) -> void {
     }
 }
 
-auto Emitter::snapshot_defers(bool failing) -> string {
+auto Emitter::snapshot_defers(bool failing, int from) -> string {
     // Emit into a fresh buffer; swapping keeps this O(1) in the output size.
     string saved;
     saved.swap(out);
     int saved_indent = indent;
     indent = 0;
-    run_defers_from(0, failing);
+    run_defers_from(from, failing);
     string s;
     s.swap(out);
     out.swap(saved);
@@ -407,8 +407,7 @@ auto Emitter::emit_stmt(Node* n) -> void {
         break;
     case NodeKind::ExprStmt:
         if (is_error_call(n->left)) {
-            run_defers_from(0, true);
-            line("return " + emit_expr(n->left) + ";");
+            line(error_exit(n->left));
         } else {
             line("(void)(" + emit_expr(n->left) + ");");
         }
@@ -560,16 +559,7 @@ auto Emitter::emit_return(Node* n) -> void {
         return;
     }
     if (is_error_call(n->left)) {
-        string e = emit_expr(n->left);
-        if (any_defers()) {
-            int id = tmp();
-            string t = "_lb_ret" + std::to_string(id);
-            line(fn_c_ret(current_fn) + " " + t + " = " + e + ";");
-            run_defers_from(0, true);
-            line("return " + t + ";");
-        } else {
-            line("return " + e + ";");
-        }
+        line(error_exit(n->left));
         return;
     }
     // `return try never_call()`: the value never arrives, so only the call is emitted.

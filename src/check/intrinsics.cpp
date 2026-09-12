@@ -410,7 +410,7 @@ auto Checker::check_format(Node* n) -> Type* {
 }
 
 auto Checker::check_error(Node* n) -> Type* {
-    if (!fallible_fn) {
+    if (!fallible_fn && !expression_effect) {
         fail_n(n, "lucb.check.type", "`error` is only valid in a fallible function, in a handler or not");
     }
     int count = count_args(n->body);

@@ -72,6 +72,10 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
     }
     Type* t = t_error();
     switch (n->kind) {
+    case NodeKind::Propagate:
+        ++effect_count;
+        t = n->ty;
+        break;
     case NodeKind::Literal:
         t = check_literal(n, expected);
         break;
@@ -188,6 +192,22 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
         fail_n(n, "lucb.check.unsupported", "this expression is not in the scalar core yet");
         t = t_error();
         break;
+    }
+    // The formatter owns the failure of its synthetic Display call.
+    if (expression_effect && is_fail(t) && !(n->flags & FlagFormatSink)) {
+        Node* inner = arena->make<Node>();
+        *inner = *n;
+        inner->next = nullptr;
+        inner->ty = t;
+        n->kind = NodeKind::Propagate;
+        n->op = TokenKind::KwTry;
+        n->left = inner;
+        n->right = nullptr;
+        n->body = nullptr;
+        n->type = nullptr;
+        n->resolved = nullptr;
+        t = t->elem != nullptr ? t->elem : t_unit();
+        ++effect_count;
     }
     if (n->kind != NodeKind::Return && n->kind != NodeKind::Break &&
         n->kind != NodeKind::Continue) {
@@ -381,19 +401,24 @@ auto Checker::check_self(Node* n) -> Type* {
 
 auto Checker::check_unary(Node* n, Type* expected) -> Type* {
     if (n->op == TokenKind::KwTry) {
-        Type* inner = check_expr(n->left, nullptr);
-        if (!is_fail(inner)) {
-            fail_n(n, "lucb.check.type", "`try` needs a fallible expression");
+        if (!fallible_fn && !expression_effect) {
+            fail_n(n, "lucb.check.type", "`try` is only valid in a fallible function");
             return t_error();
         }
-        if (!fallible_fn) {
-            fail_n(n, "lucb.check.type", "`try` is only valid in a fallible function");
+        bool saved = expression_effect;
+        uint64_t before = effect_count;
+        expression_effect = true;
+        Type* inner = check_expr(n->left, expected);
+        expression_effect = saved;
+        if (effect_count == before) {
+            fail_n(n, "lucb.check.type", "`try` needs a fallible expression");
             return t_error();
         }
         if (is_local(n->left)) {
             mark_local(n); // the value still views the local it came from (§6.6)
         }
-        return inner->elem != nullptr ? inner->elem : t_unit();
+        n->kind = NodeKind::Group;
+        return inner;
     }
     if (n->op == TokenKind::KwNot) {
         Type* inner = check_expr(n->left, t_bool());
@@ -1030,15 +1055,19 @@ auto Checker::check_else(Node* n, Type* expected) -> Type* {
 }
 
 auto Checker::check_catch(Node* n, Type* expected) -> Type* {
+    bool saved_effect = expression_effect;
+    uint64_t before = effect_count;
+    expression_effect = true;
     Type* left = check_expr(n->left, nullptr);
+    expression_effect = saved_effect;
     if (is_local(n->left)) {
         mark_local(n);
     }
-    if (!is_fail(left)) {
+    if (effect_count == before) {
         fail_n(n, "lucb.check.type", "`catch` needs a fallible expression");
         return t_error();
     }
-    Type* payload = left->elem != nullptr ? left->elem : t_unit();
+    Type* payload = left;
     // where a `T?` is expected and the value is a `T`, the expression is the `T?` and the
     // handler may `recover none` (§11.4)
     Type* result = payload;

@@ -98,7 +98,7 @@ Terms this document uses with a fixed meaning, each defined again where it first
 
 ### 1.5 Failure in four sentences
 
-Failure appears from the first example on and is specified in Chapter 11. The short version: a function whose result type ends in `!` returns either its value or an `Error`. `try e` unwraps the value of a fallible `e` or returns its error from the current function, which must itself be fallible. `error(code, message)` returns an error. `e catch name:` handles the error of `e` in place, and the handler must `recover` a value, return, or terminate.
+Failure appears from the first example on and is specified in Chapter 11. The short version: a function whose result type ends in `!` returns either its value or an `Error`. `try e` checks every fallible operation in the expression `e`, yielding its success value or forwarding its error to the nearest enclosing handler or the current fallible function. `error(code, message)` returns an error. `e catch name:` handles the error of `e` in place, and the handler must `recover` a value, return, or terminate.
 
 ## 2. Design principles
 
@@ -634,7 +634,9 @@ A call may appear as a statement. A non-`unit` result is discarded and the linte
 
 ### 7.10 Precedence
 
-From tightest to loosest: member, call, index; unary `try`, `not`, `-`, `-%`, `+`, `~`, `*`, `&`, cast; `*`, `/`, `//`, `%`, `*%`, `*|`, `*?`; `+`, `-`, `+%`, `-%`, `+|`, `-|`, `+?`, `-?`; `<<`, `>>`; `&`; `^`; `|`; `..<`, `..=`; comparison; `and`; `or`; conditional expression; the optional `else` fallback (§11.1); `catch`.
+A leading `try` covers the following expression through its binary operators, conditional branches, and optional fallback, stopping before an attached `catch`. Inside an operator operand it has unary precedence: use parentheses to extend that operand, as in `left + try (read() + parse())`.
+
+From tightest to loosest: member, call, index; operand `try`, `not`, `-`, `-%`, `+`, `~`, `*`, `&`, cast; `*`, `/`, `//`, `%`, `*%`, `*|`, `*?`; `+`, `-`, `+%`, `-%`, `+|`, `-|`, `+?`, `-?`; `<<`, `>>`; `&`; `^`; `|`; `..<`, `..=`; comparison; `and`; `or`; conditional expression; the optional `else` fallback (§11.1); `catch`.
 
 ## 8. Control flow
 
@@ -1031,9 +1033,13 @@ func load(path: c.str) -> Config!:
     return try config.parse(data)
 ```
 
-`T!` means "returns `T` or an `Error`". `try expression` is valid only on a `T!` and only inside a fallible function: on success it yields `T`, on failure it returns the same error from the current function. A non-fallible caller must `catch`. `T!` is a result effect, not a storable type: it cannot be a parameter, field, or element; a program that must hold a result declares an enum with a success and a failure case. `T?!` is a fallible optional.
+`T!` means "returns `T` or an `Error`". One `try expression` checks all fallible operations evaluated within that expression, including receivers, arguments, constructors, operators, and conversions. For example, `try combine(read(), parse())` needs one marker. The first failure stops the expression and forwards the same error to the nearest enclosing `catch` whose operand contains that operation, or to the current function, which must be fallible. A nonfallible caller must provide a handler. A `try` must cover at least one fallible operation.
 
-Representation: a `T!` is returned as the value plus a two-word `Error` and a flag, in registers where the ABI allows. Exported fallible functions use the status form of §17.6.
+Evaluation remains left to right, exactly once, including named arguments in source order; omitted defaults follow in declaration order. Lazy operators and conditional branches evaluate only the selected operands. A lambda or callback body starts a fresh failure context: creating one inside `try` does not authorize failures when it runs later. Cleanup runs only for scopes the failure actually leaves; a handler that recovers inside a scope does not trigger that scope's `errdefer`. `try` does not provide automatic rollback of earlier mutations.
+
+`T!` is a result effect, not a storable type: it cannot be a parameter, field, or element; a program that must hold a result declares an enum with a success and a failure case. `T?!` is a fallible optional.
+
+Representation: a `T!` is returned as the value plus an `Error` and a flag, in registers where the ABI allows. Exported fallible functions use the status form of §17.6.
 
 ### 11.3 Errors
 
@@ -1043,7 +1049,7 @@ pub let not_found: ErrorCode = ErrorCode.package(1)
 error(not_found, "configuration file does not exist")
 ```
 
-`error(code, message)` has type `never` and is legal only in a fallible function or a `catch` handler. `Error` is `{ code: ErrorCode, message: str }`. `ErrorCode` is a package identity plus a `u32`. The identity is the package name from the manifest (§16.4), so codes never collide across packages; `ErrorCode.package(n)` may appear only as a top-level constant initialiser, and the compiler rejects two constants in one package with the same `n`. The message is a `str` view: a literal costs nothing, and a formatted message uses `format` on a buffer that outlives the function, an arena or a caller's buffer, never a local; the escape rule of §6.6 rejects the local case.
+`error(code, message)` has type `never` and requires an enclosing failure destination: a fallible function or an outer handled operand. A handler can forward an error to that outer destination; it cannot catch its own failure. `Error` is `{ code: ErrorCode, message: str }`. `ErrorCode` is a package identity plus a `u32`. The identity is the package name from the manifest (§16.4), so codes never collide across packages; `ErrorCode.package(n)` may appear only as a top-level constant initialiser, and the compiler rejects two constants in one package with the same `n`. The message is a `str` view: a literal costs nothing, and a formatted message uses `format` on a buffer that outlives the function, an arena or a caller's buffer, never a local; the escape rule of §6.6 rejects the local case.
 
 ### 11.4 `catch` and `recover`
 
@@ -1056,7 +1062,7 @@ let text = files.read(path) catch failure:
     error(failure.code, failure.message)
 ```
 
-`expression catch name:` handles only that expression's failure. The handler must `recover value`, terminate with `error` or `trap`, `return`, or, inside a loop, `break` or `continue`. `catch` binds more loosely than any operator. Where a `T?` is expected and the handled value is a `T`, the `catch` expression is a `T?` and the handler may `recover none`: `let n: i64? = parse(text) catch: recover none`.
+`expression catch name:` handles failures from evaluating its entire left expression, including nested fallible arguments and receivers, without extra `try` markers. It does not handle failures from its handler body or from a callback invoked later. A nested `catch` handles its own operand first; a failure from that nested handler goes to the outer handler or an explicitly fallible function. The handler must `recover value`, terminate with `error` or `trap`, `return`, or, inside a loop, `break` or `continue`. `catch` binds more loosely than any operator. Where a `T?` is expected and the handled value is a `T`, the `catch` expression is a `T?` and the handler may `recover none`: `let n: i64? = parse(text) catch: recover none`.
 
 ### 11.5 Traps
 
@@ -1812,7 +1818,7 @@ asm_operand     = "in", "(", asm_place, ")", expression
 asm_place       = STRING_LITERAL | "reg" ;
 
 expression      = else_expr, [ "catch", IDENT, ":", suite ] ;
-else_expr       = conditional_expr, [ "else", else_expr ] ;
+else_expr       = "try", else_expr | conditional_expr, [ "else", else_expr ] ;
 conditional_expr
                 = or_expr, [ "if", or_expr, "else", conditional_expr ] ;
 or_expr         = and_expr, { "or", and_expr } ;

@@ -169,7 +169,7 @@ auto Interp::eval_call(Node* n) -> Value {
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
         Value c = eval(n->body != nullptr ? n->body->left : nullptr);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         if (!c.b) {
@@ -197,14 +197,14 @@ auto Interp::eval_call(Node* n) -> Value {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         if (arg != nullptr && arg->kind == NodeKind::Formatted) {
             Value a = eval_formatted(arg);
-            if (!trapped) {
+            if (!trapped && !returning) {
                 output += show(a);
                 output += '\n';
             }
             return v_unit();
         }
         Value a = eval(arg);
-        if (!trapped) {
+        if (!trapped && !returning) {
             output += show(a);
             output += '\n';
         }
@@ -215,6 +215,9 @@ auto Interp::eval_call(Node* n) -> Value {
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
         Value a = eval(n->body != nullptr ? n->body->left : nullptr);
+        if (trapped || returning) {
+            return v_unit();
+        }
         fail(show(a));
         return v_unit();
     }
@@ -222,6 +225,9 @@ auto Interp::eval_call(Node* n) -> Value {
         Value code = eval(n->body != nullptr ? n->body->left : nullptr);
         Value msg =
             eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
+        if (trapped || returning) {
+            return v_unit();
+        }
         ret.failed = true;
         ret.kind = TypeKind::Fallible;
         ret.err_code = static_cast<uint32_t>(code.u);
@@ -256,7 +262,7 @@ auto Interp::eval_call(Node* n) -> Value {
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "str" &&
         n->body != nullptr) {
         Value x = eval(n->body->left);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         Type* src = n->body->left != nullptr ? n->body->left->ty : x.type;
@@ -275,7 +281,7 @@ auto Interp::eval_call(Node* n) -> Value {
         Node* st = callee->resolved;
         Value v = zero_of(st->ty);
         Value outcome = call_func(n->resolved, &v, n->body);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         if (outcome.failed) {
@@ -315,7 +321,7 @@ auto Interp::eval_call(Node* n) -> Value {
                     n->body != nullptr && n->body->next != nullptr && n->body->next->next != nullptr
                         ? eval(n->body->next->next->left)
                         : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 size_t count = static_cast<size_t>(as_u(cv, cv.type));
@@ -353,7 +359,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 Value byte = n->body != nullptr && n->body->next != nullptr
                                  ? eval(n->body->next->left)
                                  : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 size_t nlen = span.length != 0 ? span.length : span.fields.size();
@@ -372,7 +378,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 Value sv = n->body != nullptr && n->body->next != nullptr
                                ? eval(n->body->next->left)
                                : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 size_t size = static_cast<size_t>(as_u(sv, sv.type));
@@ -417,7 +423,7 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             if (lt->name == "memory" && callee->text == "read") {
                 Value addr = n->body != nullptr ? eval(n->body->left) : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 Type* t = n->type != nullptr ? n->type->ty : n->ty;
@@ -453,7 +459,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 Value val = n->body != nullptr && n->body->next != nullptr
                                 ? eval(n->body->next->left)
                                 : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 if (addr.ptr != nullptr) {
@@ -482,7 +488,7 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             if (lt->name == "files" && callee->text == "exists") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 string path = cstr_text(pv);
@@ -927,7 +933,7 @@ auto Interp::eval_call(Node* n) -> Value {
             }
             if (ot->name == "Condition" && callee->text == "wait") {
                 Value mu = n->body != nullptr ? eval(n->body->left) : v_unit();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 if (mu.ptr == nullptr) {
@@ -977,7 +983,7 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         if (ot != nullptr && ot->kind == TypeKind::Interface) {
             Value view = eval(callee->left);
-            if (trapped) {
+            if (trapped || returning) {
                 return v_unit();
             }
             // `view.method()` on a `Writer*` auto-dereferences (§7.3): the view is read out
@@ -1052,7 +1058,7 @@ auto Interp::eval_call(Node* n) -> Value {
         if (callee->text == "compare" && (method == nullptr || method->kind != NodeKind::Func)) {
             Value L = eval(callee->left);
             Value R = eval(n->body != nullptr ? n->body->left : nullptr);
-            if (trapped) {
+            if (trapped || returning) {
                 return v_unit();
             }
             int64_t cmp = 0;
@@ -1079,7 +1085,7 @@ auto Interp::eval_call(Node* n) -> Value {
             Node* owner = lt != nullptr ? lt->decl : nullptr;
             if (method->text == "over" && owner != nullptr && owner->text == "FixedBuffer") {
                 Value buf = eval(n->body != nullptr ? n->body->left : nullptr);
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 Value fb = zero_of(n->ty);
@@ -1120,7 +1126,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 by_address.ptr = recv;
                 return call_func(method, &by_address, n->body);
             }
-            if (trapped) {
+            if (trapped || returning) {
                 return v_unit();
             }
         }
@@ -1230,7 +1236,7 @@ auto Interp::eval_extern(Node* n, Node* fn) -> Value {
     vector<Value> args;
     for (Node* a = n->body; a != nullptr; a = a->next) {
         args.push_back(eval(a->left));
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
     }
@@ -1308,21 +1314,29 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
     }
     // Every omitted field is its zero value, arrays included (base.md §10.1).
     Value v = zero_of(st->ty);
+    struct FieldValue { Node* field; Value value; };
+    vector<FieldValue> supplied;
+    for (Node* a = n->body; a != nullptr; a = a->next) {
+        Value field = eval(a->left);
+        if (trapped || returning) { return v_unit(); }
+        if (a->resolved->ty->kind == TypeKind::Span && field.kind == TypeKind::Array) {
+            field.kind = TypeKind::Span;
+            field.type = a->resolved->ty;
+        }
+        supplied.push_back({a->resolved, copy_value(field)});
+    }
     int i = 0;
     for (Node* f = st->body; f != nullptr; f = f->next) {
         if (f->kind != NodeKind::Field) {
             continue;
         }
-        Node* provided = nullptr;
-        for (Node* a = n != nullptr ? n->body : nullptr; a != nullptr; a = a->next) {
-            if (a->text == f->text) {
-                provided = a;
-                break;
-            }
+        Value fv;
+        bool provided = false;
+        for (const FieldValue& field : supplied) {
+            if (field.field == f) { fv = field.value; provided = true; break; }
         }
-        Node* init = provided != nullptr && provided->left != nullptr ? provided->left : f->left;
-        if (init != nullptr && i < static_cast<int>(v.fields.size())) {
-            Value fv = eval(init);
+        if ((provided || f->left != nullptr) && i < static_cast<int>(v.fields.size())) {
+            if (!provided) { fv = eval(f->left); }
             // An array handed to a span field is viewed, not copied (base.md §5.4).
             if (f->ty != nullptr && f->ty->kind == TypeKind::Span && fv.kind == TypeKind::Array) {
                 fv.kind = TypeKind::Span;
@@ -1330,7 +1344,7 @@ auto Interp::eval_ctor(Node* n, Node* st) -> Value {
             }
             v.fields[static_cast<size_t>(i)] = fv;
         }
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         i++;
@@ -1345,7 +1359,7 @@ namespace lucb {
 // `span.first()` and `span.last()`: the end element as `T?`, `none` when empty (§5.4).
 auto Interp::eval_span_end(Node* callee, Node* n) -> Value {
     Value s = eval(callee->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     size_t len = s.length != 0 ? s.length : s.fields.size();
@@ -1374,13 +1388,13 @@ auto Interp::eval_float_bits(Node* callee, Node* n) -> Value {
     Node* obj = callee->left;
     if (obj->kind == NodeKind::Name && float_kind_named(obj->text) != TypeKind::Error) {
         Value bits = eval(n->body != nullptr ? n->body->left : nullptr);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         return v_float(n->ty, float_from_bits(bits.u, n->ty->kind));
     }
     Value v = eval(obj);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     const TypeKind width = is_float(obj->ty) ? obj->ty->kind : v.kind;
@@ -1423,7 +1437,7 @@ namespace lucb {
 // `T[N](x)`: every lane is `x` (§5.12).
 auto Interp::eval_splat(Node* n) -> Value {
     Value x = eval(n->body != nullptr ? n->body->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* vt = n->ty;
@@ -1435,7 +1449,7 @@ auto Interp::eval_splat(Node* n) -> Value {
 // a float `min` or `max` skips a NaN lane when another lane compares.
 auto Interp::eval_vector_fold(Node* callee, Node* n) -> Value {
     Value v = eval(callee->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* vt = callee->left->ty;
@@ -1446,7 +1460,7 @@ auto Interp::eval_vector_fold(Node* callee, Node* n) -> Value {
         const Value& lane = v.ptr != nullptr ? v.ptr[i] : v.fields[i];
         if (callee->text == "sum") {
             acc = arith(et, acc, lane, TokenKind::Plus);
-            if (trapped) {
+            if (trapped || returning) {
                 return v_unit();
             }
             continue;

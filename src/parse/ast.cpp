@@ -339,6 +339,7 @@ const char* node_kind_name(NodeKind kind) {
     case NodeKind::Literal:
         return "lit";
     case NodeKind::Unary:
+    case NodeKind::Propagate:
         return "unary";
     case NodeKind::Binary:
         return "binary";

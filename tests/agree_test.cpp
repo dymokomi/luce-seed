@@ -1630,3 +1630,152 @@ pub func answer() -> i64!:
     CHECK_EQ(both.native.exit_code, 0);
     CHECK_EQ(both.native.out, "1234\n");
 }
+
+TEST(agree_expression_propagation_and_nested_cleanup) {
+    Both both;
+    CHECK(compile_source(R"lucb(
+## Each failing subexpression is checked in source order; handlers own only the
+## operand they protect. Surrounding errdefers run only when their scope fails.
+import memory
+
+let bad = ErrorCode.package(811)
+var trace: i64 = 0
+var bytes: u8[1] = [7]
+
+struct Pair:
+    var first: i64
+    var second: i64
+
+var pair: Pair = Pair(first = 5, second = 6)
+
+func mutate() -> i64:
+    pair.first = 99
+    return 3
+
+func copied(value: Pair, marker: i64) -> i64:
+    return value.first + marker
+
+func get_data() -> const u8[]!:
+    record(2)
+    return bytes
+
+export func exported(data: const u8[], marker: i64) -> i64:
+    record(3)
+    return (i64)data[0] + marker
+
+func record(value: i64):
+    trace = trace * 10 + value
+
+func step(value: i64, fail_at: i64) -> i64!:
+    record(value)
+    if value == fail_at:
+        error(bad, "step failed")
+    return value
+
+func add(a: i64, b: i64) -> i64!:
+    record(3)
+    return a + b
+
+func expression(fail_at: i64) -> i64!:
+    defer record(5)
+    errdefer record(4)
+    return try add(step(1, fail_at), step(2, fail_at)) + step(6, fail_at)
+
+func allocator_failure() -> i64!:
+    var storage: u8[1]
+    var allocator = memory.FixedBuffer.over(storage[..<0])
+    with allocator:
+        defer record(4)
+        errdefer record(3)
+        return try add(step(1, 2), step(2, 2))
+
+func borrowed_failure(buffer: u8[]) -> i64!:
+    error(bad, try format(buffer, f"failure {step(7, 0)}"))
+
+func locally_handled() -> i64:
+    return add(step(1, 2), step(2, 2)) catch failure:
+        assert(failure.code == bad and failure.message == "step failed")
+        recover 7
+
+func handled_rethrow() -> i64:
+    return (step(1, 1) catch first:
+        defer record(2)
+        error(first.code, first.message)
+    ) catch second:
+        assert(second.message == "step failed")
+        recover 7
+
+pub func answer() -> i64!:
+    errdefer record(9)
+    trace = 0
+    assert((try expression(0)) == 9)
+    assert(trace == 12365)
+    trace = 0
+    discard(expression(1) catch failure: recover -1)
+    assert(trace == 145)
+    trace = 0
+    discard(expression(2) catch failure: recover -1)
+    assert(trace == 1245)
+    trace = 0
+    discard(expression(6) catch failure: recover -1)
+    assert(trace == 123645)
+    trace = 0
+    assert(locally_handled() == 7)
+    assert(trace == 12)
+    trace = 0
+    let left = try false and step(1, 1) > 0
+    let right = try true or step(2, 2) > 0
+    let selected = try step(3, 3) if left else step(4, 0)
+    assert(not left and right and selected == 4 and trace == 4)
+    trace = 0
+    let nested = (step(1, 1) catch first:
+        recover try step(2, 2)
+    ) catch second:
+        assert(second.code == bad)
+        recover 8
+    assert(nested == 8 and trace == 12)
+    trace = 0
+    let rethrown = (step(1, 1) catch first:
+        defer record(3)
+        errdefer record(2)
+        error(first.code, first.message)
+    ) catch second:
+        assert(second.code == bad and second.message == "step failed")
+        recover 8
+    assert(rethrown == 8 and trace == 123)
+    trace = 0
+    assert((try add(b = step(2, 0), a = step(1, 0))) == 3)
+    assert(trace == 213)
+    trace = 0
+    assert(handled_rethrow() == 7 and trace == 12)
+    trace = 0
+    assert((try exported(marker = step(1, 0), data = get_data())) == 8)
+    assert(trace == 123)
+    assert(copied(pair, mutate()) == 8)
+    trace = 0
+    let constructed = try Pair(second = step(2, 0), first = step(1, 0))
+    assert(constructed.first == 1 and constructed.second == 2 and trace == 21)
+    trace = 0
+    var storage: u8[16]
+    var allocator = memory.FixedBuffer.over(storage)
+    with allocator:
+        let handled = add(allocator_failure(), step(6, 0)) catch failure:
+            assert(failure.code == bad)
+            recover 7
+        assert(handled == 7 and trace == 1234)
+        let allocated = try new u8[8]
+        allocated[0] = 42
+        free(allocated)
+    var message: u8[64]
+    let borrowed = add(borrowed_failure(message), step(8, 0)) catch failure:
+        assert(failure.message == "failure 7")
+        recover 11
+    assert(borrowed == 11 and trace == 12347)
+    return 0
+)lucb", &both));
+    CHECK(both.interp.ok);
+    CHECK(!both.interp.trapped);
+    CHECK_EQ(both.interp.answer, 0);
+    CHECK_EQ(both.native.exit_code, 0);
+    CHECK_EQ(both.native.out, "0\n");
+}

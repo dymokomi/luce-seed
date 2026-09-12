@@ -53,6 +53,18 @@ auto Parser::finish_expression(Node* unary) -> Node* {
 }
 
 auto Parser::parse_else_expr() -> Node* {
+    if (at(TokenKind::KwTry)) {
+        Token start = take();
+        Node* marked = make(NodeKind::Unary, start.span);
+        marked->op = start.kind;
+        if (++nest > k_max_nest) {
+            fail("lucb.parse.limit", "expression nests too deeply");
+        } else {
+            marked->left = parse_else_expr();
+        }
+        --nest;
+        return marked;
+    }
     Node* n = parse_conditional();
     return parse_else_rest(n);
 }

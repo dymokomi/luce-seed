@@ -297,6 +297,9 @@ auto Interp::exec(Node* n) -> void {
     }
     case NodeKind::Recover:
         recover_val = n->left != nullptr ? eval(n->left) : v_unit();
+        if (returning && ret.failed) {
+            break;
+        }
         ret = v_unit();
         recovered = true;
         returning = true;

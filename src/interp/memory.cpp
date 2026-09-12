@@ -32,7 +32,7 @@ auto Interp::heap_view_call(string_view method, Node* call) -> Value {
     Node* second = call->body != nullptr && call->body->next != nullptr ? call->body->next->left : nullptr;
     Value a = eval(first);
     Value b = eval(second);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     if (method == "allocate") {
@@ -220,14 +220,14 @@ auto Interp::take_bytes(const Value& a, size_t size, size_t align) -> bool {
 
 auto Interp::eval_new(Node* n) -> Value {
     Value a = as_alloc(n->right);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
     if (is_span(payload)) {
         Node* count_n = n->type != nullptr ? n->type->right : nullptr;
         Value cv = eval(count_n);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         size_t count = static_cast<size_t>(as_u(cv, count_n != nullptr ? count_n->ty : nullptr));
@@ -272,7 +272,7 @@ auto Interp::eval_new(Node* n) -> Value {
     } else {
         init = zero_of(elem);
     }
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     if (elem != nullptr && elem->kind == TypeKind::Array) {
@@ -294,7 +294,7 @@ auto Interp::eval_new(Node* n) -> Value {
 
 auto Interp::eval_alloc(Node* n) -> Value {
     Value a = as_alloc(n->right);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* payload = is_fail(n->ty) ? n->ty->elem : n->ty;
@@ -305,7 +305,7 @@ auto Interp::eval_alloc(Node* n) -> Value {
         Value sv = eval(n->body != nullptr ? n->body->left : nullptr);
         Value av =
             eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         count = static_cast<size_t>(
@@ -318,7 +318,7 @@ auto Interp::eval_alloc(Node* n) -> Value {
     } else {
         Node* count_n = n->type->right;
         Value cv = eval(count_n);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         count = static_cast<size_t>(as_u(cv, count_n != nullptr ? count_n->ty : nullptr));

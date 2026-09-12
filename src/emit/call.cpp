@@ -18,6 +18,8 @@
 #include <cinttypes>
 #include <cstdio>
 
+#include <algorithm>
+
 namespace lucb {
 
 static string memorder_of(Node* n) {
@@ -81,29 +83,46 @@ static bool may_have_effect(Node* e) {
 // may have an effect, every argument with a known parameter type is computed into a
 // temporary first, in order, declared in `prefix`; the list then names the temporaries,
 // and `sequenced` closes the statement expression around the call.
-auto Emitter::emit_args(Node* args, string* prefix) -> string {
+auto Emitter::emit_args(Node* args, string* prefix, bool split_spans) -> string {
     int count = 0;
     bool effects = false;
     for (Node* a = args; a != nullptr; a = a->next) {
         count++;
         effects = effects || may_have_effect(a->left);
     }
-    const bool hoist = prefix != nullptr && count > 1 && effects;
-    string s;
-    bool first = true;
+    const bool hoist = prefix != nullptr && ((count > 1 && effects) || split_spans);
+    struct Evaluated { Node* argument; string value; };
+    vector<Evaluated> values;
     for (Node* a = args; a != nullptr; a = a->next) {
-        if (!first) {
-            s += ", ";
-        }
-        first = false;
+        values.push_back({a, ""});
+    }
+    std::stable_sort(values.begin(), values.end(), [](const Evaluated& a, const Evaluated& b) {
+        return a.argument->evaluation_order < b.argument->evaluation_order;
+    });
+    for (Evaluated& entry : values) {
+        Node* a = entry.argument;
         Type* want = a->resolved != nullptr ? a->resolved->ty : nullptr;
         string value = is_u8_cspan(want) ? emit_as_cspan(a->left) : emit_expr(a->left);
         if (hoist && want != nullptr && want->kind != TypeKind::Unit) {
             string tn = "_lb_sq" + std::to_string(tmp());
             *prefix += c_type(want) + " " + tn + " = " + value + "; ";
-            s += tn;
+            entry.value = tn;
         } else {
-            s += value;
+            entry.value = value;
+        }
+    }
+    string s;
+    bool first = true;
+    for (Node* a = args; a != nullptr; a = a->next) {
+        if (!first) { s += ", "; }
+        first = false;
+        for (const Evaluated& entry : values) {
+            if (entry.argument == a) {
+                Type* want = a->resolved != nullptr ? a->resolved->ty : nullptr;
+                s += split_spans && is_span(want)
+                         ? entry.value + ".data, " + entry.value + ".length" : entry.value;
+                break;
+            }
         }
     }
     return s;
@@ -128,38 +147,9 @@ auto Emitter::emit_direct_call(Node* fn, Node* owner, Node* args) -> string {
             }
         }
     }
-    if (!split) {
-        string prefix;
-        string list = emit_args(args, &prefix);
-        return sequenced(prefix, name + "(" + list + ")");
-    }
-    string s = "({ ";
-    string alist;
-    bool first = true;
-    Node* p = fn->right;
-    Node* a = args;
-    while (p != nullptr) {
-        if (!first) {
-            alist += ", ";
-        }
-        first = false;
-        if (is_span(p->ty)) {
-            int id = tmp();
-            string tn = "_lb_xa" + std::to_string(id);
-            string e = a != nullptr && a->left != nullptr ? emit_expr(a->left)
-                                                          : string("((lb_cspan){(void*)8,0})");
-            s += c_type(p->ty) + " " + tn + " = " + e + "; ";
-            alist += tn + ".data, " + tn + ".length";
-        } else {
-            alist += a != nullptr && a->left != nullptr ? emit_expr(a->left) : string("0");
-        }
-        p = p->next;
-        if (a != nullptr) {
-            a = a->next;
-        }
-    }
-    s += name + "(" + alist + "); })";
-    return s;
+    string prefix;
+    string list = emit_args(args, &prefix, split);
+    return sequenced(prefix, name + "(" + list + ")");
 }
 
 bool has_out_params(Node* fn) {
@@ -185,12 +175,15 @@ auto Emitter::emit_extern_out_call(Node* n) -> string {
             s += c_type(p->ty) + " " + prefix + std::to_string(k++) + "; ";
         }
     }
+    string arguments_prefix;
+    string arguments = emit_extern_args(n, prefix, &arguments_prefix);
+    s += arguments_prefix;
     bool has_result = fn->ty != nullptr && fn->ty->kind != TypeKind::Unit;
     string result = "_lb_or" + std::to_string(id);
     if (has_result) {
         s += c_type(fn->ty) + " " + result + " = ";
     }
-    s += func_ident(fn, nullptr) + "(" + emit_extern_args(n, prefix) + "); ";
+    s += func_ident(fn, nullptr) + "(" + arguments + "); ";
     vector<string> parts;
     if (has_result) {
         parts.push_back(result);
@@ -210,7 +203,7 @@ auto Emitter::emit_extern_out_call(Node* n) -> string {
     return s;
 }
 
-auto Emitter::emit_extern_args(Node* n, const string& out_prefix) -> string {
+auto Emitter::emit_extern_args(Node* n, const string& out_prefix, string* prefix) -> string {
     string s;
     bool first = true;
     int outs = 0;
@@ -227,14 +220,22 @@ auto Emitter::emit_extern_args(Node* n, const string& out_prefix) -> string {
         }
         Node* v = a->left;
         Type* pt = p != nullptr && (p->flags & FlagVariadic) == 0 ? p->ty : nullptr;
+        string value;
         if (v != nullptr && v->kind == NodeKind::Literal && v->op == TokenKind::StringLit &&
             (pt == nullptr || (pt != nullptr && pt->kind == TypeKind::CStr))) {
-            s += c_escape(decode_lit(v->text));
+            value = c_escape(decode_lit(v->text));
         } else if (pt != nullptr && pt->kind == TypeKind::CStr && v != nullptr && v->ty != nullptr &&
                    v->ty->kind == TypeKind::Str) {
-            s += "(" + emit_expr(v) + ").data";
+            value = "(" + emit_expr(v) + ").data";
         } else {
-            s += emit_expr(v);
+            value = emit_expr(v);
+        }
+        if (prefix != nullptr) {
+            string name = "_lb_ea" + std::to_string(tmp());
+            *prefix += c_type(pt != nullptr ? pt : v->ty) + " " + name + " = " + value + "; ";
+            s += name;
+        } else {
+            s += value;
         }
         if (p != nullptr && (p->flags & FlagVariadic) == 0) {
             p = p->next;
@@ -913,8 +914,9 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         if (n->resolved->kind == NodeKind::ExternFunc) {
             string name = func_ident(n->resolved, nullptr);
-            string args = n->body != nullptr ? emit_extern_args(n) : emit_args(n->body);
-            call = name + "(" + args + ")";
+            string prefix;
+            string args = emit_extern_args(n, "", &prefix);
+            call = sequenced(prefix, name + "(" + args + ")");
         } else {
             call = emit_direct_call(n->resolved, nullptr, n->body);
         }
@@ -931,37 +933,43 @@ auto Emitter::emit_call(Node* n) -> string {
 }
 
 auto Emitter::emit_ctor(Node* n, Node* st) -> string {
-    string s = "(" + struct_ident(st) + "){";
-    bool first = true;
-    if (st != nullptr) {
-        for (Node* f = st->body; f != nullptr; f = f->next) {
-            if (f->kind != NodeKind::Field) {
-                continue;
-            }
-            Node* provided = nullptr;
-            for (Node* a = n != nullptr ? n->body : nullptr; a != nullptr; a = a->next) {
-                if (a->text == f->text) {
-                    provided = a;
-                    break;
-                }
-            }
-            string val;
-            if (provided != nullptr && provided->left != nullptr) {
-                val = emit_expr(provided->left);
-            } else if (f->left != nullptr) {
-                val = emit_expr(f->left);
-            } else {
-                continue;
-            }
-            if (!first) {
-                s += ", ";
-            }
-            first = false;
-            s += "." + string(f->text) + " = " + val;
+    // Evaluate supplied fields first, in source order. C designated initializers
+    // are evaluated in field order, regardless of their written order.
+    struct FieldValue { Node* field; Node* expression; string value; };
+    vector<FieldValue> values;
+    bool effects = false;
+    for (Node* a = n->body; a != nullptr; a = a->next) {
+        values.push_back({a->resolved, a->left, ""});
+        effects = effects || may_have_effect(a->left);
+    }
+    for (Node* f = st->body; f != nullptr; f = f->next) {
+        if (f->kind != NodeKind::Field || f->left == nullptr) { continue; }
+        bool supplied = false;
+        for (const FieldValue& v : values) { supplied = supplied || v.field == f; }
+        if (!supplied) {
+            values.push_back({f, f->left, ""});
+            effects = effects || may_have_effect(f->left);
         }
     }
-    s += "}";
-    return s;
+    // Global initializers are checked constants, including `sizeof` calls.
+    effects = effects && current_fn != nullptr;
+    string prefix;
+    for (FieldValue& v : values) {
+        string value = emit_expr(v.expression);
+        if (effects) {
+            v.value = "_lb_cf" + std::to_string(tmp());
+            prefix += c_type(v.field->ty) + " " + v.value + " = " + value + "; ";
+        } else {
+            v.value = value;
+        }
+    }
+    string s = "(" + struct_ident(st) + "){";
+    bool first = true;
+    for (const FieldValue& v : values) {
+        s += (first ? "" : ", ") + string(".") + string(v.field->text) + " = " + v.value;
+        first = false;
+    }
+    return sequenced(prefix, s + "}");
 }
 
 } // namespace lucb

@@ -366,7 +366,7 @@ auto Interp::eval(Node* n) -> Value {
 }
 
 auto Interp::eval_uncast(Node* n) -> Value {
-    if (n == nullptr || trapped) {
+    if (n == nullptr || trapped || returning) {
         return v_unit();
     }
     switch (n->kind) {
@@ -516,6 +516,7 @@ auto Interp::eval_uncast(Node* n) -> Value {
     case NodeKind::Unit:
         return v_unit();
     case NodeKind::Unary:
+    case NodeKind::Propagate:
         return eval_unary(n);
     case NodeKind::Binary:
         return eval_binary(n);
@@ -660,7 +661,7 @@ auto Interp::eval_member(Node* n) -> Value {
         }
     }
     Value obj = eval(n->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     if (obj.kind == TypeKind::Pointer && obj.ptr != nullptr) {
@@ -751,13 +752,13 @@ auto Interp::eval_index(Node* n) -> Value {
         if (slot != nullptr && !trapped) {
             return *slot;
         }
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
     }
     Value base = eval(n->left);
     Value idxv = eval(n->body);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
@@ -825,7 +826,7 @@ auto Interp::eval_slice(Node* n) -> Value {
     if (n->right != nullptr) {
         end = static_cast<size_t>(as_u(eval(n->right), n->right->ty));
     }
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     if (start > end || end > len) {
@@ -850,7 +851,7 @@ auto Interp::eval_array_lit(Node* n) -> Value {
     vector<Value> elems;
     for (Node* e = n->body; e != nullptr; e = e->next) {
         elems.push_back(eval(e));
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
     }
@@ -861,7 +862,7 @@ auto Interp::eval_span_make(Node* n) -> Value {
     Value p = eval(n->body != nullptr ? n->body->left : nullptr);
     Value len =
         eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Value v;
@@ -874,7 +875,7 @@ auto Interp::eval_span_make(Node* n) -> Value {
 
 auto Interp::eval_else(Node* n) -> Value {
     Value v = eval(n->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     bool some = v.present && !(v.kind == TypeKind::Pointer && v.ptr == nullptr) &&
@@ -924,12 +925,16 @@ auto Interp::eval_catch(Node* n) -> Value {
     if (trapped) {
         return v_unit();
     }
+    if (returning && ret.failed) {
+        v = ret;
+        returning = false;
+    }
     if (!v.failed) {
         if (n->ty != nullptr) {
             // a `T` becoming the `T?` expected of the expression is present (§11.4); a
             // payload that was an optional already keeps its own presence
             Type* ft = n->left != nullptr ? n->left->ty : nullptr;
-            Type* payload = is_fail(ft) ? ft->elem : nullptr;
+            Type* payload = ft;
             if (is_opt(n->ty) && payload != nullptr && !is_opt(payload)) {
                 v.present = true;
             }
@@ -1032,7 +1037,7 @@ auto Interp::match_pat(Node* pat, const Value& scrut, Type* st) -> bool {
 
 auto Interp::eval_match(Node* n) -> Value {
     Value scrut = eval(n->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     for (Node* arm = n->body; arm != nullptr; arm = arm->next) {

@@ -132,6 +132,8 @@ struct Checker {
     Node* current_struct = nullptr;
     Type* return_type = nullptr;
     bool fallible_fn = false;
+    bool expression_effect = false;
+    uint64_t effect_count = 0;
     bool in_catch = false;
     Type* catch_type = nullptr;
     bool in_top_const = false;

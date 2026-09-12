@@ -188,13 +188,13 @@ auto Interp::eval_formatted(Node* n) -> Value {
                 sinks.push_back(&s);
                 eval(p->left);
                 sinks.pop_back();
-                if (trapped) {
+                if (trapped || returning) {
                     return v_unit();
                 }
                 continue;
             }
             Value f = eval(p->left);
-            if (trapped) {
+            if (trapped || returning) {
                 return v_unit();
             }
             if (f.kind == TypeKind::Fmt) {
@@ -218,7 +218,7 @@ auto Interp::eval_format(Node* n) -> Value {
     } else {
         msg = eval(msgn);
     }
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     string text = msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg);
@@ -257,7 +257,7 @@ auto Interp::eval_unary(Node* n) -> Value {
         return v;
     }
     Value x = eval(n->left);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     if (n->op == TokenKind::KwTry) {
@@ -359,7 +359,7 @@ auto Interp::eval_vector_binary(Node* n, const Value& L, const Value& R) -> Valu
         const Value& a = lv ? lane_of(L, i) : L;
         const Value& b = rv ? lane_of(R, i) : R;
         Value r = arith(et, a, b, n->op);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         out.push_back(r);
@@ -374,7 +374,7 @@ auto Interp::eval_vector_unary(Node* n, const Value& x) -> Value {
     out.reserve(len);
     for (size_t i = 0; i < len; i++) {
         Value r = unary_scalar(vt->elem, lane_of(x, i), n->op);
-        if (trapped) {
+        if (trapped || returning) {
             return v_unit();
         }
         out.push_back(r);
@@ -591,21 +591,21 @@ auto Interp::arith(Type* t, const Value& L, const Value& R, TokenKind op) -> Val
 auto Interp::eval_binary(Node* n) -> Value {
     if (n->op == TokenKind::KwAnd) {
         Value L = eval(n->left);
-        if (trapped || !L.b) {
+        if (trapped || returning || !L.b) {
             return v_bool(false);
         }
         return eval(n->right);
     }
     if (n->op == TokenKind::KwOr) {
         Value L = eval(n->left);
-        if (trapped || L.b) {
+        if (trapped || returning || L.b) {
             return v_bool(true);
         }
         return eval(n->right);
     }
     Value L = eval(n->left);
     Value R = eval(n->right);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     TokenKind op = n->op;
@@ -715,7 +715,7 @@ auto Interp::eval_binary(Node* n) -> Value {
 
 auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
     Value x = eval(srcn);
-    if (trapped || dest == nullptr) {
+    if (trapped || returning || dest == nullptr) {
         return x;
     }
     Type* src = srcn != nullptr ? srcn->ty : x.type;
@@ -991,7 +991,7 @@ auto Interp::hash_value(const Value& v, Type* t) -> uint64_t {
 
 auto Interp::eval_hash(Node* n) -> Value {
     Value a = eval(n->body != nullptr ? n->body->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* t = n->body != nullptr && n->body->left != nullptr ? n->body->left->ty : a.type;
@@ -1000,7 +1000,7 @@ auto Interp::eval_hash(Node* n) -> Value {
 
 auto Interp::eval_hex(Node* n) -> Value {
     Value a = eval(n->body != nullptr ? n->body->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     Type* t = n->body != nullptr && n->body->left != nullptr ? n->body->left->ty : a.type;
@@ -1016,7 +1016,7 @@ auto Interp::eval_hex(Node* n) -> Value {
 
 auto Interp::eval_bin(Node* n) -> Value {
     Value a = eval(n->body != nullptr ? n->body->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     uint64_t u = a.u;
@@ -1044,7 +1044,7 @@ auto Interp::eval_bin(Node* n) -> Value {
 auto Interp::eval_pad(Node* n) -> Value {
     Value a = eval(n->body != nullptr ? n->body->left : nullptr);
     Value w = eval(n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr);
-    if (trapped) {
+    if (trapped || returning) {
         return v_unit();
     }
     string inner;

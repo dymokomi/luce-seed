@@ -140,6 +140,12 @@ auto Checker::clone_node(Node* n) -> Node* {
     c->span = n->span;
     c->text = n->text;
     c->op = n->op;
+    c->evaluation_order = n->evaluation_order;
+    // Instances recheck propagation with their concrete result types.
+    if (c->kind == NodeKind::Propagate) {
+        c->kind = NodeKind::Unary;
+        c->op = TokenKind::KwTry;
+    }
     c->flags = n->flags;
     c->left = clone_chain(n->left);
     c->right = clone_chain(n->right);

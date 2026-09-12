@@ -16,6 +16,8 @@
 
 #include "support/literal.h"
 
+#include <algorithm>
+
 namespace lucb {
 
 auto Checker::count_args(Node* args) -> int {
@@ -348,7 +350,12 @@ auto Checker::fill_call_args(Node* n, Node* params) -> void {
     vector<Node*> chosen(static_cast<size_t>(nparams), nullptr);
     int pos = 0;
     bool seen_named = false;
+    uint32_t source_order = 0;
     for (Node* a = n->body; a != nullptr; a = a->next) {
+        if (a->evaluation_order == UINT32_MAX) {
+            a->evaluation_order = source_order;
+        }
+        source_order = std::max(source_order, a->evaluation_order + 1);
         if (!a->text.empty()) {
             seen_named = true;
             int idx = -1;
@@ -395,6 +402,7 @@ auto Checker::fill_call_args(Node* n, Node* params) -> void {
             a->text = p->text;
             a->span = n->span;
             a->left = clone_node(p->left);
+            a->evaluation_order = source_order++;
             if (a->left != nullptr && a->left->kind == NodeKind::Member) {
                 a->left->span = n->span;
             }
@@ -475,7 +483,15 @@ auto Checker::check_lambda(Node* n, Type* expected) -> Type* {
         i++;
     }
     Type* want_ret = is_func(ft) ? ft->elem : nullptr;
+    bool saved_effect = expression_effect;
+    uint64_t saved_count = effect_count;
+    bool saved_fallible = fallible_fn;
+    expression_effect = false;
+    fallible_fn = is_fail(want_ret);
     Type* body = n->body != nullptr ? check_expr(n->body, want_ret) : t_unit();
+    expression_effect = saved_effect;
+    effect_count = saved_count;
+    fallible_fn = saved_fallible;
     if (body != nullptr && body->kind == TypeKind::UntypedInt && want_ret == nullptr) {
         body = coerce(n->body, body, t_i64());
         if (n->body != nullptr) {

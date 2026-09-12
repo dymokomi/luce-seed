@@ -54,6 +54,9 @@ struct Emitter {
     string catch_var;
     string catch_done;
     int catch_scope = 0;
+    string failure_target;
+    string failure_error;
+    int failure_scope = 0;
 
     struct Scope {
         vector<Node*> defers;
@@ -92,10 +95,11 @@ struct Emitter {
 
     string wrap_ok(const string& e);
     string wrap_err(const string& code, const string& msg);
+    string error_exit(Node* call);
     void run_defers(const vector<Node*>& d, bool failing);
     void unwind_scope(const Scope& sc, bool failing = false);
     void run_defers_from(int from, bool failing = false);
-    string snapshot_defers(bool failing = false);
+    string snapshot_defers(bool failing = false, int from = 0);
     bool is_error_call(Node* n);
     bool is_trap_call(Node* n);
     bool is_never_expr(Node* n);
@@ -133,9 +137,9 @@ struct Emitter {
     void emit_vtable(Node* st, Node* iface_type_node);
     void emit_ifaces(Node* mod);
     string emit_as_cspan(Node* n);
-    string emit_args(Node* args, string* prefix = nullptr);
+    string emit_args(Node* args, string* prefix = nullptr, bool split_spans = false);
     string sequenced(const string& prefix, const string& call);
-    string emit_extern_args(Node* n, const string& out_prefix = "");
+    string emit_extern_args(Node* n, const string& out_prefix = "", string* prefix = nullptr);
     string emit_extern_out_call(Node* n);
     string emit_call(Node* n);
     string emit_ctor(Node* n, Node* st);

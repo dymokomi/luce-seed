@@ -14,6 +14,8 @@
 
 #include <cstdio>
 
+#include <algorithm>
+
 namespace lucb {
 
 auto Interp::find_slot(string_view name, Node* decl) -> Slot* {
@@ -120,26 +122,30 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
     // `self.use(self.take())` must see the mutation `take()` made.
     Frame frame;
     vector<Slot> params;
+    struct Argument { Node* expression; Node* parameter; };
+    vector<Argument> supplied;
     Node* p = fn->right;
-    Node* a = args;
-    while (p != nullptr && a != nullptr) {
+    for (Node* a = args; p != nullptr && a != nullptr; a = a->next, p = p->next) {
+        supplied.push_back({a, p});
+    }
+    std::stable_sort(supplied.begin(), supplied.end(), [](const Argument& a, const Argument& b) {
+        return a.expression->evaluation_order < b.expression->evaluation_order;
+    });
+    for (const Argument& argument : supplied) {
+        Node* parameter = argument.parameter;
         Slot s;
-        s.name = p->text;
-        s.value = eval(a->left);
-        if (p->ty != nullptr && is_u8_cspan(p->ty) &&
+        s.name = parameter->text;
+        s.value = eval(argument.expression->left);
+        if (trapped || returning) { return v_unit(); }
+        if (parameter->ty != nullptr && is_u8_cspan(parameter->ty) &&
             (s.value.kind == TypeKind::Str || s.value.kind == TypeKind::Fmt)) {
             s.value = as_u8_span(s.value);
         }
-        if (p->ty != nullptr) {
-            s.value.type = p->ty;
-            s.value.kind = p->ty->kind;
-        }
-        if (trapped) {
-            return v_unit();
+        if (parameter->ty != nullptr) {
+            s.value.type = parameter->ty;
+            s.value.kind = parameter->ty->kind;
         }
         params.push_back(s);
-        p = p->next;
-        a = a->next;
     }
     if (self != nullptr) {
         Slot s;

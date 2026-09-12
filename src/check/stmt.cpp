@@ -534,6 +534,7 @@ auto Checker::is_call_statement(Node* e) -> bool {
     case NodeKind::Call:
         return true;
     case NodeKind::Group:
+    case NodeKind::Propagate:
         return is_call_statement(e->left);
     case NodeKind::Unary:
         return e->op == TokenKind::KwTry && is_call_statement(e->left);

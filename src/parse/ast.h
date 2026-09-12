@@ -65,6 +65,8 @@ enum class NodeKind : uint16_t {
     Self,
     Literal,
     Unary,
+    // One checked operation, inserted before interpretation or emission.
+    Propagate,
     Binary,
     Call,
     Member,
@@ -152,6 +154,7 @@ struct Node {
     // Filled by check:
     struct Type* ty = nullptr; // resolved type of this node
     Node* resolved = nullptr;  // declaration a name/call refers to
+    uint32_t evaluation_order = UINT32_MAX; // argument position before binding to parameters
     string_view module;        // for a top-level declaration of an imported module: the
                                // module's name, which qualifies its C symbols (§16.3)
     // Filled by the oracle the first time a literal is evaluated:

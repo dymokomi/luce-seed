@@ -62,7 +62,7 @@ auto Emitter::produces_opt(Node* n) -> bool {
     if (n->kind == NodeKind::Literal && n->op == TokenKind::KwNone) {
         return true;
     }
-    if (n->kind == NodeKind::Unary && n->op == TokenKind::KwTry) {
+    if ((n->kind == NodeKind::Unary || n->kind == NodeKind::Propagate) && n->op == TokenKind::KwTry) {
         Type* result = n->left != nullptr ? n->left->ty : nullptr;
         // A successful T needs wrapping when context expects T?; T?! already has it.
         return is_fail(result) && is_opt(result->elem);
@@ -129,6 +129,21 @@ auto Emitter::is_error_call(Node* n) -> bool {
            n->left->kind == NodeKind::Name && n->left->text == "error";
 }
 
+// Evaluate and retain the error before cleanup. A handler is active only for its
+// operand; failures raised by that handler travel to the enclosing destination.
+auto Emitter::error_exit(Node* call) -> string {
+    string name = "_lb_error" + std::to_string(tmp());
+    if (!failure_target.empty()) {
+        Node* code = call->body != nullptr ? call->body->left : nullptr;
+        Node* message = call->body != nullptr && call->body->next != nullptr ? call->body->next->left : nullptr;
+        string value = "lb_error " + name + " = { .code = " + emit_expr(code) + ", .message = " + emit_expr(message) + " }; ";
+        value += failure_error + " = " + name + "; ";
+        return value + snapshot_defers(true, failure_scope) + "goto " + failure_target + ";";
+    }
+    string result = fn_c_ret(current_fn) + " " + name + " = " + emit_expr(call) + "; ";
+    return result + snapshot_defers(true) + "return " + name + ";";
+}
+
 auto Emitter::is_trap_call(Node* n) -> bool {
     return n != nullptr && n->kind == NodeKind::Call && n->left != nullptr &&
            n->left->kind == NodeKind::Name && n->left->text == "trap";
@@ -143,7 +158,10 @@ auto Emitter::never_valued(Node* n) -> bool {
     if (n->ty != nullptr && n->ty->kind == TypeKind::Never) {
         return true;
     }
-    return n->kind == NodeKind::Unary && n->op == TokenKind::KwTry && n->left != nullptr &&
+    if (n->kind == NodeKind::Group) {
+        return never_valued(n->left);
+    }
+    return (n->kind == NodeKind::Unary || n->kind == NodeKind::Propagate) && n->op == TokenKind::KwTry && n->left != nullptr &&
            is_fail(n->left->ty) && n->left->ty->elem != nullptr &&
            n->left->ty->elem->kind == TypeKind::Never;
 }
@@ -211,11 +229,16 @@ auto Emitter::emit_try(Node* n) -> string {
     Type* payload = is_fail(ft) ? ft->elem : ft;
     string s = "({ ";
     s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
-    s += "if (" + rn + ".failed) { " + snapshot_defers(true);
+    s += "if (" + rn + ".failed) { ";
     string fnr = fn_c_ret(current_fn);
-    if (fn_fallible() && fnr != rty) {
+    if (!failure_target.empty()) {
+        s += failure_error + " = " + rn + ".error; " + snapshot_defers(true, failure_scope);
+        s += "goto " + failure_target + "; } ";
+    } else if (fn_fallible() && fnr != rty) {
+        s += snapshot_defers(true);
         s += "return ((" + fnr + "){ .error = " + rn + ".error, .failed = true }); } ";
     } else {
+        s += snapshot_defers(true);
         s += "return " + rn + "; } ";
     }
     if (payload == nullptr || payload->kind == TypeKind::Unit || payload->kind == TypeKind::Never) {
@@ -234,14 +257,12 @@ auto Emitter::emit_else(Node* n) -> string {
     s += c_type(lt) + " " + on + " = " + emit_expr(n->left) + "; ";
     bool else_never = is_never_expr(n->right);
     auto never_stmt = [&]() -> string {
+        if (is_error_call(n->right)) {
+            return error_exit(n->right);
+        }
         string rhs = emit_expr(n->right);
         if (is_trap_call(n->right)) {
             return rhs;
-        }
-        if (is_error_call(n->right)) {
-            if (rhs.size() < 7 || rhs.compare(0, 7, "return ") != 0) {
-                rhs = "return " + rhs;
-            }
         }
         return rhs;
     };
@@ -261,13 +282,24 @@ auto Emitter::emit_else(Node* n) -> string {
 
 auto Emitter::emit_catch(Node* n) -> string {
     int id = tmp();
-    string rn = "_lb_r" + std::to_string(id);
     string vn = "_lb_v" + std::to_string(id);
-    Type* ft = n->left != nullptr ? n->left->ty : nullptr;
-    string rty = fail_c_name(ft);
-    string vty = c_type(n->ty);
-    if (vty == "void") {
-        vty = "int";
+    string error = "_lb_fe" + std::to_string(id);
+    string handler = "_lb_fh" + std::to_string(id);
+    string done = "_lb_cd" + std::to_string(id);
+    Type* payload = n->left != nullptr ? n->left->ty : nullptr;
+    bool has_value = payload != nullptr && payload->kind != TypeKind::Unit && payload->kind != TypeKind::Never;
+    string saved_target = failure_target;
+    string saved_error = failure_error;
+    int saved_failure_scope = failure_scope;
+    failure_target = handler;
+    failure_error = error;
+    failure_scope = static_cast<int>(scopes.size());
+    string operand = emit_expr(n->left);
+    failure_target = saved_target;
+    failure_error = saved_error;
+    failure_scope = saved_failure_scope;
+    if (has_value && is_opt(n->ty) && !is_opt(payload)) {
+        operand = wrap_opt(n->ty, operand);
     }
     string saved_catch = catch_var;
     string saved_done = catch_done;
@@ -277,7 +309,7 @@ auto Emitter::emit_catch(Node* n) -> string {
     int saved_indent = indent;
     catch_scope = static_cast<int>(scopes.size());
     catch_var = vn;
-    catch_done = "_lb_cd" + std::to_string(id);
+    catch_done = done;
     indent = 0;
     emit_stmt(n->body);
     string body;
@@ -287,27 +319,16 @@ auto Emitter::emit_catch(Node* n) -> string {
     catch_var = saved_catch;
     catch_done = saved_done;
     catch_scope = saved_scope;
-    Type* payload = is_fail(ft) ? ft->elem : nullptr;
-    string s = "({ ";
-    s += rty + " " + rn + " = " + emit_expr(n->left) + "; ";
-    s += vty + " " + vn + " = {0}; ";
-    s += "if (" + rn + ".failed) { ";
+    string vty = has_value ? c_type(n->ty) : "int";
+    string s = "({ lb_error " + error + " __attribute__((unused)); ";
+    s += vty + " " + vn + " __attribute__((unused)) = {0}; ";
+    s += has_value ? vn + " = " + operand + "; " : "(void)(" + operand + "); ";
+    s += "goto " + done + "; " + handler + ": { ";
     if (!n->text.empty()) {
-        s += "lb_error " + ident("lv_", n->text) + " __attribute__((unused)) = " + rn + ".error; ";
+        s += "lb_error " + ident("lv_", n->text) + " __attribute__((unused)) = " + error + "; ";
     }
-    s += body;
-    s += "_lb_cd" + std::to_string(id) + ": __attribute__((unused));";
-    s += " } else { ";
-    if (payload != nullptr && payload->kind != TypeKind::Unit) {
-        // the expression may be the `T?` expected of it while the value is a `T` (§11.4)
-        if (is_opt(n->ty) && !is_opt(payload)) {
-            s += vn + " = " + wrap_opt(n->ty, rn + ".value") + "; ";
-        } else {
-            s += vn + " = " + rn + ".value; ";
-        }
-    }
-    s += "} ";
-    s += vn + "; })";
+    s += body + " } " + done + ": __attribute__((unused)); ";
+    s += has_value ? vn + "; })" : "(void)0; })";
     return s;
 }
 
@@ -393,6 +414,7 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
     case NodeKind::Unit:
         return "((void)0)";
     case NodeKind::Unary:
+    case NodeKind::Propagate:
         return emit_unary(n);
     case NodeKind::Binary:
         return emit_binary(n);
