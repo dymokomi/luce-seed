@@ -88,7 +88,7 @@ auto Emitter::emit_free(Node* n) -> void {
         int id = tmp();
         string sn = "_lb_s" + std::to_string(id);
         line("{ lb_span " + sn + " = " + e + "; lb_release_call(" + a + ", (lb_span){ (void*)(" +
-             sn + ".data), " + sn + ".length * sizeof(" + et + ") }); }");
+             sn + ".data), lb_mul_u(" + sn + ".length, sizeof(" + et + "), 64) }); }");
         return;
     }
     line("(void)(" + e + ");");

@@ -113,3 +113,12 @@ add_executable(lucb_tests
 target_link_libraries(lucb_tests PRIVATE lucb_core)
 target_include_directories(lucb_tests PRIVATE src tests)
 lucb_warnings(lucb_tests)
+
+# Compile runtime helper boundaries as C, with the same sanitizers as the seed.
+add_executable(runtime_tests tests/runtime_test.c)
+target_include_directories(runtime_tests PRIVATE src/runtime)
+target_compile_options(runtime_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+if(ENABLE_SANITIZERS)
+    target_compile_options(runtime_tests PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all)
+    target_link_options(runtime_tests PRIVATE -fsanitize=address,undefined)
+endif()

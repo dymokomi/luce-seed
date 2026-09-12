@@ -1030,7 +1030,7 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
         return e;
     }
     if (dest->kind == TypeKind::CStr && st != nullptr && st->kind == TypeKind::Str) {
-        return "lb_cstr_of(" + e + ")"; // the byte after the text is NUL, or the cast traps (§5.2)
+        return "lb_cstr_of(" + e + ")"; // raw address borrow; termination/lifetime belong to the caller (§5.5)
     }
     if (is_int_enum(dest)) {
         if (checked) {

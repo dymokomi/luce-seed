@@ -365,7 +365,7 @@ Conversions between text and bytes use the two conversion spellings of §7.5:
 
 - `str(bytes)` from a `const u8[]` validates UTF-8 and yields `str!`; `(str)bytes` yields a `str` with no check, for bytes already known to be valid.
 - `str(value)` from a `c.str` scans to the NUL, validates, and yields `str!`.
-- `(c.str)text` yields a `c.str` with no check. It is correct when the byte after the text's last byte is a NUL: a literal, the result of `format`, or text that came from C. Otherwise it is undefined (§12.6), as `(char*)` is in C.
+- `(c.str)text` borrows the text's data pointer without reading bytes, allocating, checking termination or extending its lifetime. Before using it as a C string, the caller must provide a readable terminating NUL and keep that storage alive. To preserve an arbitrary byte view exactly, use `strings.copy(text)`, cast that terminated copy, and later call `strings.release(copy)`. Reading beyond valid storage remains undefined (§12.6), as for a raw pointer in C.
 
 A formatted string `f"..."` has no value of its own. It is consumed in one of four ways: `print(f"...")`; `writer.write(f"...")` on a `Writer` (§14.4); `format(buffer: u8[], f"...") -> str!`, which writes into the caller's buffer, appends a NUL when there is room, and returns a view of the text; or a parameter of type `fmt`, which a function declares to accept a formatted string or a `str` and may only pass on to one of these four (§9.1). Interpolation lowers to appends on the sink; no intermediate string exists. This is the `printf` replacement.
 
@@ -570,7 +570,7 @@ Base has two conversion spellings with two meanings.
 | `(u32)kind` | an integer-backed enum to its representation |
 | `(Kind)n` | an integer to an integer-backed enum with no check |
 | `(str)bytes` | text reinterpretation with no check (§5.5) |
-| `(c.str)text` | the text's data pointer, after a check that the byte following the text is NUL, since C's text ends at one; a view cut from the middle of longer text traps rather than reading past its end |
+| `(c.str)text` | the borrowed data pointer, without a memory read or termination check; C string use requires caller-provided termination and lifetime (§5.5) |
 | `(T*)p` from `U*`, `void*`, `const T*`, `const void*` | pointer conversion; removing `const` is permitted and explicit, and modifying an object that was declared `let` or `const` through the result is undefined as in C |
 | `(Handle)p` from `void*`, `(void*)h` | an opaque handle (§17.1, §17.7) is pointer-shaped: it converts to and from `void*` by cast, so a Base module can hand out a handle over its own memory |
 | `(T*?)n` from `usize` | integer to pointer; nullable because zero is a valid integer |

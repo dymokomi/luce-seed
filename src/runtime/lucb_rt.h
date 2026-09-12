@@ -77,18 +77,27 @@ static inline uint64_t mask_bits(int bits) {
     return ((uint64_t)1 << bits) - 1;
 }
 static inline int64_t smin(int bits) {
+    if (bits <= 0) {
+        return 0;
+    }
     if (bits >= 64) {
         return INT64_MIN;
     }
     return -((int64_t)1 << (bits - 1));
 }
 static inline int64_t smax(int bits) {
+    if (bits <= 0) {
+        return 0;
+    }
     if (bits >= 64) {
         return INT64_MAX;
     }
     return ((int64_t)1 << (bits - 1)) - 1;
 }
 static inline int64_t sext(int64_t a, int bits) {
+    if (bits <= 0) {
+        return 0;
+    }
     if (bits >= 64) {
         return a;
     }
@@ -209,11 +218,9 @@ typedef struct lb_str {
     size_t length;
 } lb_str;
 
-/* `(c.str)text`: C's text ends at a NUL, so the byte after the view must be one. */
+/* A raw C cast borrows the address without reading past the byte view.
+   C string consumers require caller-provided termination and sufficient lifetime. */
 static inline const char* lb_cstr_of(lb_str s) {
-    if (s.data[s.length] != 0) {
-        lb_trap("c.str: the text is not NUL-terminated");
-    }
     return s.data;
 }
 

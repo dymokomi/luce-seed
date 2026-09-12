@@ -19,3 +19,4 @@ cmake --build "$BUILD_DIR" --parallel
 
 "$BUILD_DIR/lucb" --version
 "$BUILD_DIR/lucb_tests"
+"$BUILD_DIR/runtime_tests"

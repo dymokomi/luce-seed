@@ -1582,6 +1582,19 @@ TEST(agree_parenthesised_guard_is_not_a_lambda) {
     CHECK(agrees("func describe(n: i64) -> i64:\n    return match n:\n        0 => 0\n        _ if (n < 0) => 1\n        _ if (n > 100 and n < 1000) => 2\n        _ => 3\nfunc apply(f: func(i64) -> i64, x: i64) -> i64:\n    return f(x)\npub func answer() -> i64:\n    return describe(0) * 1000 + describe(-5) * 100 + describe(500) * 10 + describe(7) + apply((v) => v * 2, 3) + apply((v: i64) => v + 1, 1)\n"));
 }
 
+TEST(compiled_free_rejects_overflowing_span) {
+    Both both;
+    // This deliberately invalid descriptor tests the generated release guard.
+    // It is not an allocation and cannot be modeled as interpreter storage.
+    CHECK(compile_source(R"lucb(pub func answer() -> i64:
+    let invalid = u64[]((u64*)(usize)8, 2305843009213693952)
+    free(invalid)
+    return 40
+)lucb", &both));
+    CHECK_EQ(both.native.exit_code, 1);
+    CHECK(both.native.err.find("integer overflow") != std::string::npos);
+}
+
 TEST(agree_recover_cleans_only_handler_scopes) {
     Both both;
     CHECK(compile_source(R"lucb(# `recover` evaluates its value, then runs only cleanup belonging to its catch.
