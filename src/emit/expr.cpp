@@ -439,7 +439,10 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         }
         return "((void*)0)";
     case NodeKind::Tuple: {
-        string s = "((" + tup_c_name(n->ty) + "){";
+        // Context may have lifted the literal into an optional. Construct the
+        // tuple payload here; emit_expr supplies its presence wrapper once.
+        Type* tuple = is_opt(n->ty) ? n->ty->elem : n->ty;
+        string s = "((" + tup_c_name(tuple) + "){";
         bool first = true;
         for (Node* e = n->body; e != nullptr; e = e->next) {
             if (!first) {

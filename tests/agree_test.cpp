@@ -1401,6 +1401,25 @@ TEST(agree_tuple) {
                  "    return q * 10 + r\n"));
 }
 
+TEST(agree_optional_tuple_literal) {
+    CHECK(agrees("struct Word:\n"
+                 "    var value: i64\n"
+                 "func pair(present: bool) -> (Word, Word)?:\n"
+                 "    if not present:\n"
+                 "        return none\n"
+                 "    return (Word(17), Word(23))\n"
+                 "func numbers(present: bool) -> (i64, i64)?:\n"
+                 "    return (7, 8) if present else none\n"
+                 "pub func answer() -> i64:\n"
+                 "    assert(pair(false) == none)\n"
+                 "    assert(numbers(false) == none)\n"
+                 "    let (first, last) = pair(true) else return 0\n"
+                 "    let (a, b) = numbers(true) else return 0\n"
+                 "    let pair_value: (i64, i64)? = (5, 6)\n"
+                 "    let (x, y) = pair_value else return 0\n"
+                 "    return first.value + last.value + a + b + x + y\n"));
+}
+
 TEST(agree_match_expr) {
     CHECK(agrees("pub func answer() -> i64:\n"
                  "    let n: i64 = 2\n"
