@@ -265,8 +265,8 @@ bool prove(const fs::path& entry) {
     if (fs::exists(expect_path)) {
         std::string expect = slurp(expect_path);
         if (native.out != expect) {
-            std::fprintf(stderr, "    stdout differs from %s:\n%s", expect_path.string().c_str(),
-                         native.out.c_str());
+            std::fprintf(stderr, "    stdout differs from %s (exit %d):\n%s\n    stderr:\n%s",
+                         expect_path.string().c_str(), native.exit_code, native.out.c_str(), native.err.c_str());
             return false;
         }
     }
