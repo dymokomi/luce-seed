@@ -781,7 +781,7 @@ auto Emitter::emit_call(Node* n) -> string {
                        an + ".data, " + an +
                        ".length, lb_get_alloc(), &_lb_st, &_lb_so, "
                        "&_lb_se); " +
-                       rty + " " + rn + "; if (_lb_rc != 0) { " + rn + ".failed = true; " + rn +
+                       rty + " " + rn + " = {0}; if (_lb_rc != 0) { " + rn + ".failed = true; " + rn +
                        ".error = (lb_error){ .code = 1, .message = (lb_str){\"run\", 3} }; } else "
                        "{ " +
                        rn + ".failed = false; " + rn + ".value = ((" + tty +
