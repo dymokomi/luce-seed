@@ -46,7 +46,7 @@ namespace {
 const char* k_version = LUCB_VERSION; // from the VERSION file, through CMake
 
 void print_help(ostream& out) {
-    out << "lucb " << k_version << " â€” luce-seed, the Luce Base bootstrap compiler\n"
+    out << "lucb " << k_version << " — luce-seed, the Luce Base bootstrap compiler\n"
         << "\n"
         << "Usage:\n"
         << "  lucb --version\n"
@@ -140,7 +140,7 @@ vector<lucb::Node*> program_modules(lucb::Program& program) {
     return mods;
 }
 
-// The manifest's `[native]` section as the C compiler's inputs (Â§17.4).
+// The manifest's `[native]` section as the C compiler's inputs (§17.4).
 static lucb::NativeInputs native_inputs_of(const lucb::Manifest& manifest) {
     lucb::NativeInputs native;
     native.root = manifest.root.empty() ? "." : manifest.root;

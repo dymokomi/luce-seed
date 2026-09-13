@@ -5,8 +5,8 @@
 //   DESCRIPTION:
 //       Emission of every call form. Ordinary and generic calls become C calls with `lb_`
 //       names; method calls pass the receiver by pointer; function values call through their
-//       typedef; extern calls cross the one C boundary with the null check of base.md Â§17.1
-//       and variadic promotion of Â§17.2. The standard modules (`memory`, `io`, `files`,
+//       typedef; extern calls cross the one C boundary with the null check of base.md §17.1
+//       and variadic promotion of §17.2. The standard modules (`memory`, `io`, `files`,
 //       `process`, `thread`, `sync`, `atomic`, `luce`) are not Base source in the seed, so
 //       their calls are spelled here directly as runtime calls or C expressions.
 //
@@ -43,7 +43,7 @@ static string memorder_of(Node* n) {
     return "memory_order_seq_cst";
 }
 
-// Whether evaluating `e` may have an effect another operand could observe (Â§7.1): a call,
+// Whether evaluating `e` may have an effect another operand could observe (§7.1): a call,
 // a `try`, a `catch`, an allocation, or a formatted string with such a field. A lambda's
 // body runs later, not here.
 bool Emitter::may_have_effect(Node* e) {
@@ -78,7 +78,7 @@ bool Emitter::may_have_effect(Node* e) {
     return false;
 }
 
-// The argument list of a call. Base evaluates arguments left to right (Â§7.1); C promises
+// The argument list of a call. Base evaluates arguments left to right (§7.1); C promises
 // no order. When `prefix` is given, the call has more than one argument, and any of them
 // may have an effect, every argument with a known parameter type is computed into a
 // temporary first, in order, declared in `prefix`; the list then names the temporaries,
@@ -163,7 +163,7 @@ bool has_out_params(Node* fn) {
 
 // `({ int32_t _lb_o1; double _lb_r = frexp(x, &_lb_o1); (tuple){ _lb_r, _lb_o1 }; })`: an
 // extern's `out` parameters are locals passed by address and answered after the declared
-// result (Â§17.1).
+// result (§17.1).
 auto Emitter::emit_extern_out_call(Node* n) -> string {
     Node* fn = n->resolved;
     int id = tmp();
@@ -834,7 +834,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 call += ", " + args;
             }
             call += ")";
-            // `view.method()` on a `Writer*` auto-dereferences the pointer (Â§7.3): the fat
+            // `view.method()` on a `Writer*` auto-dereferences the pointer (§7.3): the fat
             // pointer is copied out of it first
             string view = through_pointer ? "(*(" + emit_expr(obj) + "))" : emit_expr(obj);
             return "({ lb_iface " + vn + " = " + view + "; " + prefix + call + "; })";
@@ -855,7 +855,7 @@ auto Emitter::emit_call(Node* n) -> string {
             string R = emit_expr(n->body != nullptr ? n->body->left : nullptr);
             Type* rt = obj != nullptr ? obj->ty : nullptr;
             if (rt != nullptr && rt->kind == TypeKind::Str) {
-                // text orders by bytes, then by length (Â§5.5), through the runtime
+                // text orders by bytes, then by length (§5.5), through the runtime
                 return "((int64_t)lb_str_compare(" + L + ", " + R + "))";
             }
             return "((" + L + " < " + R + ") ? -1LL : ((" + L + " > " + R + ") ? 1LL : 0LL))";
@@ -976,7 +976,7 @@ auto Emitter::emit_ctor(Node* n, Node* st) -> string {
 
 namespace lucb {
 
-// `span.first()` and `span.last()`: the end element as `T?`, `none` when empty (Â§5.4).
+// `span.first()` and `span.last()`: the end element as `T?`, `none` when empty (§5.4).
 auto Emitter::emit_span_end(Node* obj, Node* n, bool first) -> string {
     const int id = tmp();
     const string sn = "_lb_se" + std::to_string(id);
@@ -1004,7 +1004,7 @@ auto Emitter::emit_span_end(Node* obj, Node* n, bool first) -> string {
 
 namespace {
 
-// Hexadecimal digits of the low `digits` Ã— 4 bits of `v`, most significant first.
+// Hexadecimal digits of the low `digits` × 4 bits of `v`, most significant first.
 string hex_digits(uint64_t v, int digits) {
     string s(static_cast<size_t>(digits), '0');
     for (int i = digits - 1; i >= 0; i--) {
@@ -1014,7 +1014,7 @@ string hex_digits(uint64_t v, int digits) {
     return s;
 }
 
-// The C constant whose value is the float of `kind` with these bits (Â§7.5): a hexadecimal
+// The C constant whose value is the float of `kind` with these bits (§7.5): a hexadecimal
 // literal for a finite value, exact by construction, `__builtin_inf` for an infinity, and
 // `__builtin_nan` or `__builtin_nans` with the payload otherwise. Every spelling is a
 // constant expression under both GCC and clang, so a global may be initialised with it.
@@ -1059,7 +1059,7 @@ string float_constant_from_bits(TypeKind kind, uint64_t bits) {
 
 } // namespace
 
-// `f64.bits(u)` and `value.bits()` are a memcpy each way (Â§7.5), at the float's width.
+// `f64.bits(u)` and `value.bits()` are a memcpy each way (§7.5), at the float's width.
 auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
     const TypeKind from = obj->kind == NodeKind::Name ? float_kind_named(obj->text) : TypeKind::Error;
     if (from != TypeKind::Error) {
@@ -1067,7 +1067,7 @@ auto Emitter::emit_float_bits(Node* obj, Node* n) -> string {
         string it = bits_integer_c_name(n->ty);
         string ft = c_type_name(n->ty);
         // a literal's bits are spelled as a float constant, so `f64.bits(...)` can initialise
-        // a global (Â§6.4) under GCC, which has no bit cast in C; other bits are copied
+        // a global (§6.4) under GCC, which has no bit cast in C; other bits are copied
         if (arg != nullptr && arg->kind == NodeKind::Literal) {
             ParsedInt p = parse_int_literal(arg->text);
             if (p.ok) {
