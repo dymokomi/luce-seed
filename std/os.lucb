@@ -1,7 +1,7 @@
 ## Bootstrap subset of os: UTF-8 environment views, stable until the next call.
 import c
 import platform
-extern func getenv(variable: c.str) -> c.str?
+extern func getenv(variable: c.str) -> const u8*?
 extern func MultiByteToWideChar(page: u32, flags: u32, input: c.str, length: i32, output: u16*?, capacity: i32) -> i32
 extern func WideCharToMultiByte(page: u32, flags: u32, input: const u16*, length: i32, output: u8*?, capacity: i32, fallback: void*?, used_fallback: void*?) -> i32
 extern func GetEnvironmentVariableW(name: u16*, output: u16*, capacity: u32) -> u32
@@ -14,7 +14,7 @@ local var environment_key: u16[32768]
 pub func env(variable: c.str) -> str?:
     if not platform.windows:
         let value = getenv(variable) else return none
-        return (str)value
+        return (str)(c.str)value
     if MultiByteToWideChar(65001, 8, variable, -1, &environment_key[0], 32768) == 0:
         return none
     SetLastError(0)
@@ -28,4 +28,3 @@ pub func env(variable: c.str) -> str?:
             return none
     environment_utf8[(usize)size] = 0
     return (str)environment_utf8[..<(usize)size]
-
