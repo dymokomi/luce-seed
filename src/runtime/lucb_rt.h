@@ -314,9 +314,14 @@ void lb_release_call(lb_iface a, lb_span block);
 int lb_utf8_ok(const char* s, size_t n);
 // The scalar starting at byte `i` of the valid UTF-8 text `s`, and its width in `*width`.
 uint32_t lb_utf8_scalar(const char* s, size_t n, size_t i, size_t* width);
+int lb_files_canonical(lb_iface allocator, const char* path, lb_str* output);
+int lb_files_temporary_directory(lb_iface allocator, const char* parent, uint32_t permissions, lb_str* output);
+int lb_files_remove_tree(const char* path);
+int lb_files_rename(const char* source, const char* destination, bool replace);
 bool lb_files_exists(const char* path);
 int lb_files_list(lb_iface a, const char* path, lb_span* out);
-int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+int lb_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
+                   const char* const* environment, size_t nenvironment, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err);
 
 uint64_t lb_hash_seed(void);

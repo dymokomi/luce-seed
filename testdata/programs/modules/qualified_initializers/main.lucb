@@ -1,0 +1,6 @@
+# answer: 42
+import value
+pub func answer() -> i64!:
+    let plain = value.Plain(17)
+    let checked = try value.Checked(25)
+    return plain.value + checked.value

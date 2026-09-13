@@ -1,0 +1,8 @@
+pub struct Plain:
+    pub let value: i64
+    pub func init(value: i64):
+        self.value = value
+pub struct Checked:
+    pub let value: i64
+    pub func init(value: i64) -> !:
+        self.value = value

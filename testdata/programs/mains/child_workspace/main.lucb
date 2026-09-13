@@ -1,0 +1,26 @@
+# oracle: none
+# This exercises native bootstrap filesystem ownership and child process state.
+import c
+import files
+import process
+
+pub func main(arguments: str[]) -> i32!:
+    if arguments.length > 1:
+        print("child")
+        return 0
+    let directory = try files.create_temporary_directory(".", 448u32)
+    defer files.remove_tree((c.str)directory) catch failure:
+        trap(failure.message)
+    let absolute = try files.canonical((c.str)directory)
+    let executable = try files.canonical((c.str)arguments[0])
+    let child: c.str[1] = ["child"]
+    let variables: c.str[1] = ["LUCE_CHILD_TEST=value"]
+    let environment: const c.str[] = variables
+    let (status, output, errors) = try process.run((c.str)executable, child, (c.str)absolute, environment)
+    assert(status == 0 and output == "child\n" and errors.length == 0)
+    var name: u8[4096]
+    let moved = try format(name, f"{absolute}-moved")
+    try files.rename((c.str)absolute, (c.str)moved, true)
+    try files.remove_tree((c.str)moved)
+    print("ok bootstrap child workspace")
+    return 0

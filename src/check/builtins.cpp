@@ -345,6 +345,32 @@ auto Checker::bind_memory() -> void {
     f_exists->right = ep;
     f_exists->ty = t_bool();
     f_list->next = f_exists;
+    Node* file_tail = f_exists;
+    for (const char* name : {"canonical", "create_temporary_directory", "remove_tree", "rename"}) {
+        Node* function = syn_node(NodeKind::Func, name);
+        function->flags |= FlagFallible;
+        Node* path = syn_node(NodeKind::Param, std::string_view(name) == "rename" ? "source" :
+                              std::string_view(name) == "create_temporary_directory" ? "parent" : "path");
+        path->ty = ty_cstr;
+        function->right = path;
+        const bool text_result = std::string_view(name) == "canonical" ||
+                                 std::string_view(name) == "create_temporary_directory";
+        function->ty = text_result ? ty_str : t_unit();
+        if (std::string_view(name) == "create_temporary_directory") {
+            Node* permissions = syn_node(NodeKind::Param, "permissions");
+            permissions->ty = ty_u32;
+            path->next = permissions;
+        } else if (std::string_view(name) == "rename") {
+            Node* destination = syn_node(NodeKind::Param, "destination");
+            destination->ty = ty_cstr;
+            path->next = destination;
+            Node* replace = syn_node(NodeKind::Param, "replace");
+            replace->ty = ty_bool;
+            destination->next = replace;
+        }
+        file_tail->next = function;
+        file_tail = function;
+    }
     Node* files = syn_node(NodeKind::Module, "files");
     files->body = f_read;
     Type* files_t = make_type(TypeKind::Module, "files");
@@ -358,6 +384,16 @@ auto Checker::bind_memory() -> void {
     Node* pr_args = syn_node(NodeKind::Param, "arguments");
     pr_args->ty = intern_sp(ty_cstr, true);
     pr_prog->next = pr_args;
+    Node* pr_directory = syn_node(NodeKind::Param, "directory");
+    pr_directory->ty = ty_cstr;
+    pr_directory->left = syn_node(NodeKind::Literal, "\"\"");
+    pr_directory->left->op = TokenKind::StringLit;
+    Node* pr_environment = syn_node(NodeKind::Param, "environment");
+    pr_environment->ty = intern_opt(intern_sp(ty_cstr, true));
+    pr_environment->left = syn_node(NodeKind::Literal, "none");
+    pr_environment->left->op = TokenKind::KwNone;
+    pr_args->next = pr_directory;
+    pr_directory->next = pr_environment;
     p_run->right = pr_prog;
     Type* pr_ret[3] = {ty_i32, ty_str, ty_str};
     p_run->ty = intern_tup(pr_ret, 3);

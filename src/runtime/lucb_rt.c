@@ -12,6 +12,12 @@
 //
 //==============================================================================================
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#ifdef _WIN32
+#define _CRT_RAND_S
+#endif
 #include "lucb_rt.h"
 
 #include <dirent.h>
@@ -22,16 +28,26 @@
 #ifndef _WIN32
 #include <poll.h>
 #include <sys/wait.h>
+#include <sys/random.h>
+#include <signal.h>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#else
+extern char** environ;
+#endif
 #endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <io.h>
 #include <malloc.h>
+#include <direct.h>
+#include <wchar.h>
 #endif
 
 static _Thread_local lb_iface lb_current_alloc = {NULL, NULL};
@@ -641,6 +657,212 @@ static int lb_name_cmp(const void* a, const void* b) {
     return 0;
 }
 
+/* Filesystem mechanics used by the bootstrap compiler. All public paths are
+   UTF-8, including on Windows; allocations returned to Base retain its allocator. */
+#ifdef _WIN32
+static wchar_t* lb_windows_text(const char* text) {
+    int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
+    if (count <= 0) return NULL;
+    wchar_t* result = malloc((size_t)count * sizeof(wchar_t));
+    if (result && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, result, count) != count) {
+        free(result);
+        return NULL;
+    }
+    return result;
+}
+
+static char* lb_windows_utf8(const wchar_t* text) {
+    int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, NULL, 0, NULL, NULL);
+    if (count <= 0) return NULL;
+    char* result = malloc((size_t)count);
+    if (result && WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, result, count, NULL, NULL) != count) {
+        free(result);
+        return NULL;
+    }
+    return result;
+}
+#endif
+
+static int lb_owned_path(lb_iface allocator, const char* path, lb_str* output) {
+    size_t size = strlen(path);
+    lb_span_opt result = lb_alloc_call(allocator, size + 1, 1);
+    if (!result.present) return 1;
+    memcpy(result.value.data, path, size + 1);
+    *output = (lb_str){result.value.data, size};
+    return 0;
+}
+
+int lb_files_canonical(lb_iface allocator, const char* path, lb_str* output) {
+#ifdef _WIN32
+    wchar_t* input = lb_windows_text(path);
+    if (!input) return 7;
+    HANDLE handle = CreateFileW(input, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    free(input);
+    if (handle == INVALID_HANDLE_VALUE) return 7;
+    DWORD capacity = GetFinalPathNameByHandleW(handle, NULL, 0, 0);
+    wchar_t* wide = capacity ? malloc(((size_t)capacity + 1) * sizeof(wchar_t)) : NULL;
+    DWORD count = wide ? GetFinalPathNameByHandleW(handle, wide, capacity + 1, 0) : 0;
+    CloseHandle(handle);
+    if (!count || count > capacity) { free(wide); return 7; }
+    size_t start = 0;
+    if (wcsncmp(wide, L"\\\\?\\", 4) == 0) {
+        start = 4;
+        if (wcsncmp(wide + 4, L"UNC\\", 4) == 0) { wide[6] = L'\\'; start = 6; }
+    }
+    char* resolved = lb_windows_utf8(wide + start);
+    free(wide);
+    if (!resolved) return 7;
+    for (char* cursor = resolved; *cursor; ++cursor) if (*cursor == '\\') *cursor = '/';
+#else
+    char* resolved = realpath(path, NULL);
+    if (!resolved) return 7;
+#endif
+    int result = lb_owned_path(allocator, resolved, output);
+    free(resolved);
+    return result;
+}
+
+int lb_files_temporary_directory(lb_iface allocator, const char* parent, uint32_t permissions, lb_str* output) {
+    size_t size = strlen(parent);
+    if (size > SIZE_MAX - 40) return 7;
+    char* name = malloc(size + 40);
+    if (!name) return 1;
+    memcpy(name, parent, size);
+    memcpy(name + size, "/.luce-", 7);
+    int result = 7;
+    for (size_t attempt = 0; attempt < 128; ++attempt) {
+        unsigned char random[16];
+#ifdef _WIN32
+        int unavailable = 0;
+        for (size_t index = 0; index < 4; ++index) {
+            unsigned int word;
+            if (rand_s(&word) != 0) { unavailable = 1; break; }
+            memcpy(random + index * 4, &word, 4);
+        }
+        if (unavailable) break;
+#else
+        if (getentropy(random, sizeof(random)) != 0) break;
+#endif
+        static const char digits[] = "0123456789abcdef";
+        for (size_t index = 0; index < sizeof(random); ++index) {
+            name[size + 7 + index * 2] = digits[random[index] >> 4];
+            name[size + 8 + index * 2] = digits[random[index] & 15];
+        }
+        name[size + 39] = 0;
+#ifdef _WIN32
+        (void)permissions;
+        wchar_t* wide = lb_windows_text(name);
+        if (!wide) break;
+        int made = _wmkdir(wide);
+        int number = errno;
+        if (made == 0) {
+            result = lb_owned_path(allocator, name, output);
+            if (result) _wrmdir(wide);
+        }
+        free(wide);
+#else
+        int made = mkdir(name, (mode_t)permissions);
+        int number = errno;
+        if (made == 0) {
+            result = lb_owned_path(allocator, name, output);
+            if (result) rmdir(name);
+        }
+#endif
+        if (made == 0 || number != EEXIST) break;
+    }
+    free(name);
+    return result;
+}
+
+#ifdef _WIN32
+static int lb_remove_tree_windows(const wchar_t* path) {
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        DWORD code = GetLastError();
+        return code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND ? 0 : 7;
+    }
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) return DeleteFileW(path) ? 0 : 7;
+    if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) return RemoveDirectoryW(path) ? 0 : 7;
+    size_t length = wcslen(path);
+    wchar_t* child = malloc((length + MAX_PATH + 3) * sizeof(wchar_t));
+    if (!child) return 1;
+    memcpy(child, path, length * sizeof(wchar_t));
+    child[length] = L'\\';
+    wcscpy(child + length + 1, L"*");
+    WIN32_FIND_DATAW entry;
+    HANDLE search = FindFirstFileW(child, &entry);
+    int result = 0;
+    if (search == INVALID_HANDLE_VALUE) {
+        result = GetLastError() == ERROR_FILE_NOT_FOUND ? 0 : 7;
+    } else {
+        do {
+            if (wcscmp(entry.cFileName, L".") && wcscmp(entry.cFileName, L"..")) {
+                wcscpy(child + length + 1, entry.cFileName);
+                result = lb_remove_tree_windows(child);
+                if (result) break;
+            }
+        } while (FindNextFileW(search, &entry));
+        if (!result && GetLastError() != ERROR_NO_MORE_FILES) result = 7;
+        FindClose(search);
+    }
+    free(child);
+    if (!result && !RemoveDirectoryW(path)) result = 7;
+    return result;
+}
+#endif
+
+int lb_files_remove_tree(const char* path) {
+#ifdef _WIN32
+    wchar_t* wide = lb_windows_text(path);
+    if (!wide) return 7;
+    int result = lb_remove_tree_windows(wide);
+    free(wide);
+    return result;
+#else
+    struct stat info;
+    if (lstat(path, &info) != 0) return errno == ENOENT ? 0 : 7;
+    if (!S_ISDIR(info.st_mode)) return unlink(path) == 0 ? 0 : 7;
+    DIR* directory = opendir(path);
+    if (!directory) return 7;
+    int result = 0;
+    for (;;) {
+        errno = 0;
+        struct dirent* entry = readdir(directory);
+        if (!entry) { if (errno) result = 7; break; }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        size_t size = strlen(path) + strlen(entry->d_name) + 2;
+        char* child = malloc(size);
+        if (!child) { result = 1; break; }
+        snprintf(child, size, "%s/%s", path, entry->d_name);
+        result = lb_files_remove_tree(child);
+        free(child);
+        if (result) break;
+    }
+    if (closedir(directory) != 0 && !result) result = 7;
+    if (!result && rmdir(path) != 0) result = 7;
+    return result;
+#endif
+}
+
+int lb_files_rename(const char* source, const char* destination, bool replace) {
+#ifdef _WIN32
+    wchar_t* from = lb_windows_text(source);
+    wchar_t* to = lb_windows_text(destination);
+    int result = from && to && MoveFileExW(from, to, replace ? MOVEFILE_REPLACE_EXISTING : 0) ? 0 : 7;
+    free(from);
+    free(to);
+    return result;
+#else
+    if (replace) return rename(source, destination) == 0 ? 0 : 7;
+#if defined(__APPLE__)
+    return renamex_np(source, destination, RENAME_EXCL) == 0 ? 0 : 7;
+#else
+    return renameat2(AT_FDCWD, source, AT_FDCWD, destination, RENAME_NOREPLACE) == 0 ? 0 : 7;
+#endif
+#endif
+}
+
 // Follow symlinks without opening the target; a FIFO lookup must never block.
 bool lb_files_exists(const char* path) {
     if (path == NULL) {
@@ -759,6 +981,127 @@ static int lb_store_captured(lb_iface a, const char* src, size_t n, lb_str* out)
     return 0;
 }
 
+static void lb_release_capture(lb_iface allocator, lb_str* value) {
+    if (value && value->length && value->data) {
+        lb_release_call(allocator, (lb_span){(void*)value->data, value->length + 1});
+        *value = (lb_str){NULL, 0};
+    }
+}
+
+// Construct child state before spawning. Neither the parent's working directory nor
+// its environment is changed; all views remain alive until process creation finishes.
+#ifndef _WIN32
+static char*** lb_environment_address(void) {
+#ifdef __APPLE__
+    return _NSGetEnviron();
+#else
+    return &environ;
+#endif
+}
+
+static size_t lb_environment_key(const char* entry) {
+    const char* equal = entry ? strchr(entry, '=') : NULL;
+    return equal && equal != entry ? (size_t)(equal - entry) : 0;
+}
+
+static int lb_child_environment(const char* const* overrides, size_t count, char*** output) {
+    *output = NULL;
+    if (!count) return 0;
+    for (size_t i = 0; i < count; ++i) {
+        size_t key = lb_environment_key(overrides[i]);
+        if (!key) return 1;
+        for (size_t j = 0; j < i; ++j)
+            if (lb_environment_key(overrides[j]) == key && !strncmp(overrides[i], overrides[j], key)) return 1;
+    }
+    char** inherited = *lb_environment_address();
+    size_t used = 0;
+    while (inherited && inherited[used]) ++used;
+    if (used > SIZE_MAX / sizeof(char*) - 1 || count > SIZE_MAX / sizeof(char*) - used - 1) return 1;
+    char** selected = (char**)malloc((used + count + 1) * sizeof(char*));
+    if (!selected) return 1;
+    size_t filled = 0;
+    for (size_t i = 0; i < used; ++i) {
+        size_t key = lb_environment_key(inherited[i]);
+        bool replaced = false;
+        for (size_t j = 0; j < count; ++j)
+            if (key && lb_environment_key(overrides[j]) == key && !strncmp(inherited[i], overrides[j], key)) replaced = true;
+        if (!replaced) selected[filled++] = inherited[i];
+    }
+    for (size_t i = 0; i < count; ++i) selected[filled++] = (char*)overrides[i];
+    selected[filled] = NULL;
+    *output = selected;
+    return 0;
+}
+#else
+static size_t lb_environment_key(const wchar_t* entry) {
+    // Windows carries drive-specific current directories as entries like =C:=C:\work.
+    const wchar_t* equal = wcschr(entry + (*entry == L'='), L'=');
+    return equal ? (size_t)(equal - entry) : 0;
+}
+
+static int lb_environment_compare(const wchar_t* a, const wchar_t* b) {
+    return CompareStringOrdinal(a, (int)lb_environment_key(a), b, (int)lb_environment_key(b), TRUE) - CSTR_EQUAL;
+}
+
+static int lb_child_environment(const char* const* overrides, size_t count, wchar_t** output) {
+    *output = NULL;
+    if (!count) return 0;
+    wchar_t* inherited = GetEnvironmentStringsW();
+    if (!inherited) return 1;
+    size_t entries = 0;
+    for (const wchar_t* p = inherited; *p; p += wcslen(p) + 1) ++entries;
+    wchar_t** owned = NULL;
+    const wchar_t** selected = NULL;
+    int failed = 1;
+    if (count > SIZE_MAX / sizeof(wchar_t*) || entries > SIZE_MAX / sizeof(wchar_t*) - count) goto done;
+    owned = (wchar_t**)calloc(count, sizeof(wchar_t*));
+    selected = (const wchar_t**)malloc((entries + count) * sizeof(wchar_t*));
+    if (!owned || !selected) goto done;
+    for (size_t i = 0; i < count; ++i) {
+        owned[i] = lb_windows_text(overrides[i]);
+        if (!owned[i] || owned[i][0] == L'=' || !lb_environment_key(owned[i])) goto done;
+        for (size_t j = 0; j < i; ++j)
+            if (!lb_environment_compare(owned[i], owned[j])) goto done;
+    }
+    size_t used = 0;
+    for (const wchar_t* p = inherited; *p; p += wcslen(p) + 1) {
+        bool replaced = false;
+        for (size_t i = 0; i < count; ++i)
+            if (!lb_environment_compare(p, owned[i])) replaced = true;
+        if (!replaced) selected[used++] = p;
+    }
+    for (size_t i = 0; i < count; ++i) selected[used++] = owned[i];
+    size_t length = 1;
+    for (size_t i = 0; i < used; ++i) {
+        const wchar_t* entry = selected[i];
+        size_t j = i;
+        while (j && lb_environment_compare(entry, selected[j - 1]) < 0) {
+            selected[j] = selected[j - 1];
+            --j;
+        }
+        selected[j] = entry;
+        size_t n = wcslen(entry) + 1;
+        if (n > SIZE_MAX / sizeof(wchar_t) - length) goto done;
+        length += n;
+    }
+    *output = (wchar_t*)calloc(length, sizeof(wchar_t));
+    if (!*output) goto done;
+    wchar_t* cursor = *output;
+    for (size_t i = 0; i < used; ++i) {
+        size_t n = wcslen(selected[i]) + 1;
+        memcpy(cursor, selected[i], n * sizeof(wchar_t));
+        cursor += n;
+    }
+    failed = 0;
+done:
+    if (owned) for (size_t i = 0; i < count; ++i) free(owned[i]);
+    free(owned);
+    free(selected);
+    FreeEnvironmentStringsW(inherited);
+    return failed;
+}
+#endif
+
 #ifndef _WIN32
 static int lb_read_more(int fd, char** buf, size_t* used, size_t* cap, int* open) {
     if (*cap - *used < 64) {
@@ -785,11 +1128,14 @@ static int lb_read_more(int fd, char** buf, size_t* used, size_t* cap, int* open
     return 0;
 }
 
-int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+int lb_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
+                   const char* const* environment, size_t nenvironment, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err) {
-    if (program == NULL) {
+    if (program == NULL || nargs > SIZE_MAX / sizeof(char*) - 2) {
         return 1;
     }
+    if (out) *out = (lb_str){NULL, 0};
+    if (err) *err = (lb_str){NULL, 0};
     int outp[2];
     int errp[2];
     if (pipe(outp) != 0) {
@@ -800,7 +1146,19 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
         close(outp[1]);
         return 1;
     }
+    const char** argv = (const char**)malloc((nargs + 2) * sizeof(char*));
+    char** selected = NULL;
+    if (argv == NULL || lb_child_environment(environment, nenvironment, &selected)) {
+        free(argv);
+        close(outp[0]); close(outp[1]); close(errp[0]); close(errp[1]);
+        return 1;
+    }
+    argv[0] = program;
+    for (size_t i = 0; i < nargs; ++i) argv[i + 1] = args ? args[i] : "";
+    argv[nargs + 1] = NULL;
+    char*** environment_slot = lb_environment_address();
     pid_t pid = fork();
+    if (pid != 0) { free(argv); free(selected); }
     if (pid < 0) {
         close(outp[0]);
         close(outp[1]);
@@ -816,15 +1174,8 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
         }
         close(outp[1]);
         close(errp[1]);
-        const char** argv = (const char**)malloc((nargs + 2) * sizeof(char*));
-        if (argv == NULL) {
-            _exit(127);
-        }
-        argv[0] = program;
-        for (size_t i = 0; i < nargs; i++) {
-            argv[i + 1] = args != NULL ? args[i] : "";
-        }
-        argv[nargs + 1] = NULL;
+        if (directory && *directory && chdir(directory) != 0) _exit(127);
+        if (selected) *environment_slot = selected;
         execvp(program, (char* const*)argv);
         _exit(127);
     }
@@ -871,7 +1222,10 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
     close(outp[0]);
     close(errp[0]);
     int st = 0;
-    if (waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
+    if (fail) kill(pid, SIGKILL);
+    pid_t waited;
+    do { waited = waitpid(pid, &st, 0); } while (waited < 0 && errno == EINTR);
+    if (waited < 0 || !WIFEXITED(st)) {
         fail = 1;
     }
     if (!fail) {
@@ -885,6 +1239,7 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
     }
     free(obuf);
     free(ebuf);
+    if (fail) { lb_release_capture(alloc, out); lb_release_capture(alloc, err); }
     return fail;
 }
 
@@ -903,9 +1258,12 @@ static int lb_win_capture(FILE* file, lb_iface alloc, lb_str* output) {
     return failed;
 }
 
-int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+int lb_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
+                   const char* const* environment, size_t nenvironment, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err) {
     if (program == NULL || nargs > SIZE_MAX / sizeof(char*) - 1) return 1;
+    if (out) *out = (lb_str){NULL, 0};
+    if (err) *err = (lb_str){NULL, 0};
     size_t room = 1;
     for (size_t i = 0; i <= nargs; ++i) {
         const char* arg = i == 0 ? program : (args && args[i - 1] ? args[i - 1] : "");
@@ -941,6 +1299,11 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
     if (wide == NULL) { free(command); return 1; }
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, command, -1, wide, count);
     free(command);
+    wchar_t* cwd = directory && *directory ? lb_windows_text(directory) : NULL;
+    wchar_t* selected = NULL;
+    if ((directory && *directory && !cwd) || lb_child_environment(environment, nenvironment, &selected)) {
+        free(wide); free(cwd); return 1;
+    }
     FILE* output = tmpfile();
     FILE* errors = tmpfile();
     HANDLE handles[3] = {NULL, NULL, NULL};
@@ -960,7 +1323,7 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
             startup.hStdError = handles[1];
             startup.hStdInput = handles[2];
             PROCESS_INFORMATION child = {0};
-            if (CreateProcessW(NULL, wide, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &child)) {
+            if (CreateProcessW(NULL, wide, NULL, NULL, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, selected, cwd, &startup, &child)) {
                 DWORD code = 1;
                 if (WaitForSingleObject(child.hProcess, INFINITE) == WAIT_OBJECT_0 && GetExitCodeProcess(child.hProcess, &code)) {
                     if (status) *status = (int32_t)code;
@@ -976,6 +1339,9 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
     if (output) fclose(output);
     if (errors) fclose(errors);
     free(wide);
+    free(cwd);
+    free(selected);
+    if (failed) { lb_release_capture(alloc, out); lb_release_capture(alloc, err); }
     return failed;
 }
 #endif

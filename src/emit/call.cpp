@@ -571,7 +571,8 @@ auto Emitter::emit_call(Node* n) -> string {
         return emit_ctor(n, n->resolved);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func &&
-        n->resolved->text == "init" && callee != nullptr && callee->kind == NodeKind::Name &&
+        n->resolved->text == "init" && callee != nullptr &&
+        (callee->kind == NodeKind::Name || callee->kind == NodeKind::Member) &&
         callee->resolved != nullptr && callee->resolved->kind == NodeKind::Struct) {
         Node* st = callee->resolved;
         int id = tmp();
@@ -615,6 +616,31 @@ auto Emitter::emit_call(Node* n) -> string {
         Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
         if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
             n->resolved->kind == NodeKind::Func) {
+            if (lt->name == "files" && (callee->text == "canonical" ||
+                callee->text == "create_temporary_directory" || callee->text == "remove_tree" ||
+                callee->text == "rename")) {
+                const bool text_result = callee->text == "canonical" || callee->text == "create_temporary_directory";
+                string prefix;
+                vector<string> arguments;
+                for (Node* argument = n->body; argument != nullptr; argument = argument->next) {
+                    string name = "_lb_fa" + std::to_string(tmp());
+                    prefix += c_type(argument->left->ty) + " " + name + " = " + emit_expr(argument->left) + "; ";
+                    arguments.push_back(name);
+                }
+                string result = "_lb_fs" + std::to_string(tmp());
+                string status = "_lb_fe" + std::to_string(tmp());
+                string helper = callee->text == "create_temporary_directory" ? "temporary_directory" : string(callee->text);
+                string call = "lb_files_" + helper + "(" + (text_result ? "lb_get_alloc(), " : "");
+                for (size_t index = 0; index < arguments.size(); ++index) {
+                    if (index) call += ", ";
+                    call += arguments[index];
+                }
+                if (text_result) call += ", &" + result + ".value";
+                call += ")";
+                return "({ " + prefix + fail_c_name(n->ty) + " " + result + " = {0}; int " + status + " = " + call + "; " +
+                    "if (" + status + ") { " + result + ".failed = true; " + result +
+                    ".error = (lb_error){ .code = " + status + ", .message = (lb_str){\"filesystem operation failed\", 27} }; } " + result + "; })";
+            }
             if (lt->name == "io" && callee->text == "stdout") {
                 return "((lb_iface){ (void*)stdout, &lb_vt_file })";
             }
@@ -771,6 +797,17 @@ auto Emitter::emit_call(Node* n) -> string {
                 Node* prog = n->body != nullptr ? n->body->left : nullptr;
                 Node* args =
                     n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
+                Node* directory = args && n->body->next->next ? n->body->next->next->left : nullptr;
+                Node* environment = directory && n->body->next->next->next ? n->body->next->next->next->left : nullptr;
+                string setup;
+                string envdata = "NULL", envsize = "0";
+                if (environment) {
+                    string name = "_lb_pe" + std::to_string(tmp());
+                    setup = c_type(environment->ty) + " " + name + " = " + emit_expr(environment) + "; ";
+                    envdata = "(" + name + ".present ? (const char* const*)" + name + ".value.data : NULL)";
+                    envsize = "(" + name + ".present ? " + name + ".value.length : 0)";
+                }
+                string cwd = directory ? emit_expr(directory) : "\"\"";
                 string p = prog != nullptr ? emit_expr(prog) : "NULL";
                 string pathc =
                     prog != nullptr && prog->ty != nullptr && prog->ty->kind == TypeKind::CStr
@@ -785,10 +822,10 @@ auto Emitter::emit_call(Node* n) -> string {
                 string an = "_lb_pa" + std::to_string(id);
                 string rn = "_lb_pr" + std::to_string(id);
                 return "({ const char* _lb_pp = " + pathc + "; " + aty + " " + an + " = " + a +
-                       "; int32_t _lb_st = 0; lb_str _lb_so = {NULL, 0}; lb_str _lb_se = {NULL, "
+                       "; const char* _lb_pd = " + cwd + "; " + setup + "int32_t _lb_st = 0; lb_str _lb_so = {NULL, 0}; lb_str _lb_se = {NULL, "
                        "0}; int _lb_rc = lb_process_run(_lb_pp, (const char* const*)" +
                        an + ".data, " + an +
-                       ".length, lb_get_alloc(), &_lb_st, &_lb_so, "
+                       ".length, _lb_pd, " + envdata + ", " + envsize + ", lb_get_alloc(), &_lb_st, &_lb_so, "
                        "&_lb_se); " +
                        rty + " " + rn + " = {0}; if (_lb_rc != 0) { " + rn + ".failed = true; " + rn +
                        ".error = (lb_error){ .code = 1, .message = (lb_str){\"run\", 3} }; } else "

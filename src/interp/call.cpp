@@ -281,7 +281,8 @@ auto Interp::eval_call(Node* n) -> Value {
         return eval_ctor(n, n->resolved);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func &&
-        n->resolved->text == "init" && callee != nullptr && callee->kind == NodeKind::Name &&
+        n->resolved->text == "init" && callee != nullptr &&
+        (callee->kind == NodeKind::Name || callee->kind == NodeKind::Member) &&
         callee->resolved != nullptr && callee->resolved->kind == NodeKind::Struct) {
         Node* st = callee->resolved;
         Value v = zero_of(st->ty);
@@ -503,6 +504,12 @@ auto Interp::eval_call(Node* n) -> Value {
                 } while (result < 0 && errno == EINTR);
                 return v_bool(result == 0);
             }
+            if (lt->name == "files" && (callee->text == "canonical" ||
+                callee->text == "create_temporary_directory" || callee->text == "remove_tree" ||
+                callee->text == "rename")) {
+                fail("filesystem ownership operations require compiled execution");
+                return v_unit();
+            }
             if (lt->name == "files" && callee->text == "list") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string path = cstr_text(pv);
@@ -550,6 +557,17 @@ auto Interp::eval_call(Node* n) -> Value {
                 return ok_payload(span, n->ty);
             }
             if (lt->name == "process" && callee->text == "run") {
+                // The oracle deliberately models only the inherited-state form.
+                // Bootstrap child settings require native OS execution.
+                Node* options = n->body && n->body->next ? n->body->next->next : nullptr;
+                if (options && options->left && options->left->text != "\"\"") {
+                    fail("process.run child settings require compiled execution");
+                    return v_unit();
+                }
+                if (options && options->next && options->next->left && options->next->left->op != TokenKind::KwNone) {
+                    fail("process.run child settings require compiled execution");
+                    return v_unit();
+                }
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 Value av = n->body != nullptr && n->body->next != nullptr
                                ? eval(n->body->next->left)
