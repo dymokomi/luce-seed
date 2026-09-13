@@ -4,7 +4,7 @@
 //
 //   DESCRIPTION:
 //       Reads `luce.toml`, resolves `import` paths under the package root, loads every
-//       reachable `.lucb` once, and orders modules so dependencies check first (base.md Â§16).
+//       reachable `.lucb` once, and orders modules so dependencies check first (base.md §16).
 //
 //==============================================================================================
 
@@ -189,7 +189,7 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
                                     "cannot find module `" + dep + "`");
                     return false;
                 }
-                // a standard module the seed carries as Base source (Â§16.6)
+                // a standard module the seed carries as Base source (§16.6)
                 if (!load_bytes(program, "<std>/" + dep + ".lucb", dep, embedded, diagnostics, stack)) {
                     return false;
                 }
@@ -242,7 +242,7 @@ bool load_bytes(Program& program, const string& path, const string& name, const 
     return ok && diagnostics.empty();
 }
 
-// A module's file name without `.lucb` is an identifier (Â§16.1): a letter or `_`, then
+// A module's file name without `.lucb` is an identifier (§16.1): a letter or `_`, then
 // letters, digits, or `_`, so it names the module and its C symbols.
 bool file_names_a_module(const string& path) {
 #ifdef _WIN32
@@ -282,7 +282,7 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     }
     if (!file_names_a_module(path)) {
         diagnostics.add("lucb.check.import", path, Span{},
-                        "a module's file name is an identifier (Â§16.1)");
+                        "a module's file name is an identifier (§16.1)");
         return false;
     }
     return load_bytes(program, path, name, bytes, diagnostics, stack);

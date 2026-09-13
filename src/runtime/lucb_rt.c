@@ -7,7 +7,7 @@
 //       conversions, the heap and fixed-buffer allocators behind `memory`, formatted display
 //       of scalars, UTF-8 validation, hashing, `files`, `process`, threads over pthreads, and
 //       the `sync` primitives over atomic wait/wake. Base has no runtime of its own (base.md
-//       Â§1.3); this is the startup shim, trap reporter, and standard modules the seed
+//       §1.3); this is the startup shim, trap reporter, and standard modules the seed
 //       supplies.
 //
 //==============================================================================================

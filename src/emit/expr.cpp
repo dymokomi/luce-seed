@@ -24,9 +24,9 @@ auto Emitter::emit_src_file() -> string {
     return "((lb_str){" + c_escape(file) + ", " + std::to_string(file.size()) + "})";
 }
 
-// `path:line: assert failed: condition`: what a failed `assert` reports (Â§11.6).
+// `path:line: assert failed: condition`: what a failed `assert` reports (§11.6).
 auto Emitter::assert_message(Node* call) -> string {
-    // the position is the trap's (Â§11.5, Â§11.6)
+    // the position is the trap's (§11.5, §11.6)
     string msg = "assert failed";
     if (!call->text.empty()) {
         msg += ": " + string(call->text);
@@ -68,7 +68,7 @@ auto Emitter::produces_opt(Node* n) -> bool {
         return is_fail(result) && is_opt(result->elem);
     }
     if (n->kind == NodeKind::Catch) {
-        return true; // a `catch` typed `T?` builds the optional itself (Â§11.4)
+        return true; // a `catch` typed `T?` builds the optional itself (§11.4)
     }
     if (n->kind == NodeKind::Binary &&
         (n->op == TokenKind::PlusQuestion || n->op == TokenKind::MinusQuestion ||
@@ -395,7 +395,7 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
         if (at_file_scope && n->resolved != nullptr && n->resolved->kind == NodeKind::Const &&
             n->resolved->left != nullptr) {
             // C reads no global in a file-scope initialiser: the constant's value stands in
-            // for its name (Â§6.4)
+            // for its name (§6.4)
             return "(" + emit_expr(n->resolved->left) + ")";
         }
         if (is_span(n->ty) && n->resolved != nullptr && is_array(n->resolved->ty)) {
@@ -580,7 +580,7 @@ auto Emitter::emit_literal(Node* n) -> string {
     }
     if (n->op == TokenKind::FloatLit) {
         ParsedFloat p = parse_float_literal(n->text);
-        // the bits the literal rounds to at its own width (base.md Â§4.3), as C's exact
+        // the bits the literal rounds to at its own width (base.md §4.3), as C's exact
         // hexadecimal float: the C compiler neither rounds again nor refuses a small value
         int width = n->ty != nullptr && n->ty->kind == TypeKind::F16 ? 16
                   : n->ty != nullptr && n->ty->kind == TypeKind::F32 ? 32 : 64;
@@ -668,7 +668,7 @@ auto Emitter::emit_helper(const char* name, Type* t, const string& L, const stri
     return down_cast(t, h);
 }
 
-// `a == b` for values of type `t`, component by component (Â§7.4); `a` and `b`
+// `a == b` for values of type `t`, component by component (§7.4); `a` and `b`
 // are simple C lvalues, so they may appear as often as the type needs.
 auto Emitter::emit_equal(Type* t, const string& a, const string& b) -> string {
     if (t == nullptr) {
@@ -883,7 +883,7 @@ auto Emitter::emit_binary_values(Node* n, const string& L, const string& R) -> s
     return emit_arith(t, op, L, R);
 }
 
-// One scalar arithmetic, wrapping, saturating, bit, or shift operation of Â§7.2 and Â§7.3 on
+// One scalar arithmetic, wrapping, saturating, bit, or shift operation of §7.2 and §7.3 on
 // operands `L` and `R` of type `t`: a C operator for floats and bits, a runtime helper for
 // the checked and modular integer forms.
 auto Emitter::emit_arith(Type* t, TokenKind op, const string& L, const string& R) -> string {
@@ -900,7 +900,7 @@ auto Emitter::emit_arith(Type* t, TokenKind op, const string& L, const string& R
     }
     if (at_file_scope) {
         // a file-scope initialiser is a constant expression the checker has already
-        // evaluated without overflow (Â§6.4); C wants the plain operator there
+        // evaluated without overflow (§6.4); C wants the plain operator there
         const char* cop = op == TokenKind::Plus || op == TokenKind::PlusPercent || op == TokenKind::PlusPipe ? "+"
                           : op == TokenKind::Minus || op == TokenKind::MinusPercent || op == TokenKind::MinusPipe ? "-"
                           : op == TokenKind::Star || op == TokenKind::StarPercent || op == TokenKind::StarPipe ? "*"
@@ -947,7 +947,7 @@ auto Emitter::emit_arith(Type* t, TokenKind op, const string& L, const string& R
     return "0";
 }
 
-// Lane-wise arithmetic (Â§5.12): the operands are bound once, each lane of the result is the
+// Lane-wise arithmetic (§5.12): the operands are bound once, each lane of the result is the
 // scalar operation on the operands' lanes, a scalar operand standing for every lane.
 auto Emitter::emit_vector_binary(Node* n, Type* vt, const string& L, const string& R) -> string {
     Type* et = vt->elem;
@@ -982,7 +982,7 @@ auto Emitter::emit_vector_unary(Node* n, Type* vt, const string& x) -> string {
     return s + r + "; })";
 }
 
-// `T[N](x)`: every lane is `x`, computed once (Â§5.12); in a global's initialiser `x` is a
+// `T[N](x)`: every lane is `x`, computed once (§5.12); in a global's initialiser `x` is a
 // constant and the lanes are a compound literal.
 auto Emitter::emit_splat(Node* n) -> string {
     Type* vt = n->ty;
@@ -1005,7 +1005,7 @@ auto Emitter::emit_splat(Node* n) -> string {
     return s + r + "; })";
 }
 
-// `v.sum()`, `v.min()`, `v.max()`: the lanes folded in order (Â§5.12); a float `min` or `max`
+// `v.sum()`, `v.min()`, `v.max()`: the lanes folded in order (§5.12); a float `min` or `max`
 // skips a NaN lane when another lane compares.
 auto Emitter::emit_vector_fold(Node* obj, Node* n) -> string {
     Type* vt = obj->ty;
@@ -1066,7 +1066,7 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
         return e;
     }
     if (dest->kind == TypeKind::CStr && st != nullptr && st->kind == TypeKind::Str) {
-        return "lb_cstr_of(" + e + ")"; // raw address borrow; termination/lifetime belong to the caller (Â§5.5)
+        return "lb_cstr_of(" + e + ")"; // raw address borrow; termination/lifetime belong to the caller (§5.5)
     }
     if (is_int_enum(dest)) {
         if (checked) {
@@ -1155,7 +1155,7 @@ auto Emitter::emit_member(Node* n) -> string {
             return "2";
         }
         // `module.constant`: a public top-level binding of another module; in a file-scope
-        // initialiser its value stands in for its name (Â§6.4)
+        // initialiser its value stands in for its name (§6.4)
         if (at_file_scope && n->resolved != nullptr && n->resolved->kind == NodeKind::Const &&
             n->resolved->left != nullptr) {
             return "(" + emit_expr(n->resolved->left) + ")";
@@ -1207,7 +1207,7 @@ auto Emitter::emit_index(Node* n, bool one_past) -> string {
     Type* bt = n->left != nullptr ? n->left->ty : nullptr;
     string b = emit_expr(n->left);
     string i = emit_expr(n->body);
-    // under `&` the index may equal the length: C's one past the end (Â§7.7)
+    // under `&` the index may equal the length: C's one past the end (§7.7)
     const uint64_t slack = one_past ? 1 : 0;
     if (is_array(bt)) {
         char nbuf[32];
@@ -1260,7 +1260,7 @@ auto Emitter::emit_slice(Node* n) -> string {
 
 auto Emitter::emit_array_lit(Node* n) -> string {
     if (n->ty != nullptr && n->ty->kind == TypeKind::Span) {
-        // a literal where a span is wanted (Â§5.4): an array of the function's, declared at
+        // a literal where a span is wanted (§5.4): an array of the function's, declared at
         // its top like a format buffer, so the span outlives the expression that filled it
         int count = 0;
         for (Node* e = n->body; e != nullptr; e = e->next) {
