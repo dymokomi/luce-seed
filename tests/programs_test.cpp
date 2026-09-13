@@ -187,7 +187,7 @@ bool prove(const fs::path& entry) {
     if (!scratch.ok()) {
         return false;
     }
-    std::string exe = scratch.path + "/prog";
+    std::string exe = scratch.path + "/prog.exe";
     lucb::NativeInputs inputs;
     inputs.root = program.manifest.root.empty() ? "." : program.manifest.root;
     inputs.sources = program.manifest.sources;
@@ -202,7 +202,7 @@ bool prove(const fs::path& entry) {
     // `# release: true`: the C the host compiler optimises must behave as the C it does
     // not; a value that only survives at -O0 (a buffer of a scope that ended) shows here
     if (directive(text, "release") == "true") {
-        std::string exe_release = scratch.path + "/prog-release";
+        std::string exe_release = scratch.path + "/prog-release.exe";
         if (!lucb::compile_c(c, exe_release, &err, has_answer, true, &inputs)) {
             std::fprintf(stderr, "    release link failed:\n%s\n", err.c_str());
             return false;

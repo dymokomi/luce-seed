@@ -629,6 +629,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 }
                 string result = "_lb_fs" + std::to_string(tmp());
                 string status = "_lb_fe" + std::to_string(tmp());
+                string message = "files." + string(callee->text) + " failed";
                 string helper = callee->text == "create_temporary_directory" ? "temporary_directory" : string(callee->text);
                 string call = "lb_files_" + helper + "(" + (text_result ? "lb_get_alloc(), " : "");
                 for (size_t index = 0; index < arguments.size(); ++index) {
@@ -639,7 +640,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 call += ")";
                 return "({ " + prefix + fail_c_name(n->ty) + " " + result + " = {0}; int " + status + " = " + call + "; " +
                     "if (" + status + ") { " + result + ".failed = true; " + result +
-                    ".error = (lb_error){ .code = " + status + ", .message = (lb_str){\"filesystem operation failed\", 27} }; } " + result + "; })";
+                    ".error = (lb_error){ .code = " + status + ", .message = (lb_str){\"" + message + "\", " + std::to_string(message.size()) + "} }; } " + result + "; })";
             }
             if (lt->name == "io" && callee->text == "stdout") {
                 return "((lb_iface){ (void*)stdout, &lb_vt_file })";
