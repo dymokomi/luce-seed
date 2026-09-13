@@ -134,3 +134,14 @@ if(ENABLE_SANITIZERS)
     target_compile_options(runtime_tests PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all)
     target_link_options(runtime_tests PRIVATE -fsanitize=address,undefined)
 endif()
+
+enable_testing()
+add_test(NAME compiler COMMAND lucb_tests)
+add_test(NAME runtime COMMAND runtime_tests)
+set_tests_properties(compiler runtime PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    TIMEOUT 1800)
+if(WIN32)
+    add_test(NAME windows_host COMMAND windows_host_tests)
+    set_tests_properties(windows_host PROPERTIES TIMEOUT 60)
+endif()
