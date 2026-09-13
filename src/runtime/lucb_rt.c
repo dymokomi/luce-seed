@@ -7,7 +7,7 @@
 //       conversions, the heap and fixed-buffer allocators behind `memory`, formatted display
 //       of scalars, UTF-8 validation, hashing, `files`, `process`, threads over pthreads, and
 //       the `sync` primitives over atomic wait/wake. Base has no runtime of its own (base.md
-//       §1.3); this is the startup shim, trap reporter, and standard modules the seed
+//       Â§1.3); this is the startup shim, trap reporter, and standard modules the seed
 //       supplies.
 //
 //==============================================================================================
@@ -19,14 +19,30 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
+#ifndef _WIN32
 #include <poll.h>
+#include <sys/wait.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <unistd.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <io.h>
+#include <malloc.h>
+#endif
 
 static _Thread_local lb_iface lb_current_alloc = {NULL, NULL};
+
+void lb_runtime_init(void) {
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+#endif
+}
 
 lb_alloc lb_heap_raw(void) {
     lb_alloc a;
@@ -270,7 +286,12 @@ lb_span lb_alloc_bytes(lb_alloc a, size_t size, size_t align) {
     if (a.kind == 0) {
         align = clamp_align(align);
         void* p = NULL;
+        #ifdef _WIN32
+        p = _aligned_malloc(size, align);
+        if (p == NULL) {
+#else
         if (posix_memalign(&p, align, size) != 0) {
+#endif
             return s;
         }
         s.data = p;
@@ -296,7 +317,11 @@ void lb_release_bytes(lb_alloc a, lb_span block) {
         return;
     }
     if (a.kind == 0) {
+        #ifdef _WIN32
+        _aligned_free(block.data);
+#else
         free(block.data);
+#endif
     }
 }
 
@@ -318,7 +343,12 @@ lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size) {
             return s;
         }
         void* p = NULL;
+        #ifdef _WIN32
+        p = _aligned_malloc(size, clamp_align(sizeof(void*)));
+        if (p == NULL) {
+#else
         if (posix_memalign(&p, clamp_align(sizeof(void*)), size) != 0) {
+#endif
             return s;
         }
         size_t n = size < block.length ? size : block.length;
@@ -326,7 +356,11 @@ lb_span lb_resize_bytes(lb_alloc a, lb_span block, size_t size) {
             memcpy(p, block.data, n);
         }
         if (block.length > 0 && block.data != NULL) {
-            free(block.data);
+            #ifdef _WIN32
+        _aligned_free(block.data);
+#else
+        free(block.data);
+#endif
         }
         s.data = p;
         s.length = size;
@@ -725,6 +759,7 @@ static int lb_store_captured(lb_iface a, const char* src, size_t n, lb_str* out)
     return 0;
 }
 
+#ifndef _WIN32
 static int lb_read_more(int fd, char** buf, size_t* used, size_t* cap, int* open) {
     if (*cap - *used < 64) {
         size_t next = *cap == 0 ? 256 : *cap * 2;
@@ -852,6 +887,98 @@ int lb_process_run(const char* program, const char* const* args, size_t nargs, l
     free(ebuf);
     return fail;
 }
+
+#else
+// Capture into temporary files so either stream can grow without blocking its sibling.
+static int lb_win_capture(FILE* file, lb_iface alloc, lb_str* output) {
+    if (_fseeki64(file, 0, SEEK_END) != 0) return 1;
+    __int64 length = _ftelli64(file);
+    if (length < 0 || (uint64_t)length > SIZE_MAX - 1) return 1;
+    rewind(file);
+    char* bytes = (char*)malloc((size_t)length + 1);
+    if (bytes == NULL) return 1;
+    int failed = fread(bytes, 1, (size_t)length, file) != (size_t)length;
+    if (!failed) failed = lb_store_captured(alloc, bytes, (size_t)length, output);
+    free(bytes);
+    return failed;
+}
+
+int lb_process_run(const char* program, const char* const* args, size_t nargs, lb_iface alloc,
+                   int32_t* status, lb_str* out, lb_str* err) {
+    if (program == NULL || nargs > SIZE_MAX / sizeof(char*) - 1) return 1;
+    size_t room = 1;
+    for (size_t i = 0; i <= nargs; ++i) {
+        const char* arg = i == 0 ? program : (args && args[i - 1] ? args[i - 1] : "");
+        size_t n = strlen(arg);
+        if (n > (SIZE_MAX - room - 3) / 2) return 1;
+        room += n * 2 + 3;
+    }
+    char* command = (char*)malloc(room);
+    if (command == NULL) return 1;
+    char* cursor = command;
+    for (size_t i = 0; i <= nargs; ++i) {
+        const char* arg = i == 0 ? program : (args && args[i - 1] ? args[i - 1] : "");
+        if (i) *cursor++ = ' ';
+        if (*arg && strpbrk(arg, " \t\r\n\"") == NULL) {
+            while (*arg) *cursor++ = *arg++;
+            continue;
+        }
+        *cursor++ = '"';
+        size_t slashes = 0;
+        for (; *arg; ++arg) {
+            if (*arg == '\\') { ++slashes; continue; }
+            size_t count = *arg == '"' ? slashes * 2 + 1 : slashes;
+            while (count--) *cursor++ = '\\';
+            *cursor++ = *arg;
+            slashes = 0;
+        }
+        while (slashes--) { *cursor++ = '\\'; *cursor++ = '\\'; }
+        *cursor++ = '"';
+    }
+    *cursor = 0;
+    int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, command, -1, NULL, 0);
+    wchar_t* wide = count > 0 ? (wchar_t*)malloc((size_t)count * sizeof(wchar_t)) : NULL;
+    if (wide == NULL) { free(command); return 1; }
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, command, -1, wide, count);
+    free(command);
+    FILE* output = tmpfile();
+    FILE* errors = tmpfile();
+    HANDLE handles[3] = {NULL, NULL, NULL};
+    HANDLE current = GetCurrentProcess();
+    int failed = 1;
+    if (output && errors &&
+        DuplicateHandle(current, (HANDLE)_get_osfhandle(_fileno(output)), current, &handles[0], 0, TRUE, DUPLICATE_SAME_ACCESS) &&
+        DuplicateHandle(current, (HANDLE)_get_osfhandle(_fileno(errors)), current, &handles[1], 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+        SECURITY_ATTRIBUTES security = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
+        handles[2] = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 &security, OPEN_EXISTING, 0, NULL);
+        if (handles[2] != INVALID_HANDLE_VALUE) {
+            STARTUPINFOW startup = {0};
+            startup.cb = sizeof(startup);
+            startup.dwFlags = STARTF_USESTDHANDLES;
+            startup.hStdOutput = handles[0];
+            startup.hStdError = handles[1];
+            startup.hStdInput = handles[2];
+            PROCESS_INFORMATION child = {0};
+            if (CreateProcessW(NULL, wide, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &startup, &child)) {
+                DWORD code = 1;
+                if (WaitForSingleObject(child.hProcess, INFINITE) == WAIT_OBJECT_0 && GetExitCodeProcess(child.hProcess, &code)) {
+                    if (status) *status = (int32_t)code;
+                    failed = lb_win_capture(output, alloc, out) || lb_win_capture(errors, alloc, err);
+                }
+                CloseHandle(child.hThread);
+                CloseHandle(child.hProcess);
+            }
+        }
+    }
+    for (size_t i = 0; i < 3; ++i)
+        if (handles[i] && handles[i] != INVALID_HANDLE_VALUE) CloseHandle(handles[i]);
+    if (output) fclose(output);
+    if (errors) fclose(errors);
+    free(wide);
+    return failed;
+}
+#endif
 
 static uint64_t lb_seed;
 static int lb_seed_set;

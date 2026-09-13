@@ -12,6 +12,7 @@
 //==============================================================================================
 
 #include "interp/interp_impl.h"
+#include "emit/host.h"
 
 #include <cmath>
 #include "interp/punning.h"
@@ -22,8 +23,10 @@
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <poll.h>
 #include <sys/wait.h>
+#endif
 #include <unistd.h>
 
 namespace lucb {
@@ -54,6 +57,7 @@ static Value* first_cell(Value* at) {
 }
 
 // A fallible result already failed, for a callee the oracle cannot run.
+#ifndef _WIN32
 static Value fail_run(Type* ty) {
     Value e;
     e.failed = true;
@@ -82,6 +86,7 @@ static bool read_pipe_chunk(int fd, string* buf, bool* open) {
 }
 
 // `holder.callback(args)`: a field of function type is a call through its value, not a method.
+#endif
 static bool is_field_call(Node* callee) {
     return callee != nullptr && callee->resolved != nullptr &&
            callee->resolved->kind == NodeKind::Field && is_func(callee->ty);
@@ -569,6 +574,12 @@ auto Interp::eval_call(Node* n) -> Value {
                     }
                     store.push_back(a);
                 }
+#ifdef _WIN32
+                auto result = run_exe(prog, store);
+                string captured_out = result.out;
+                string captured_err = result.err;
+                int exit_code = result.exit_code;
+#else
                 for (size_t i = 0; i < store.size(); i++) {
                     argv.push_back(store[i].c_str());
                 }
@@ -644,6 +655,8 @@ auto Interp::eval_call(Node* n) -> Value {
                 if (io_fail || waitpid(pid, &st, 0) < 0 || !WIFEXITED(st)) {
                     return fail_run(n->ty);
                 }
+                int exit_code = WEXITSTATUS(st);
+#endif
                 strings.push_back(captured_out);
                 Value ov = v_str(strings.back());
                 strings.push_back(captured_err);
@@ -653,7 +666,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 Value tup;
                 tup.kind = TypeKind::Tuple;
                 tup.type = payload;
-                tup.fields.push_back(v_int(code_t, static_cast<uint64_t>(WEXITSTATUS(st))));
+                tup.fields.push_back(v_int(code_t, static_cast<uint64_t>(exit_code)));
                 tup.fields.push_back(ov);
                 tup.fields.push_back(ev);
                 return ok_payload(tup, n->ty);

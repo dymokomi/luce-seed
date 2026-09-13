@@ -4,7 +4,7 @@
 //
 //   DESCRIPTION:
 //       Reads `luce.toml`, resolves `import` paths under the package root, loads every
-//       reachable `.lucb` once, and orders modules so dependencies check first (base.md §16).
+//       reachable `.lucb` once, and orders modules so dependencies check first (base.md Ã‚Â§16).
 //
 //==============================================================================================
 
@@ -15,6 +15,7 @@
 
 #include <cstring>
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -22,8 +23,12 @@
 namespace lucb {
 namespace {
 
+std::filesystem::path native_path(const string& text) {
+    return std::filesystem::path(reinterpret_cast<const char8_t*>(text.c_str()));
+}
+
 string slurp_file(const string& path, string* error) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(native_path(path), std::ios::binary);
     if (!in) {
         if (error != nullptr) {
             *error = "cannot open " + path;
@@ -35,35 +40,29 @@ string slurp_file(const string& path, string* error) {
     return buffer.str();
 }
 
+string path_text(const std::filesystem::path& path) {
+    const auto bytes = path.generic_u8string();
+    return string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
 bool is_dir(const string& path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    std::error_code error;
+    return std::filesystem::is_directory(native_path(path), error);
 }
 
 bool is_file(const string& path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+    std::error_code error;
+    return std::filesystem::is_regular_file(native_path(path), error);
 }
 
 string dirname_of(const string& path) {
-    size_t slash = path.find_last_of('/');
-    if (slash == string::npos) {
-        return ".";
-    }
-    if (slash == 0) {
-        return "/";
-    }
-    return path.substr(0, slash);
+    const auto parent = native_path(path).parent_path();
+    return parent.empty() ? "." : path_text(parent);
 }
 
 string join_path(const string& a, const string& b) {
-    if (a.empty() || a == ".") {
-        return b;
-    }
-    if (a.back() == '/') {
-        return a + b;
-    }
-    return a + "/" + b;
+    if (a.empty() || a == ".") return b;
+    return path_text(native_path(a) / native_path(b));
 }
 
 string trim(string_view s) {
@@ -190,7 +189,7 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
                                     "cannot find module `" + dep + "`");
                     return false;
                 }
-                // a standard module the seed carries as Base source (§16.6)
+                // a standard module the seed carries as Base source (Ã‚Â§16.6)
                 if (!load_bytes(program, "<std>/" + dep + ".lucb", dep, embedded, diagnostics, stack)) {
                     return false;
                 }
@@ -243,10 +242,14 @@ bool load_bytes(Program& program, const string& path, const string& name, const 
     return ok && diagnostics.empty();
 }
 
-// A module's file name without `.lucb` is an identifier (§16.1): a letter or `_`, then
+// A module's file name without `.lucb` is an identifier (Ã‚Â§16.1): a letter or `_`, then
 // letters, digits, or `_`, so it names the module and its C symbols.
 bool file_names_a_module(const string& path) {
+#ifdef _WIN32
+    size_t start = path.find_last_of("/\\");
+#else
     size_t start = path.rfind('/');
+#endif
     start = start == string::npos ? 0 : start + 1;
     size_t end = path.find('.', start);
     if (end == string::npos) {
@@ -279,7 +282,7 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     }
     if (!file_names_a_module(path)) {
         diagnostics.add("lucb.check.import", path, Span{},
-                        "a module's file name is an identifier (§16.1)");
+                        "a module's file name is an identifier (Ã‚Â§16.1)");
         return false;
     }
     return load_bytes(program, path, name, bytes, diagnostics, stack);

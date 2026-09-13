@@ -1,4 +1,5 @@
 /build/
+/build-windows/
 /build-test/
 /build-release/
 /.cache/

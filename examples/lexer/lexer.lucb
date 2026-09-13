@@ -43,7 +43,7 @@ pub struct Lexer:
         while self.peek() == ' ':
             self.offset += 1
             column += 1
-        if self.peek() == '\n' or self.peek() == '#' or self.peek() == 0:
+        if self.peek() == '\n' or self.peek() == '\r' or self.peek() == '#' or self.peek() == 0:
             return none
         self.at_line_start = false
         let current = self.levels[self.depth]
@@ -72,7 +72,7 @@ pub struct Lexer:
                 return layout_token
         while true:
             let c = self.peek()
-            if c == ' ':
+            if c == ' ' or c == '\r':
                 self.offset += 1
             elif c == '#':
                 while self.peek() != '\n' and self.peek() != 0:

@@ -527,7 +527,7 @@ TEST(agree_thread_local) {
 }
 
 // A struct that is `Display` writes itself through the sink a formatted string offers
-// (§14.4): to standard output from `print`, into the caller's buffer from `format`.
+// (Ãƒâ€šÃ‚Â§14.4): to standard output from `print`, into the caller's buffer from `format`.
 TEST(agree_display_protocol) {
     CHECK(agrees("from luce import Display\nfrom io import Writer\n"
                  "struct Point: Display:\n    var x: i64\n    var y: i64\n"
@@ -912,7 +912,7 @@ static std::string c_of(const char* text) {
 
 // `c.long`, `c.char`, and `c.wchar` compute as the integers of their width; the C is spelled
 // `long`, `char`, `wchar_t`, and `c.va_list` is `va_list`.
-// `f16` is a real binary16 (§5.1): two bytes in memory, every result rounded to half precision,
+// `f16` is a real binary16 (Ãƒâ€šÃ‚Â§5.1): two bytes in memory, every result rounded to half precision,
 // so `2048.0 + 1.0` is `2048.0` and `1.0 / 3.0` is the nearest half, in both executions.
 TEST(agree_half_floats) {
     CHECK(agrees("pub func answer() -> i64:\n"
@@ -1242,12 +1242,18 @@ TEST(agree_files_list_missing) {
 }
 
 TEST(agree_process_run) {
-    CHECK(agrees("import process\n" "import c\npub func answer() -> i64!:\n"
+    const char* program = "import process\n" "import c\npub func answer() -> i64!:\n"
+#ifdef _WIN32
+                 "    var args: c.str[2] = [\"/c\", \"<nul set /p=out& <nul set /p=err>&2& exit /b 7\"]\n"
+                 "    let (code, out, err) = try process.run(\"cmd.exe\", args)\n"
+#else
                  "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                  "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+#endif
                  "    if out == \"out\" and err == \"err\":\n"
                  "        return i64(code)\n"
-                 "    return 0\n"));
+                 "    return 0\n";
+    CHECK(agrees(program));
 }
 
 TEST(agree_hashable_intern) {
@@ -1572,7 +1578,7 @@ TEST(agree_vector_splat_at_top_level) {
 
 TEST(agree_cast_gives_its_operand_no_context) {
     // `(u8)(200 + 100)` computes as `i64` and truncates to 44; `(u32)(1 << 40)` is 0; a bare
-    // literal is read in the cast's type; `-128` is an `i8` (§4.2, §7.5)
+    // literal is read in the cast's type; `-128` is an `i8` (Ãƒâ€šÃ‚Â§4.2, Ãƒâ€šÃ‚Â§7.5)
     CHECK(agrees("pub func answer() -> i64:\n    let a: u8 = (u8)(200 + 100)\n    let b: u32 = (u32)(1 << 40)\n    let c: i8 = (i8)(-300)\n    let d: u64 = (u64)18446744073709551615\n    let e: i8 = -128\n    let f: u8 = (u8)(1024 >> 4)\n    return (i64)a + (i64)b + (i64)c + (i64)(d >> 60) + (i64)e + (i64)f + 63\n"));
 }
 
@@ -1795,6 +1801,7 @@ pub func answer() -> i64!:
     CHECK(both.interp.ok);
     CHECK(!both.interp.trapped);
     CHECK_EQ(both.interp.answer, 0);
+    if (both.native.exit_code != 0) std::fprintf(stderr, "%s", both.native.err.c_str());
     CHECK_EQ(both.native.exit_code, 0);
     CHECK_EQ(both.native.out, "0\n");
 }

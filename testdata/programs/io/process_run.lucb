@@ -2,10 +2,11 @@
 
 import c
 import process
+import platform
 
 pub func answer() -> i64!:
-    var args: c.str[2] = ["-c", "printf out; printf err >&2; exit 7"]
-    let (code, out, err) = try process.run("/bin/sh", args)
+    var args: c.str[2] = ["/c", "<nul set /p=out& <nul set /p=err>&2& exit /b 7"] if platform.windows else ["-c", "printf out; printf err >&2; exit 7"]
+    let (code, out, err) = try process.run("cmd.exe" if platform.windows else "/bin/sh", args)
     if out == "out" and err == "err":
         return i64(code)
     return 0

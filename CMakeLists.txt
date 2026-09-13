@@ -38,6 +38,7 @@ add_custom_command(
         src/runtime/start.c
         std/math.lucb
         std/paths.lucb
+        std/os.lucb
         std/strings.lucb
         cmake/embed_runtime.cmake
     COMMENT "Embed lucb runtime sources"
@@ -83,11 +84,16 @@ set(LUCB_CORE_SOURCES
     src/emit/memory.cpp
     src/emit/text.cpp
     src/emit/stmt.cpp
-    src/emit/host.cpp
     src/pkg/package.cpp
     src/pkg/platform.cpp
     ${LUCB_EMBED_CPP}
 )
+
+if(WIN32)
+    list(APPEND LUCB_CORE_SOURCES src/emit/host_windows.cpp)
+else()
+    list(APPEND LUCB_CORE_SOURCES src/emit/host.cpp)
+endif()
 
 add_library(lucb_core STATIC ${LUCB_CORE_SOURCES})
 target_include_directories(lucb_core PUBLIC src)
@@ -97,6 +103,12 @@ add_executable(lucb src/main.cpp)
 target_compile_definitions(lucb PRIVATE LUCB_VERSION="${LUCB_VERSION}")
 target_link_libraries(lucb PRIVATE lucb_core)
 lucb_warnings(lucb)
+
+if(WIN32)
+    add_executable(windows_host_tests tests/windows_host_test.cpp)
+    target_link_libraries(windows_host_tests PRIVATE lucb_core)
+    lucb_warnings(windows_host_tests)
+endif()
 
 add_executable(lucb_tests
     tests/harness.cpp

@@ -36,6 +36,7 @@ void lb_restore_pos(const char** saved);
 LB_NORETURN void lb_trap(const char* message);
 LB_NORETURN void lb_trap_two(const char* message, const char* detail);
 void lb_pause(void);
+void lb_runtime_init(void);
 
 typedef struct lb_Mutex {
     _Atomic uint32_t state;

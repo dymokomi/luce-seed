@@ -97,3 +97,19 @@ oracle does not model.
 luce-seed is dual-licensed under the Apache License 2.0 and the MIT license,
 at your option. See [LICENSE](LICENSE), [LICENSE-APACHE](LICENSE-APACHE),
 and [LICENSE-MIT](LICENSE-MIT).
+
+## Windows x64
+
+Use MinGW-w64 GCC with pthread support, CMake and Ninja:
+
+```powershell
+cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-windows -j 4
+ctest --test-dir build-windows --output-on-failure
+```
+
+`build-windows/lucb.exe` can bootstrap the sibling Base compiler through
+`python tools/build_windows.py --seed ../luce-seed/build-windows/lucb.exe`.
+The Windows host uses Unicode process creation and CRT-compatible argument
+quoting. Source files are UTF-8; LF and CRLF line endings are accepted. The local
+Windows run passed all 585 seed tests, including process capture and CRLF cases.

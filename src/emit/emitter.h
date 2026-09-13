@@ -33,7 +33,7 @@ struct Emitter {
     string test_name(Node* t);
     Node* current_fn = nullptr;
     string src_file = "t.lucb";
-    Node* current_module = nullptr; // whose position directives map the statements (§3.3)
+    Node* current_module = nullptr; // whose position directives map the statements (Â§3.3)
     bool wrote_writer_rt = false;
     // Writing a global's initialiser, where C takes a constant expression and no statement
     bool at_file_scope = false;
@@ -116,6 +116,8 @@ struct Emitter {
     string emit_unary(Node* n);
     string emit_helper(const char* name, Type* t, const string& L, const string& R);
     string emit_binary(Node* n);
+    string emit_binary_values(Node* n, const string& L, const string& R);
+    bool may_have_effect(Node* n);
     string emit_enum_check(Type* dest, const string& e);
     string emit_conv(Node* src, Type* dest, bool checked);
     string emit_member(Node* n);

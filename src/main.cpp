@@ -22,11 +22,22 @@
 
 #include <cstdio>
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#include <io.h>
+#include <fcntl.h>
+#endif
 
 using namespace std;
 
@@ -35,7 +46,7 @@ namespace {
 const char* k_version = LUCB_VERSION; // from the VERSION file, through CMake
 
 void print_help(ostream& out) {
-    out << "lucb " << k_version << " — luce-seed, the Luce Base bootstrap compiler\n"
+    out << "lucb " << k_version << " â€” luce-seed, the Luce Base bootstrap compiler\n"
         << "\n"
         << "Usage:\n"
         << "  lucb --version\n"
@@ -52,7 +63,7 @@ void print_help(ostream& out) {
 }
 
 string read_file(const string& path, string& error) {
-    ifstream in(path, ios::binary);
+    ifstream in(filesystem::path(reinterpret_cast<const char8_t*>(path.c_str())), ios::binary);
     if (!in) {
         error = "cannot open " + path;
         return {};
@@ -129,7 +140,7 @@ vector<lucb::Node*> program_modules(lucb::Program& program) {
     return mods;
 }
 
-// The manifest's `[native]` section as the C compiler's inputs (§17.4).
+// The manifest's `[native]` section as the C compiler's inputs (Â§17.4).
 static lucb::NativeInputs native_inputs_of(const lucb::Manifest& manifest) {
     lucb::NativeInputs native;
     native.root = manifest.root.empty() ? "." : manifest.root;
@@ -239,7 +250,7 @@ int cmd_build(int argc, char** argv) {
     string c = mods.size() > 1 ? lucb::emit_program(mods, entry) : lucb::emit_c(entry);
     bool link_answer = !has_func(entry, "main");
     if (emit_c_only) {
-        ofstream out(out_path);
+        ofstream out(filesystem::path(reinterpret_cast<const char8_t*>(out_path.c_str())), ios::binary);
         if (!out) {
             cerr << "lucb: cannot write " << out_path << '\n';
             return 1;
@@ -299,7 +310,7 @@ int cmd_header(int argc, char** argv) {
         cout << h;
         return 0;
     }
-    ofstream out(out_path);
+    ofstream out(filesystem::path(reinterpret_cast<const char8_t*>(out_path.c_str())), ios::binary);
     if (!out) {
         cerr << "lucb: cannot write " << out_path << '\n';
         return 1;
@@ -349,6 +360,31 @@ int cmd_dump(const string& path) {
 } // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+    int wide_count = 0;
+    wchar_t** wide = CommandLineToArgvW(GetCommandLineW(), &wide_count);
+    if (!wide) return 1;
+    vector<string> arguments;
+    arguments.reserve(static_cast<size_t>(wide_count));
+    for (int index = 0; index < wide_count; ++index) {
+        int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide[index], -1,
+                                      nullptr, 0, nullptr, nullptr);
+        if (!size) { LocalFree(wide); return 1; }
+        string value(static_cast<size_t>(size), '\0');
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide[index], -1,
+                            value.data(), size, nullptr, nullptr);
+        value.pop_back();
+        arguments.push_back(std::move(value));
+    }
+    LocalFree(wide);
+    vector<char*> pointers;
+    for (auto& value : arguments) pointers.push_back(value.data());
+    pointers.push_back(nullptr);
+    argc = wide_count;
+    argv = pointers.data();
+#endif
     // `-W` may appear anywhere; it is taken out before the command sees its arguments
     static vector<char*> kept;
     for (int i = 0; i < argc; i++) {

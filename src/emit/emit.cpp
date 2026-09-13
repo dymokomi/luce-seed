@@ -443,6 +443,7 @@ auto Emitter::emit_c_main(Node* fn) -> void {
     bool cstr =
         at != nullptr && is_span(at) && at->elem != nullptr && at->elem->kind == TypeKind::CStr;
     out += "int main(int argc, char** argv) {\n";
+    out += "    lb_runtime_init();\n";
     out += "    lb_set_alloc(lb_heap_alloc());\n";
     if (cstr) {
         string aty = c_type(at);

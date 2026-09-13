@@ -137,8 +137,8 @@ TEST(eval_overflow_traps) {
     CHECK(r.trap.find("overflow") != std::string::npos);
 }
 
-// §11.5: a trap names the statement it stopped at, the callee's inside a call, and the
-// position directive (§3.3) maps it until a bare `#:` restores the file's own
+// Â§11.5: a trap names the statement it stopped at, the callee's inside a call, and the
+// position directive (Â§3.3) maps it until a bare `#:` restores the file's own
 TEST(eval_trap_names_its_statement) {
     EvalResult r = run("func bump(n: i64) -> i64:\n"
                        "    let big: i64 = 9223372036854775807\n"
@@ -841,8 +841,13 @@ TEST(eval_files_list) {
 
 TEST(eval_process_run) {
     EvalResult r = run("import process\n" "import c\npub func answer() -> i64!:\n"
+#ifdef _WIN32
+                 "    var args: c.str[2] = [\"/c\", \"<nul set /p=out& <nul set /p=err>&2& exit /b 7\"]\n"
+                 "    let (code, out, err) = try process.run(\"cmd.exe\", args)\n"
+#else
                        "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
                        "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+#endif
                        "    if out == \"out\" and err == \"err\":\n"
                        "        return i64(code)\n"
                        "    return 0\n");
@@ -867,7 +872,7 @@ TEST(eval_hex) {
     CHECK(r.output.find("ff") != std::string::npos);
 }
 
-// §10.4: a narrow member's write leaves the union's other bytes as they were
+// Â§10.4: a narrow member's write leaves the union's other bytes as they were
 TEST(eval_union_keeps_other_bytes) {
     EvalResult r = run("union S:\n    byte: u8\n    pair: u16\n"
                        "pub func answer() -> i64:\n    var s: S\n    s.pair = 0x1234\n    s.byte = 0xFF\n"
@@ -876,7 +881,7 @@ TEST(eval_union_keeps_other_bytes) {
     CHECK_EQ(r.answer, 0x12FF);
 }
 
-// §10.1: a failing `init` fails the construction
+// Â§10.1: a failing `init` fails the construction
 TEST(eval_init_failure_propagates) {
     EvalResult r = run("let bad = ErrorCode.package(1)\n"
                        "struct P:\n    let v: i64\n"
@@ -888,7 +893,7 @@ TEST(eval_init_failure_propagates) {
     CHECK_EQ(r.answer, 7);
 }
 
-// §10.3: a checked conversion to an `i8` enum matches the case `-1`
+// Â§10.3: a checked conversion to an `i8` enum matches the case `-1`
 TEST(eval_negative_backed_enum_case) {
     EvalResult r = run("enum L as i8:\n    low = -1\n    high = 1\n"
                        "pub func answer() -> i64:\n    let n: i8 = -1\n    let l = L(n)\n"
@@ -897,7 +902,7 @@ TEST(eval_negative_backed_enum_case) {
     CHECK_EQ(r.answer, 1);
 }
 
-// §8.5, §11.4: `break` and `continue` from a handler steer the loop over an array
+// Â§8.5, Â§11.4: `break` and `continue` from a handler steer the loop over an array
 TEST(eval_handler_steers_array_loop) {
     EvalResult r = run("let bad = ErrorCode.package(1)\n"
                        "func d(n: i64) -> i64!:\n    if n < 0:\n        error(bad, \"neg\")\n    if n > 100:\n        error(bad, \"big\")\n    return n * 2\n"
@@ -908,7 +913,7 @@ TEST(eval_handler_steers_array_loop) {
     CHECK_EQ(r.answer, 6);
 }
 
-// §12.2, §12.4: `free` hands the block back to its allocator's `release`, in bytes
+// Â§12.2, Â§12.4: `free` hands the block back to its allocator's `release`, in bytes
 TEST(eval_free_releases_through_the_allocator) {
     EvalResult r = run("import memory\n"
                        "struct Counting: memory.Allocator:\n    var bytes: usize\n"
@@ -923,7 +928,7 @@ TEST(eval_free_releases_through_the_allocator) {
     CHECK_EQ(r.answer, 40000);
 }
 
-// §14.4: `newest` over a struct dispatches to its own `compare`
+// Â§14.4: `newest` over a struct dispatches to its own `compare`
 TEST(eval_struct_compare_under_bound) {
     EvalResult r = run("from luce import Comparable\n"
                        "struct V: Comparable:\n    var n: i64\n    func compare(other: V) -> i64:\n        return self.n - other.n\n"
@@ -933,7 +938,7 @@ TEST(eval_struct_compare_under_bound) {
     CHECK_EQ(r.answer, 2);
 }
 
-// §15.3: a `local var` is one per thread: the spawner's stays as it was
+// Â§15.3: a `local var` is one per thread: the spawner's stays as it was
 TEST(eval_thread_local_per_thread) {
     EvalResult r = run("import thread\nlocal var mine: u64\n"
                        "func bump(context: void*):\n    mine += 1\n"
@@ -942,7 +947,7 @@ TEST(eval_thread_local_per_thread) {
     CHECK_EQ(r.answer, 0);
 }
 
-// §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
+// Â§15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"
                        "pub func answer() -> i64:\n    var head: @N*? = none\n    var a = N(v = 1)\n    var b = N(v = 2)\n"

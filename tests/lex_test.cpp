@@ -355,6 +355,14 @@ TEST(lex_crlf_layout) {
         lexed, {"func", "name", ":", "newline", "indent", "return", "newline", "dedent", "eof"}));
 }
 
+TEST(lex_crlf_suite_inside_call_matches_lf) {
+    Lexed lf("run(func ():\n    return 1)\n");
+    Lexed crlf("run(func ():\r\n    return 1)\r\n");
+    CHECK(lf.diagnostics.empty());
+    CHECK(crlf.diagnostics.empty());
+    CHECK(lf.kinds() == crlf.kinds());
+}
+
 TEST(lex_bom_does_not_shift_columns) {
     Lexed lexed("\xEF\xBB\xBFlet x = 1\n");
     CHECK(lexed.diagnostics.empty());
