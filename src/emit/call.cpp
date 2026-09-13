@@ -582,6 +582,15 @@ auto Emitter::emit_call(Node* n) -> string {
         string prefix;
         string args = emit_args(n->body, &prefix);
         string s = "({ " + sty + " " + vn + " = {0}; " + prefix;
+        // Infallible initializers return void. Only fallible construction has a
+        // result wrapper; its error is handled by the surrounding expression.
+        if ((n->resolved->flags & FlagFallible) == 0) {
+            s += initf + "(&" + vn;
+            if (!args.empty()) {
+                s += ", " + args;
+            }
+            return s + "); " + vn + "; })";
+        }
         s += fail_c_name(n->resolved->ty) + " " + rn + " = " + initf + "(&" + vn;
         if (!args.empty()) {
             s += ", " + args;

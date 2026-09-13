@@ -156,6 +156,14 @@ TEST(agree_array_of_optionals) {
     CHECK(agrees("import c\nvar xs: (i64?)[4]\nvar names: (c.str?)[2]\nfunc at(list: (c.str?)[], k: usize) -> c.str:\n    return list[k] else (c.str)\"\"\npub func answer() -> i64:\n    xs[1] = 40\n    names[0] = (c.str)\"xy\"\n    let v = xs[1] else return 0\n    let w = xs[2] else return v + (i64)((str)at(names, 0)).length\n    return w\n"));
 }
 
+TEST(agree_infallible_initializer) {
+    CHECK(agrees("struct Value:\n    let value: i64\n"
+                 "    pub func init(value: i64):\n        self.value = value\n"
+                 "func wrapped() -> i64!:\n    let value = Value(17)\n    return value.value\n"
+                 "pub func answer() -> i64:\n    let value = Value(25)\n"
+                 "    return value.value + (wrapped() catch:\n        recover 0)\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }
