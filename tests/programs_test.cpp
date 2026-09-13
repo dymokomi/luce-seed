@@ -16,10 +16,10 @@
 //         test "...":                the test runner passes every test
 //         anything else              the file checks and its C compiles
 //
-//       A `# oracle: none` line skips the interpreter (base.md Â§8.9 and the
+//       A `# oracle: none` line skips the interpreter (base.md §8.9 and the
 //       reinterpreted-pointer rule in DESIGN.md); `# link: NAME` marks a
 //       program whose link needs a library the host may lack, so only its C
-//       is compiled. The spec's Â§24 programs are re-extracted from base.md
+//       is compiled. The spec's §24 programs are re-extracted from base.md
 //       and compared with testdata/spec/, so the two cannot drift apart.
 //
 //==============================================================================================
@@ -129,17 +129,17 @@ bool prove(const fs::path& entry) {
     // The spec's own programs carry no directives; two of them need one.
     std::string name = entry.filename().string();
     if (name == "intrusive_list.lucb") {
-        oracle = false; // Â§24.5 reinterprets a pointer with offsetof (DESIGN.md)
+        oracle = false; // §24.5 reinterprets a pointer with offsetof (DESIGN.md)
     }
     if (name == "calling_c.lucb") {
-        linkable = false; // Â§24.8 links SDL3
+        linkable = false; // §24.8 links SDL3
     }
     std::string args_line = directive(text, "args");
     if (name == "arena.lucb" && args_line.empty()) {
-        args_line = "testdata/spec/arguments.lucb"; // Â§24.4 counts the words of a file
+        args_line = "testdata/spec/arguments.lucb"; // §24.4 counts the words of a file
     }
     if (name == "error_handling.lucb" && args_line.empty()) {
-        args_line = "testdata/no-such-config"; // Â§24.15 falls back to defaults
+        args_line = "testdata/no-such-config"; // §24.15 falls back to defaults
     }
 
     DiagnosticBag diagnostics;
@@ -380,7 +380,7 @@ TEST(examples) {
     prove_directory("examples");
 }
 
-// The fifteen Â§24 programs in testdata/spec/ are the ones in base.md.
+// The fifteen §24 programs in testdata/spec/ are the ones in base.md.
 TEST(spec_programs_match_document) {
     static const char* names[15] = {
         "arguments",    "percentage",  "ring_buffer",    "arena",       "intrusive_list",
@@ -402,7 +402,7 @@ TEST(spec_programs_match_document) {
         std::string body = doc.substr(open + 8, close + 1 - (open + 8));
         std::string pinned = slurp(std::string("testdata/spec/") + names[i] + ".lucb");
         if (body != pinned) {
-            std::fprintf(stderr, "  testdata/spec/%s.lucb differs from base.md Â§24.%d\n", names[i],
+            std::fprintf(stderr, "  testdata/spec/%s.lucb differs from base.md §24.%d\n", names[i],
                          i + 1);
         }
         CHECK(body == pinned);
