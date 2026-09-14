@@ -1,0 +1,29 @@
+# answer: 40
+## Symbols are built from pieces, and a piece holding an underscore is length-prefixed, so
+## `A` with method `b_c` and `A_b` with method `c` are two symbols, as are the function
+## `x_y` and `X.y`.
+struct A:
+    var n: i64
+
+    func b_c() -> i64:
+        return 1 + self.n
+
+struct A_b:
+    var n: i64
+
+    func c() -> i64:
+        return 2 + self.n
+
+func x_y() -> i64:
+    return 3
+
+struct X:
+    var n: i64
+
+    static func y() -> i64:
+        return 4
+
+pub func answer() -> i64:
+    let a = A(n = 0)
+    let ab = A_b(n = 0)
+    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194

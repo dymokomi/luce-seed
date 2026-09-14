@@ -130,6 +130,28 @@ TEST(eval_print) {
     CHECK_STREQ(r.output, "7\ntrue\n");
 }
 
+TEST(eval_checked_conversions_trap_at_the_edges) {
+    EvalResult a = run("pub func answer() -> i64:\n    let f: f64 = 9223372036854775808.0\n    return i64(f)\n");
+    CHECK(a.trapped);
+    EvalResult b = run("pub func answer() -> i64:\n    let f: f64 = 18446744073709551616.0\n    return (i64)u64(f)\n");
+    CHECK(b.trapped);
+    EvalResult c = run("pub func answer() -> i64:\n    let big: u64 = 9223372036854775808\n    return i64(big)\n");
+    CHECK(c.trapped);
+    EvalResult d = run("pub func answer() -> i64:\n    let n: u32 = 1114112\n    return (i64)char(n)\n");
+    CHECK(d.trapped);
+    EvalResult e = run("pub func answer() -> i64:\n    let n: u32 = 55296\n    return (i64)char(n)\n");
+    CHECK(e.trapped);
+    EvalResult ok = run("pub func answer() -> i64:\n    let f: f64 = 9223372036854774784.0\n    let big: u64 = 9223372036854775807\n    let n: u32 = 1114111\n    return (i64(f) - i64(big)) + 1023 + (i64)char(n) - 1114071\n");
+    CHECK(ok.ok);
+    CHECK_EQ(ok.answer, 40);
+}
+
+TEST(eval_closed_range_ends_at_the_type_maximum) {
+    EvalResult r = run("pub func answer() -> i64:\n    var n: i64 = 0\n    for i: u8 in 250..=255:\n        n += 1\n    for j: i8 in 125..=127:\n        n += 1\n    for k: u64 in 18446744073709551614..=18446744073709551615:\n        n += 1\n    return n + 29\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40);
+}
+
 TEST(eval_overflow_traps) {
     EvalResult r = run("pub func answer() -> i64:\n"
                        "    return 9223372036854775807 + 1\n");

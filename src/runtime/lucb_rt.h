@@ -210,6 +210,8 @@ uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int 
                    int mode);
 
 int64_t lb_f_to_s(double a, int bits, int mode);
+// A `char` from an integer's bits: a scalar value or, when checked, a trap (§7.5).
+uint32_t lb_to_char(uint64_t a, int mode);
 uint64_t lb_f_to_u(double a, int bits, int mode);
 double lb_to_f(int64_t a, int from_signed);
 float lb_f64_to_f32(double a);

@@ -713,6 +713,19 @@ auto Interp::eval_binary(Node* n) -> Value {
     return r;
 }
 
+// Whether a sign and a magnitude is a value of the integer or `char` type `dest` (§7.5).
+static bool fits_destination(bool negative, uint64_t bits, Type* dest) {
+    if (dest->kind == TypeKind::Char) {
+        return !negative && bits <= 0x10FFFF && !(bits >= 0xD800 && bits <= 0xDFFF);
+    }
+    int to_bits = int_bits(dest);
+    if (is_signed_int(dest)) {
+        return negative ? static_cast<int64_t>(bits) >= int_min(dest)
+                        : bits <= static_cast<uint64_t>(int_max_signed(to_bits));
+    }
+    return !negative && bits <= int_max_unsigned(to_bits);
+}
+
 auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
     Value x = eval(srcn);
     if (trapped || returning || dest == nullptr) {
@@ -722,10 +735,11 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
     if (is_float(src) && is_int(dest)) {
         double a = x.f;
         int bits = int_bits(dest);
+        // `2^(bits-1)` and `2^bits` are exact doubles where `(double)max` rounds up
+        double hi = std::ldexp(1.0, is_signed_int(dest) ? bits - 1 : bits);
+        double lo = is_signed_int(dest) ? -hi : 0.0;
         if (checked) {
-            if (a != a || a < static_cast<double>(int_min(dest)) ||
-                (is_signed_int(dest) ? a > static_cast<double>(int_max_signed(bits))
-                                     : a < 0 || a > static_cast<double>(int_max_unsigned(bits)))) {
+            if (a != a || a < lo || a >= hi) {
                 fail("integer conversion out of range");
                 return v_unit();
             }
@@ -738,10 +752,10 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
             return v_int(dest, 0);
         }
         if (is_signed_int(dest)) {
-            if (a <= static_cast<double>(int_min(dest))) {
+            if (a <= lo) {
                 return v_int(dest, static_cast<uint64_t>(int_min(dest)));
             }
-            if (a >= static_cast<double>(int_max_signed(bits))) {
+            if (a >= hi) {
                 return v_int(dest, static_cast<uint64_t>(int_max_signed(bits)));
             }
             return v_int(dest, static_cast<uint64_t>(static_cast<int64_t>(a)));
@@ -749,7 +763,7 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         if (a < 0) {
             return v_int(dest, 0);
         }
-        if (a >= static_cast<double>(int_max_unsigned(bits))) {
+        if (a >= hi) {
             return v_int(dest, int_max_unsigned(bits));
         }
         return v_int(dest, static_cast<uint64_t>(a));
@@ -810,24 +824,15 @@ auto Interp::eval_conv(Node* srcn, Type* dest, bool checked) -> Value {
         // `(usize)p`: the address itself (§7.5), so two objects have two addresses
         return v_int(dest, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(x.ptr)));
     }
-    if (is_int(src) && is_int(dest)) {
-        int64_t s = is_signed_int(src) ? as_s(x, src) : static_cast<int64_t>(as_u(x, src));
-        int to_bits = int_bits(dest);
-        if (checked) {
-            if (is_signed_int(dest)) {
-                if (s < int_min(dest) || s > int_max_signed(to_bits)) {
-                    fail("integer conversion out of range");
-                    return v_unit();
-                }
-                return v_int(dest, static_cast<uint64_t>(s));
-            }
-            if (s < 0 || static_cast<uint64_t>(s) > int_max_unsigned(to_bits)) {
-                fail("integer conversion out of range");
-                return v_unit();
-            }
-            return v_int(dest, static_cast<uint64_t>(s));
+    if (is_int(src) && (is_int(dest) || dest->kind == TypeKind::Char)) {
+        // the source as a sign and a magnitude, so a `u64` above `i64.max` stays itself
+        bool negative = is_signed_int(src) && as_s(x, src) < 0;
+        uint64_t bits = is_signed_int(src) ? static_cast<uint64_t>(as_s(x, src)) : as_u(x, src);
+        if (checked && !fits_destination(negative, bits, dest)) {
+            fail("integer conversion out of range");
+            return v_unit();
         }
-        return v_int(dest, static_cast<uint64_t>(s));
+        return v_int(dest, dest->kind == TypeKind::Char ? bits & 0xFFFFFFFFu : bits);
     }
     if ((src != nullptr && src->kind == TypeKind::Char) && is_int(dest)) {
         if (checked && is_signed_int(dest) &&

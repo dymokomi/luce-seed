@@ -15,6 +15,16 @@
 
 namespace lucb {
 
+// Whether the counter `i` is still inside `..<end` or `..=end`, compared at the range's signedness.
+static bool range_holds(uint64_t i, uint64_t end, bool closed, bool sig) {
+    if (sig) {
+        int64_t a = static_cast<int64_t>(i);
+        int64_t b = static_cast<int64_t>(end);
+        return closed ? a <= b : a < b;
+    }
+    return closed ? i <= end : i < end;
+}
+
 auto Interp::exec(Node* n) -> void {
     if (n == nullptr || trapped || returning) {
         return;
@@ -315,21 +325,24 @@ auto Interp::exec(Node* n) -> void {
             if (trapped) {
                 return;
             }
-            int64_t start = as_s(a, a.type);
-            int64_t end = as_s(b, b.type);
+            // the counter is the range's own width and signedness, and a closed range
+            // stops at its last value before the increment, so `..=T.max` cannot wrap
+            bool sig = is_signed_int(n->ty);
+            uint64_t start = sig ? static_cast<uint64_t>(as_s(a, a.type)) : as_u(a, a.type);
+            uint64_t end = sig ? static_cast<uint64_t>(as_s(b, b.type)) : as_u(b, b.type);
             bool closed = n->right->op == TokenKind::DotDotEq;
-            for (int64_t i = start;
-                 !trapped && !returning && !breaking && (closed ? i <= end : i < end); i++) {
+            for (uint64_t i = start; !trapped && !returning && !breaking && range_holds(i, end, closed, sig);) {
                 continuing = false;
                 Slot s;
                 s.name = n->text;
-                s.value = v_int(n->ty, static_cast<uint64_t>(i));
+                s.value = v_int(n->ty, i);
                 frames.back().slots.push_back(s);
                 exec(n->body);
                 frames.back().slots.pop_back();
-                if (leave_loop(n)) {
+                if (leave_loop(n) || (closed && i == end)) {
                     break;
                 }
+                i++;
             }
             break;
         }

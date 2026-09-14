@@ -663,14 +663,30 @@ auto Emitter::emit_for_range(Node* n) -> void {
     string name = ident("lv_", n->text);
     string a = emit_expr(n->right->left);
     string b = emit_expr(n->right->right);
-    string cmp = n->right->op == TokenKind::DotDotEq ? " <= " : " < ";
-    line("for (" + ty + " " + name + " __attribute__((unused)) = (" + ty + ")(" + a + "); " + name +
-         cmp + "(" + ty + ")(" + b + "); " + name + "++) {");
+    bool closed = n->right->op == TokenKind::DotDotEq;
+    string head = ty + " " + name + " __attribute__((unused)) = (" + ty + ")(" + a + ")";
+    string last = "(" + ty + ")(" + b + ")";
+    string done;
+    if (closed) {
+        // the last value is visited before the increment, so `..=T.max` cannot wrap
+        done = "lb_done" + std::to_string(tmp());
+        line("{");
+        indent++;
+        line("int " + done + " = 0;");
+        line("for (" + head + "; !" + done + " && " + name + " <= " + last + "; " + done + " = " +
+             name + " == " + last + ", " + name + " += !" + done + ") {");
+    } else {
+        line("for (" + head + "; " + name + " < " + last + "; " + name + "++) {");
+    }
     indent++;
     emit_stmt(n->body);
     emit_loop_label("lb_cont_", n);
     indent--;
     line("}");
+    if (closed) {
+        indent--;
+        line("}");
+    }
     if (!scopes.empty()) {
         unwind_scope(scopes.back());
         scopes.pop_back();

@@ -1714,33 +1714,50 @@ uint64_t lb_not_u(uint64_t a, int bits) {
     return zext(~a, bits);
 }
 
-static int fits_s(int64_t v, int bits) {
-    return v >= smin(bits) && v <= smax(bits);
-}
-
 static int fits_u(uint64_t v, int bits) {
     return v <= mask_bits(bits);
 }
 
-int64_t lb_conv_s(int64_t a, int from_bits, int from_signed, int to_bits, int to_signed, int mode) {
+// The source of an integer conversion: `negative` when it is below zero, else the
+// magnitude in `bits`; a 64-bit unsigned source above `INT64_MAX` is a magnitude too.
+typedef struct {
+    int negative;
+    uint64_t bits;
+} lb_source;
+
+static lb_source source_of(uint64_t a, int from_bits, int from_signed) {
+    lb_source s;
     if (from_signed) {
-        a = sext(a, from_bits);
+        int64_t v = sext((int64_t)a, from_bits);
+        s.negative = v < 0;
+        s.bits = (uint64_t)v;
     } else {
-        a = (int64_t)zext((uint64_t)a, from_bits);
+        s.negative = 0;
+        s.bits = zext(a, from_bits);
     }
+    return s;
+}
+
+// A checked conversion's result, as bits: out of the destination's range traps (§7.5).
+static uint64_t checked_bits(lb_source s, int to_bits, int to_signed) {
+    int bad;
+    if (to_signed) {
+        bad = s.negative ? (int64_t)s.bits < smin(to_bits) : s.bits > (uint64_t)smax(to_bits);
+    } else {
+        bad = s.negative || !fits_u(s.bits, to_bits);
+    }
+    if (bad) {
+        lb_trap("integer conversion out of range");
+    }
+    return s.bits;
+}
+
+int64_t lb_conv_s(int64_t a, int from_bits, int from_signed, int to_bits, int to_signed, int mode) {
+    lb_source s = source_of((uint64_t)a, from_bits, from_signed);
     if (mode == 0) {
-        if (to_signed) {
-            if (!fits_s(a, to_bits)) {
-                lb_trap("integer conversion out of range");
-            }
-            return a;
-        }
-        if (a < 0 || !fits_u((uint64_t)a, to_bits)) {
-            lb_trap("integer conversion out of range");
-        }
-        return a;
+        return (int64_t)checked_bits(s, to_bits, to_signed);
     }
-    uint64_t bits = (uint64_t)a & mask_bits(to_bits);
+    uint64_t bits = s.bits & mask_bits(to_bits);
     if (to_signed) {
         return sext((int64_t)bits, to_bits);
     }
@@ -1749,25 +1766,28 @@ int64_t lb_conv_s(int64_t a, int from_bits, int from_signed, int to_bits, int to
 
 uint64_t lb_conv_u(uint64_t a, int from_bits, int from_signed, int to_bits, int to_signed,
                    int mode) {
-    int64_t s = from_signed ? sext((int64_t)a, from_bits) : (int64_t)zext(a, from_bits);
+    lb_source s = source_of(a, from_bits, from_signed);
     if (mode == 0) {
-        if (to_signed) {
-            if (!fits_s(s, to_bits)) {
-                lb_trap("integer conversion out of range");
-            }
-            return (uint64_t)s;
-        }
-        if (s < 0 || !fits_u((uint64_t)s, to_bits)) {
-            lb_trap("integer conversion out of range");
-        }
-        return (uint64_t)s;
+        return checked_bits(s, to_bits, to_signed);
     }
-    return zext((uint64_t)s, to_bits);
+    return zext(s.bits, to_bits);
 }
 
+uint32_t lb_to_char(uint64_t a, int mode) {
+    int bad = a > 0x10FFFF || (a >= 0xD800 && a <= 0xDFFF);
+    if (bad && mode == 0) {
+        lb_trap("integer conversion out of range");
+    }
+    return (uint32_t)a;
+}
+
+// `2^(bits-1)` and `2^bits` are exact doubles; the range checks compare against them
+// rather than against the rounded `(double)smax`, which is `2^63` itself for 64 bits.
 int64_t lb_f_to_s(double a, int bits, int mode) {
+    double hi = ldexp(1.0, bits - 1);
+    double lo = -hi;
     if (mode == 0) {
-        if (!isfinite(a) || a < (double)smin(bits) || a > (double)smax(bits)) {
+        if (!isfinite(a) || a < lo || a >= hi) {
             lb_trap("integer conversion out of range");
         }
         return (int64_t)a;
@@ -1775,19 +1795,19 @@ int64_t lb_f_to_s(double a, int bits, int mode) {
     if (isnan(a)) {
         return 0;
     }
-    if (a <= (double)smin(bits)) {
+    if (a <= lo) {
         return smin(bits);
     }
-    if (a >= (double)smax(bits)) {
+    if (a >= hi) {
         return smax(bits);
     }
     return (int64_t)a;
 }
 
 uint64_t lb_f_to_u(double a, int bits, int mode) {
-    double hi = (double)mask_bits(bits);
+    double hi = ldexp(1.0, bits);
     if (mode == 0) {
-        if (!isfinite(a) || a < 0 || a > hi) {
+        if (!isfinite(a) || a < 0 || a >= hi) {
             lb_trap("integer conversion out of range");
         }
         return (uint64_t)a;

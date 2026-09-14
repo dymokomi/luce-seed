@@ -546,6 +546,12 @@ auto Checker::check_params(Node* fn) -> void {
 }
 
 auto Checker::check_func(Node* fn, Node* owner) -> void {
+    if (owner == nullptr && (fn->flags & FlagStatic) != 0) {
+        fail_n(fn, "lucb.check.type", "`static` marks a method; a top-level function has no owner");
+    }
+    if (owner == nullptr && (fn->flags & FlagMutating) != 0) {
+        fail_n(fn, "lucb.check.type", "`mutating` marks a method; a top-level function has no `self`");
+    }
     bool generic = is_generic_decl(fn);
     bool saved_generic = checking_generic_template;
     if (generic) {

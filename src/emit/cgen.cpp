@@ -34,10 +34,24 @@ static auto runtime_name(string_view name) -> bool {
     return false;
 }
 
+// A name as one piece of a symbol. A piece holding an underscore is written with its
+// length in front, so module `a` with `b_c` and module `a_b` with `c` stay distinct symbols.
+string piece(string_view name) {
+    string s(name);
+    if (s.find('_') == string::npos) {
+        return s;
+    }
+    return std::to_string(s.size()) + s;
+}
+
 string ident(string_view prefix, string_view name) {
     string s;
     s.append(prefix.data(), prefix.size());
-    s.append(name.data(), name.size());
+    if (prefix == "lb_") {
+        s += piece(name);
+    } else {
+        s.append(name.data(), name.size());
+    }
     if (prefix == "lb_" && runtime_name(name)) {
         s.push_back('_');
     }
@@ -65,7 +79,7 @@ string struct_ident(Node* st, string_view prefix) {
     }
     string tag = prefix.empty() ? module_tag(st) : string(prefix);
     if (!tag.empty()) {
-        return ident("lb_", tag) + "_" + string(st->text);
+        return ident("lb_", tag) + "_" + piece(st->text);
     }
     return ident("lb_", st->text);
 }
@@ -73,7 +87,7 @@ string struct_ident(Node* st, string_view prefix) {
 string global_ident(Node* d) {
     string tag = module_tag(d);
     if (!tag.empty()) {
-        return ident("lb_", tag) + "_" + string(d->text);
+        return ident("lb_", tag) + "_" + piece(d->text);
     }
     return ident("lb_", d->text);
 }
@@ -137,14 +151,38 @@ string func_ident(Node* fn, Node* owner, string_view prefix) {
     string tag = prefix.empty() ? module_tag(owner != nullptr ? owner : fn) : string(prefix);
     string p = tag.empty() ? string("lb_") : ident("lb_", tag) + "_";
     if (owner != nullptr) {
-        return p + string(owner->text) + "_" + string(fn->text);
+        return p + piece(owner->text) + "_" + piece(fn->text);
     }
     if (fn != nullptr && fn->text == "answer" && (fn->flags & FlagFallible) != 0) {
         return p + "answer_impl";
     }
-    return p + string(fn->text);
+    return p + piece(fn->text);
 }
 
+// The letter that stands for a non-alphanumeric byte of a type spelling.
+static char spelling_code(char c) {
+    switch (c) {
+    case '_': return 'u';
+    case '.': return 'd';
+    case '*': return 'p';
+    case '?': return 'q';
+    case '[': return 'l';
+    case ']': return 'r';
+    case '(': return 'o';
+    case ')': return 'c';
+    case ',': return 'm';
+    case ' ': return 's';
+    case '!': return 'f';
+    case '@': return 'a';
+    case '-': return 'h';
+    case '>': return 'g';
+    default: return 'x';
+    }
+}
+
+// A type spelling as identifier characters: every other byte becomes `_` and the letter
+// that names it, `_` itself `_u`, so two spellings never sanitize to the same name and a
+// sanitized name never holds `__`.
 string sanitize_type_name(const string& s) {
     string o;
     for (size_t i = 0; i < s.size(); i++) {
@@ -153,6 +191,7 @@ string sanitize_type_name(const string& s) {
             o += c;
         } else {
             o += '_';
+            o += spelling_code(c);
         }
     }
     return o;
@@ -165,7 +204,7 @@ static string mangled(const Type* t) {
         return type_name(t);
     }
     if (t->decl != nullptr && !t->decl->module.empty()) {
-        return module_tag(t->decl) + "_" + type_name(t);
+        return string(t->decl->module) + "." + type_name(t);
     }
     switch (t->kind) {
     case TypeKind::Pointer:
@@ -223,7 +262,7 @@ string tup_c_name(Type* t) {
         return s;
     }
     for (int i = 0; i < t->ntargs; i++) {
-        s += "_";
+        s += "__";
         s += sanitize_type_name(mangled(t->args[i]));
     }
     return s;
@@ -235,10 +274,10 @@ string fn_c_name(Type* t) {
         return s;
     }
     for (int i = 0; i < t->ntargs; i++) {
-        s += "_";
+        s += "__";
         s += sanitize_type_name(mangled(t->args[i]));
     }
-    s += "_to_";
+    s += "__to__";
     Type* r = t->elem;
     if (r == nullptr || r->kind == TypeKind::Unit || r->kind == TypeKind::Never) {
         s += "unit";

@@ -1116,7 +1116,7 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
                       std::to_string(fs) + ", " + std::to_string(tb) + ", " + std::to_string(ts) +
                       ", " + std::to_string(mode) + ")";
         if (dest->kind == TypeKind::Char) {
-            return "(uint32_t)(" + call + ")";
+            return "lb_to_char(" + call + ", " + std::to_string(mode) + ")";
         }
         return down_cast(dest, call);
     }

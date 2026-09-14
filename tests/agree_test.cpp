@@ -128,6 +128,14 @@ TEST(agree_labeled_loop_variable) {
     CHECK(agrees("pub func answer() -> i64:\n    var total: i64 = 0\n    outer: for i in 0..<10:\n        for j in 0..<10:\n            if j == 5:\n                continue outer\n            if i == 7:\n                break outer\n            total += 1\n    return total - 35 + 42\n"));
 }
 
+TEST(agree_closed_range_at_the_maximum) {
+    CHECK(agrees("pub func answer() -> i64:\n    var n: i64 = 0\n    for i: u8 in 250..=255:\n        n += 1\n    for j: i8 in 125..=127:\n        n += 1\n    outer: for k: u16 in 65534..=65535:\n        for m: u8 in 255..=255:\n            n += 1\n            continue outer\n    return n + 29\n"));
+}
+
+TEST(agree_symbol_pieces_stay_distinct) {
+    CHECK(agrees("struct A:\n    var n: i64\n    func b_c() -> i64:\n        return 1 + self.n\nstruct A_b:\n    var n: i64\n    func c() -> i64:\n        return 2 + self.n\nfunc x_y() -> i64:\n    return 3\nstruct X:\n    var n: i64\n    static func y() -> i64:\n        return 4\npub func answer() -> i64:\n    let a = A(n = 0)\n    let ab = A_b(n = 0)\n    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194\n"));
+}
+
 TEST(agree_float_bits) {
     CHECK(agrees("pub func answer() -> i64:\n    let x: f64 = 1.5\n    let b = x.bits()\n    let y = f64.bits(b)\n    let s: f32 = 2.0\n    let sb = s.bits()\n    let back = f32.bits(sb)\n    var t: i64 = 0\n    if y == 1.5:\n        t += 20\n    if b == 4609434218613702656:\n        t += 20\n    if back == 2.0 and sb == 1073741824:\n        t += 2\n    return t\n"));
 }

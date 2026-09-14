@@ -80,6 +80,11 @@ TEST(check_hello_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }
 
+TEST(check_method_modifiers_need_an_owner) {
+    CHECK(check_has("static func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
+    CHECK(check_has("mutating func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
+}
+
 TEST(check_type_mismatch) {
     CHECK(check_has("pub func answer() -> i64:\n    return true\n", "lucb.check.type"));
 }
