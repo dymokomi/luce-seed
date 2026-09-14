@@ -158,6 +158,12 @@ TEST(eval_while_condition_trap_names_the_while) {
     CHECK(r.trap.find(":4:5:") != std::string::npos);
 }
 
+TEST(eval_address_of_an_element_a_call_answered) {
+    EvalResult r = run("struct R:\n    var bytes: u8[4]\n    func take() -> const u8[]:\n        return self.bytes[..<2]\npub func answer() -> i64:\n    let r = R(bytes = [7, 8, 9, 10])\n    let p = &r.take()[1]\n    return (i64)*p + 32\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 40);
+}
+
 TEST(eval_overflow_traps) {
     EvalResult r = run("pub func answer() -> i64:\n"
                        "    return 9223372036854775807 + 1\n");

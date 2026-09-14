@@ -143,6 +143,16 @@ auto Interp::v_enum_case(Node* cse, Type* t) -> Value {
     return v;
 }
 
+// Whether `n` is spelled as a place: a name, `self`, a member, an element, a dereference,
+// or a parenthesised one of those; a call's result is a value.
+static bool place_shaped(const Node* n) {
+    if (n != nullptr && n->kind == NodeKind::Group) {
+        return place_shaped(n->left);
+    }
+    return n != nullptr && (n->kind == NodeKind::Name || n->kind == NodeKind::Self || n->kind == NodeKind::Member ||
+                            n->kind == NodeKind::Index || n->kind == NodeKind::Unary);
+}
+
 auto Interp::lvalue(Node* n) -> Value* {
     if (n == nullptr || trapped) {
         return nullptr;
@@ -232,6 +242,20 @@ auto Interp::lvalue(Node* n) -> Value* {
             }
             size_t i = static_cast<size_t>(as_u(idxv, n->body != nullptr ? n->body->ty : nullptr));
             return p.ptr + static_cast<ptrdiff_t>(i);
+        }
+        if (is_span(owner_type) && !place_shaped(n->left)) {
+            // `&f()[i]`: a view a call answered still addresses its elements
+            Value v = eval(n->left);
+            Value at = eval(n->body);
+            if (trapped) {
+                return nullptr;
+            }
+            size_t i = static_cast<size_t>(as_u(at, n->body != nullptr ? n->body->ty : nullptr));
+            if (v.kind != TypeKind::Span || v.ptr == nullptr || i >= v.length) {
+                fail("index out of bounds");
+                return nullptr;
+            }
+            return v.ptr + static_cast<ptrdiff_t>(i);
         }
         Value* base = lvalue(n->left);
         Value idxv = eval(n->body);
