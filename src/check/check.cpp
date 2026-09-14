@@ -632,6 +632,11 @@ auto Checker::check_struct(Node* st) -> void {
     for (Node* m = st->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Func) {
             check_declared_name(m, m->text);
+            for (Node* o = st->body; o != m; o = o->next) {
+                if (o->kind == NodeKind::Func && o->text == m->text) {
+                    fail_n(m, "lucb.check.shadow", "duplicate method");
+                }
+            }
         }
         if (m->kind == NodeKind::Field) {
             check_declared_name(m, m->text);
@@ -642,6 +647,10 @@ auto Checker::check_struct(Node* st) -> void {
                 if (o->kind == NodeKind::Field && o->text == m->text) {
                     fail_n(m, "lucb.check.shadow", "duplicate field");
                 }
+            }
+            uint64_t al = 0;
+            if (const_u64(m->right, &al) && al != 0 && (al & (al - 1)) != 0) {
+                fail_n(m, "lucb.check.type", "`align(N)` takes a power of two (§5.11)");
             }
         }
     }
@@ -784,6 +793,9 @@ auto Checker::collect_type_decl(Node* d, TypeKind kind) -> void {
     t->packed = (d->flags & FlagPacked) != 0;
     uint64_t al = 0;
     if (const_u64(d->type, &al)) {
+        if (al != 0 && (al & (al - 1)) != 0) {
+            fail_n(d, "lucb.check.type", "`align(N)` takes a power of two (§5.11)");
+        }
         t->align_to = static_cast<int>(al);
     }
     d->ty = t;

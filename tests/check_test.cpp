@@ -80,6 +80,12 @@ TEST(check_hello_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }
 
+TEST(check_alignment_is_a_power_of_two_and_members_are_distinct) {
+    CHECK(check_has("align(3) struct P:\n    var x: u8\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("struct P:\n    var x: u8\n    align(6) var y: u8\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("struct P:\n    var x: i64\n    func g() -> i64:\n        return 1\n    func g() -> i64:\n        return 2\npub func answer() -> i64:\n    return 40\n", "lucb.check.shadow"));
+}
+
 TEST(check_method_modifiers_need_an_owner) {
     CHECK(check_has("static func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
     CHECK(check_has("mutating func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
