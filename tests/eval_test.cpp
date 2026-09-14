@@ -152,6 +152,12 @@ TEST(eval_closed_range_ends_at_the_type_maximum) {
     CHECK_EQ(r.answer, 40);
 }
 
+TEST(eval_while_condition_trap_names_the_while) {
+    EvalResult r = run("pub func answer() -> i64:\n    let items: i64[2] = [1, 2]\n    var i: usize = 0\n    while items[i] > 0:\n        i += 1\n    return 0\n");
+    CHECK(r.trapped);
+    CHECK(r.trap.find(":4:5:") != std::string::npos);
+}
+
 TEST(eval_overflow_traps) {
     EvalResult r = run("pub func answer() -> i64:\n"
                        "    return 9223372036854775807 + 1\n");

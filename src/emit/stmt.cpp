@@ -242,6 +242,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
             op = TokenKind::Minus;
         } else if (n->op == TokenKind::StarEq) {
             op = TokenKind::Star;
+        } else if (n->op == TokenKind::SlashEq) {
+            op = TokenKind::Slash;
         } else if (n->op == TokenKind::SlashSlashEq) {
             op = TokenKind::SlashSlash;
         } else if (n->op == TokenKind::PercentEq) {
@@ -260,6 +262,11 @@ auto Emitter::emit_stmt(Node* n) -> void {
             op = TokenKind::StarPipe;
         }
         Type* t = n->left != nullptr ? n->left->ty : nullptr;
+        if (op == TokenKind::Slash) {
+            // `/=` divides floats, which C divides as they are
+            line(dst + " = " + dst + " / " + src + ";");
+            break;
+        }
         const char* helper = "add";
         if (op == TokenKind::Minus) {
             helper = "sub";
@@ -619,6 +626,7 @@ auto Emitter::emit_while(Node* n) -> void {
         Node* let = n->left;
         line("while (1) {");
         indent++;
+        line("lb_pos = " + c_escape(position_text(current_module, n->span.line, n->span.column)) + ";");
         int id = tmp();
         string on = "_lb_o" + std::to_string(id);
         Type* ot = let != nullptr && let->left != nullptr ? let->left->ty : nullptr;
@@ -639,9 +647,12 @@ auto Emitter::emit_while(Node* n) -> void {
         indent--;
         line("}");
     } else {
-        pad();
-        out += "while (!!(" + emit_expr(n->left) + ")) {\n";
+        // the condition is tested inside the loop, after the position a trap in it names
+        line("for (;;) {");
         indent++;
+        line("lb_pos = " + c_escape(position_text(current_module, n->span.line, n->span.column)) + ";");
+        string cond = emit_expr(n->left);
+        line("if (!(" + cond + ")) break;");
         emit_stmt(n->body);
         emit_loop_label("lb_cont_", n);
         indent--;

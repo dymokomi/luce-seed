@@ -614,10 +614,14 @@ auto Interp::eval_member(Node* n) -> Value {
             return v;
         }
         if (lt->name == "luce") {
-            // `luce.file` is the path the compiler was given (§6.4)
-            string file = module != nullptr && module->left != nullptr && !module->left->text.empty()
-                              ? string(module->left->text)
-                              : (module != nullptr && !module->text.empty() ? string(module->text) : string("t.lucb"));
+            // `luce.file` is the use site's file (§6.4): the running function's module
+            Node* here = module_of(current_fn);
+            if (here == nullptr) {
+                here = module;
+            }
+            string file = here != nullptr && here->left != nullptr && !here->left->text.empty()
+                              ? string(here->left->text)
+                              : (here != nullptr && !here->text.empty() ? string(here->text) : string("t.lucb"));
             if (n->text == "file") {
                 strings.push_back(file);
                 return v_str(strings.back());

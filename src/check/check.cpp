@@ -385,14 +385,15 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
         if (!const_u64(n->left, &a) || !const_u64(n->right, &b)) {
             return false;
         }
+        // a result that leaves `u64` is no constant
         switch (n->op) {
-        case TokenKind::Star: *out = a * b; return true;
-        case TokenKind::Plus: *out = a + b; return true;
-        case TokenKind::Minus: *out = a - b; return true;
+        case TokenKind::Star: *out = a * b; return b == 0 || a <= UINT64_MAX / b;
+        case TokenKind::Plus: *out = a + b; return a + b >= a;
+        case TokenKind::Minus: *out = a - b; return a >= b;
         case TokenKind::SlashSlash: *out = b == 0 ? 0 : a / b; return b != 0;
         case TokenKind::Percent: *out = b == 0 ? 0 : a % b; return b != 0;
-        case TokenKind::LtLt: *out = a << b; return true;
-        case TokenKind::GtGt: *out = a >> b; return true;
+        case TokenKind::LtLt: *out = b < 64 ? a << b : 0; return b < 64;
+        case TokenKind::GtGt: *out = b < 64 ? a >> b : 0; return b < 64;
         default: return false;
         }
     }
@@ -499,6 +500,9 @@ auto Checker::check_foreign_sig(Node* fn, bool exported) -> void {
     if (is_generic_decl(fn)) {
         fail_n(fn, "lucb.check.unsupported", "a generic cannot be `extern` or `export`");
         return;
+    }
+    if (!exported && ((fn->flags & FlagFallible) != 0 || is_fail(fn->ty))) {
+        fail_n(fn, "lucb.check.type", "an `extern` cannot be fallible; C reports failure through its result (§17.1)");
     }
     const char* where = exported ? "an `export` signature cannot use `str`; write `c.str`"
                                  : "an `extern` signature cannot use `str`; write `c.str`";
@@ -729,6 +733,9 @@ auto Checker::check_implements(Node* st) -> void {
                            string(iface->decl->text) + "`");
                 continue;
             }
+            if ((impl->flags & FlagStatic) != 0) {
+                fail_n(impl, "lucb.check.type", "a static method does not satisfy an interface requirement (§14.1)");
+            }
             if (iface != nullptr && iface->decl != nullptr && (iface->decl->flags & FlagBuiltin) != 0 &&
                 (iface->decl->text == "Equatable" || iface->decl->text == "Hashable")) {
                 fail_n(st, "lucb.check.type", "`" + string(iface->decl->text) + "` is derived from the fields; it is not implemented by hand (§14.4)");
@@ -828,6 +835,9 @@ auto Checker::collect_module(Node* mod) -> void {
             Type* t = nullptr;
             if (d->type != nullptr) {
                 t = resolve_type(d->type);
+                if (t != nullptr && (t->kind == TypeKind::Str || !is_c_repr(t))) {
+                    fail_n(d, "lucb.check.type", "an `extern` handle is shaped like a C integer or pointer (§17.1)");
+                }
             } else {
                 t = make_type(TypeKind::Pointer, d->text);
                 t->elem = ty_void;
@@ -875,11 +885,18 @@ auto Checker::collect_module(Node* mod) -> void {
         if ((d->kind == NodeKind::Struct || d->kind == NodeKind::Union ||
              d->kind == NodeKind::ExternStruct || d->kind == NodeKind::ExternUnion) &&
             !is_generic_decl(d)) {
+            bool foreign = d->kind == NodeKind::ExternStruct || d->kind == NodeKind::ExternUnion;
             for (Node* m = d->body; m != nullptr; m = m->next) {
                 if (m->kind == NodeKind::Field) {
                     m->ty = resolve_type(m->type);
                     if (is_fail(m->ty)) {
                         fail_n(m, "lucb.check.type", "`T!` cannot be stored");
+                    }
+                    if (m->ty != nullptr && m->ty->kind == TypeKind::Fmt) {
+                        fail_n(m, "lucb.check.type", "`fmt` is a parameter type only (§9.1)");
+                    }
+                    if (foreign && m->ty != nullptr && (m->ty->kind == TypeKind::Str || !is_c_repr(m->ty))) {
+                        fail_n(m, "lucb.check.type", "an `extern` record's field has a C-representable type (§17.6)");
                     }
                 }
             }
@@ -928,6 +945,9 @@ auto Checker::collect_module(Node* mod) -> void {
             }
         } else if (d->kind == NodeKind::ExternVar) {
             Type* t = d->type != nullptr ? resolve_type(d->type) : t_error();
+            if (t != nullptr && (t->kind == TypeKind::Str || !is_c_repr(t))) {
+                fail_n(d, "lucb.check.type", "an `extern` variable has a C-representable type (§17.6)");
+            }
             d->ty = t;
             Binding* b = lookup(d->text);
             if (b != nullptr && b->decl == d) {

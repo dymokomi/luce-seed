@@ -941,7 +941,8 @@ auto Interp::hash_value(const Value& v, Type* t) -> uint64_t {
         return mix64(h, v.b ? 1 : 0);
     }
     if (is_float(t) || is_float_kind(v.kind)) {
-        return mix64(h, float_to_bits(v.f, is_float(t) ? t->kind : v.kind));
+        // both zeros are equal, so both hash as the positive zero's bits
+        return mix64(h, float_to_bits(v.f == 0 ? 0.0 : v.f, is_float(t) ? t->kind : v.kind));
     }
     if (is_ptr(t) || (t != nullptr && t->kind == TypeKind::CStr)) {
         return mix64(h, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(v.ptr)));

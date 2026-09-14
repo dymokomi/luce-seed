@@ -162,6 +162,8 @@ auto Interp::exec(Node* n) -> void {
             op = TokenKind::Minus;
         } else if (n->op == TokenKind::StarEq) {
             op = TokenKind::Star;
+        } else if (n->op == TokenKind::SlashEq) {
+            op = TokenKind::Slash;
         } else if (n->op == TokenKind::SlashSlashEq) {
             op = TokenKind::SlashSlash;
         } else if (n->op == TokenKind::PercentEq) {
@@ -246,6 +248,7 @@ auto Interp::exec(Node* n) -> void {
             continuing = false;
             if (n->flags & FlagIfLet) {
                 Node* let = n->left;
+                frames.back().stmt = n;
                 Value v = eval(let != nullptr ? let->left : nullptr);
                 if (trapped) {
                     return;
@@ -265,6 +268,8 @@ auto Interp::exec(Node* n) -> void {
                 exec(n->body);
                 frames.back().slots.pop_back();
             } else {
+                // a trap in the condition names the `while`, on every iteration (§11.5)
+                frames.back().stmt = n;
                 Value c = eval(n->left);
                 if (trapped || !c.b) {
                     break;

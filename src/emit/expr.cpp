@@ -20,7 +20,11 @@
 namespace lucb {
 
 auto Emitter::emit_src_file() -> string {
+    // the file of the use site (§6.4): the module being emitted, else the entry
     string file = src_file.empty() ? string("t.lucb") : src_file;
+    if (current_module != nullptr && current_module->left != nullptr && !current_module->left->text.empty()) {
+        file = string(current_module->left->text);
+    }
     return "((lb_str){" + c_escape(file) + ", " + std::to_string(file.size()) + "})";
 }
 

@@ -86,6 +86,16 @@ TEST(check_alignment_is_a_power_of_two_and_members_are_distinct) {
     CHECK(check_has("struct P:\n    var x: i64\n    func g() -> i64:\n        return 1\n    func g() -> i64:\n        return 2\npub func answer() -> i64:\n    return 40\n", "lucb.check.shadow"));
 }
 
+TEST(check_foreign_declarations_and_requirements) {
+    CHECK(check_has("extern func g() -> i32!\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("extern var name: str\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("extern type Handle = str\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("extern struct Record:\n    label: str\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("struct Holder:\n    var pattern: fmt\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("interface Named:\n    func name() -> i64\nstruct P: Named:\n    var x: i64\n    static func name() -> i64:\n        return 1\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("pub func answer() -> i64:\n    var a: u8[2 - 3]\n    return 40\n", "lucb.check.type"));
+}
+
 TEST(check_method_modifiers_need_an_owner) {
     CHECK(check_has("static func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
     CHECK(check_has("mutating func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));

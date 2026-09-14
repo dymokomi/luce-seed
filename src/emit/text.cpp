@@ -96,8 +96,9 @@ auto Emitter::emit_hash_of(Type* t, const string& e) -> string {
         int id = tmp();
         string vn = "_lb_hf" + std::to_string(id);
         string bits = bits_integer_c_name(t);
+        // both zeros are equal, so both hash as the positive zero's bits
         return "({ " + c_type(t) + " " + vn + " = " + e + "; " + bits + " _lb_hb" +
-               std::to_string(id) + "; memcpy(&_lb_hb" + std::to_string(id) + ", &" + vn +
+               std::to_string(id) + " = 0; if (" + vn + " != 0) memcpy(&_lb_hb" + std::to_string(id) + ", &" + vn +
                ", sizeof(" + vn + ")); lb_hash_mix(lb_hash_seed(), (uint64_t)_lb_hb" +
                std::to_string(id) + "); })";
     }

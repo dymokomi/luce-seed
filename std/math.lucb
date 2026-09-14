@@ -119,6 +119,8 @@ pub func div_floor(a: i64, b: i64) -> i64:
         return q - 1
     return q
 pub func mod_floor(a: i64, b: i64) -> i64:
+    if b == -1:
+        return 0
     let r = a % b
     if r != 0 and ((r < 0) != (b < 0)):
         return r + b
