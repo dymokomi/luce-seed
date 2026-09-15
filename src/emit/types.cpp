@@ -174,7 +174,7 @@ auto Emitter::emit_struct(Node* st) -> void {
             if (al != 0) {
                 fa = " __attribute__((aligned(" + std::to_string(al) + ")))";
             }
-            line(c_type(m->ty) + " " + string(m->text) + fa + ";");
+            line(c_type(m->ty) + " " + c_field(m->text) + fa + ";");
             any = true;
         }
     }
@@ -192,7 +192,7 @@ auto Emitter::emit_union(Node* un) -> void {
     bool any = false;
     for (Node* m = un->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Field) {
-            line(c_type(m->ty) + " " + string(m->text) + ";");
+            line(c_type(m->ty) + " " + c_field(m->text) + ";");
             any = true;
         }
     }
@@ -228,10 +228,10 @@ auto Emitter::emit_enum(Node* en) -> void {
             line("struct {");
             indent++;
             for (Node* p = c->body; p != nullptr; p = p->next) {
-                line(c_type(p->ty) + " " + string(p->text) + ";");
+                line(c_type(p->ty) + " " + c_field(p->text) + ";");
             }
             indent--;
-            line("} " + string(c->text) + ";");
+            line("} " + c_field(c->text) + ";");
         }
         indent--;
         line("} u;");

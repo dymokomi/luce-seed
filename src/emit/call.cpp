@@ -556,7 +556,7 @@ auto Emitter::emit_call(Node* n) -> string {
             n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
         Type* t = tyarg != nullptr ? tyarg->ty : nullptr;
         string ty = c_type(t);
-        string f = field != nullptr ? string(field->text) : "x";
+        string f = field != nullptr ? c_field(field->text) : "x";
         return "((size_t)offsetof(" + ty + ", " + f + "))";
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "str" &&
@@ -1013,7 +1013,7 @@ auto Emitter::emit_ctor(Node* n, Node* st) -> string {
     string s = "(" + struct_ident(st) + "){";
     bool first = true;
     for (const FieldValue& v : values) {
-        s += (first ? "" : ", ") + string(".") + string(v.field->text) + " = " + v.value;
+        s += (first ? "" : ", ") + string(".") + c_field(v.field->text) + " = " + v.value;
         first = false;
     }
     return sequenced(prefix, s + "}");

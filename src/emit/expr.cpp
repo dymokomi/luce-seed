@@ -206,7 +206,7 @@ auto Emitter::emit_enum_value(Node* n) -> string {
     }
     string s = "((" + tn + "){ .tag = " + std::to_string(tag);
     if (n->body != nullptr && cse->body != nullptr) {
-        s += ", .u." + string(cse->text) + " = {";
+        s += ", .u." + c_field(cse->text) + " = {";
         bool first = true;
         Node* p = cse->body;
         Node* a = n->body;
@@ -215,7 +215,7 @@ auto Emitter::emit_enum_value(Node* n) -> string {
                 s += ", ";
             }
             first = false;
-            s += "." + string(p->text) + " = " + emit_expr(a->left);
+            s += "." + c_field(p->text) + " = " + emit_expr(a->left);
             p = p->next;
             a = a->next;
         }
@@ -690,7 +690,7 @@ auto Emitter::emit_equal(Type* t, const string& a, const string& b) -> string {
         string out = "(1";
         for (Node* m = t->decl->body; m != nullptr; m = m->next) {
             if (m->kind == NodeKind::Field) {
-                out += " && " + emit_equal(m->ty, a + "." + string(m->text), b + "." + string(m->text));
+                out += " && " + emit_equal(m->ty, a + "." + c_field(m->text), b + "." + c_field(m->text));
             }
         }
         return out + ")";
@@ -721,7 +721,7 @@ auto Emitter::emit_equal(Type* t, const string& a, const string& b) -> string {
             if (c->body != nullptr) {
                 string fields = "(1";
                 for (Node* p = c->body; p != nullptr; p = p->next) {
-                    string f = ".u." + string(c->text) + "." + string(p->text);
+                    string f = ".u." + c_field(c->text) + "." + c_field(p->text);
                     fields += " && " + emit_equal(p->ty, a + f, b + f);
                 }
                 out += " && (" + a + ".tag != " + std::to_string(index) + " || " + fields + "))";
@@ -1199,12 +1199,12 @@ auto Emitter::emit_member(Node* n) -> string {
         return "(" + base + acc + "a" + string(n->text) + ")";
     }
     if (n->left != nullptr && n->left->kind == NodeKind::Self) {
-        return "self->" + string(n->text);
+        return "self->" + c_field(n->text);
     }
     if (ptr) {
-        return "(" + base + ")->" + string(n->text);
+        return "(" + base + ")->" + c_field(n->text);
     }
-    return base + "." + string(n->text);
+    return base + "." + c_field(n->text);
 }
 
 auto Emitter::emit_index(Node* n, bool one_past) -> string {

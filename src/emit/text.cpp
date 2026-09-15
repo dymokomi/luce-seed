@@ -147,7 +147,7 @@ auto Emitter::emit_hash_of(Type* t, const string& e) -> string {
                 continue;
             }
             s += "_lb_hh" + std::to_string(id) + " = lb_hash_mix(_lb_hh" + std::to_string(id) +
-                 ", " + emit_hash_of(m->ty, vn + "." + string(m->text)) + "); ";
+                 ", " + emit_hash_of(m->ty, vn + "." + c_field(m->text)) + "); ";
         }
         s += "_lb_hh" + std::to_string(id) + "; })";
         return s;

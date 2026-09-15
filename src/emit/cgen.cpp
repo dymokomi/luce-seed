@@ -44,6 +44,20 @@ string piece(string_view name) {
     return std::to_string(s.size()) + s;
 }
 
+string c_field(string_view name) {
+    static const char* const reserved[] = {
+        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern",
+        "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed",
+        "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool",
+        "true", "false", "errno", "stdin", "stdout", "stderr", "NULL", "alignof", "offsetof"};
+    for (const char* word : reserved) {
+        if (name == word) {
+            return string(name) + "_";
+        }
+    }
+    return string(name);
+}
+
 string ident(string_view prefix, string_view name) {
     string s;
     s.append(prefix.data(), prefix.size());

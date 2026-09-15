@@ -821,7 +821,7 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                         while (p != nullptr && b != nullptr) {
                             if (b->text != "_") {
                                 line(ident("lv_", b->text) + " = " + sv + ".u." +
-                                     string(cse->text) + "." + string(p->text) + ";");
+                                     c_field(cse->text) + "." + c_field(p->text) + ";");
                             }
                             p = p->next;
                             b = b->next;
@@ -839,8 +839,8 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
                     Node* b = pat->body;
                     while (p != nullptr && b != nullptr) {
                         if (b->text != "_") {
-                            line(ident("lv_", b->text) + " = " + sv + ".u." + string(cse->text) +
-                                 "." + string(p->text) + ";");
+                            line(ident("lv_", b->text) + " = " + sv + ".u." + c_field(cse->text) +
+                                 "." + c_field(p->text) + ";");
                         }
                         p = p->next;
                         b = b->next;

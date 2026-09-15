@@ -15,6 +15,10 @@
 namespace lucb {
 
 string ident(string_view prefix, string_view name);
+
+// A field or payload name as C spells it: the name, or with an underscore after it when
+// C reserves the word; Base fields are free to be `unsigned` or `int`.
+string c_field(string_view name);
 string struct_ident(Node* st, string_view prefix = {});
 // The C name of a top-level `let` or `var`: qualified by its module, as a struct is, so two
 // modules may declare the same name (§16.3).

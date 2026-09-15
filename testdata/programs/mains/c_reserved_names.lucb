@@ -1,0 +1,23 @@
+## A field or a payload may be named as C reserves a word; the C backend spells it apart (§10.1).
+struct Flags:
+    var unsigned: bool
+    var int: i32
+    var signed: u8
+
+enum Shape:
+    auto(long: i64)
+    plain
+
+pub func main(arguments: str[]) -> i32:
+    discard(arguments)
+    var f = Flags(unsigned = true, int = 7, signed = 3)
+    f.int += 1
+    let s = Shape.auto(long = 5)
+    var total: i64 = (i64)f.int + (i64)f.signed
+    match s:
+        .auto(long):
+            total += long
+        .plain:
+            total += 0
+    print(f"{f.unsigned} {total} {offsetof(Flags, int)}")
+    return 0
