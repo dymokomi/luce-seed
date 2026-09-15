@@ -32,6 +32,7 @@
 #include <signal.h>
 #ifdef __APPLE__
 #include <crt_externs.h>
+#include <mach-o/dyld.h>
 #else
 extern char** environ;
 #endif
@@ -811,6 +812,29 @@ static int lb_remove_tree_windows(const wchar_t* path) {
     return result;
 }
 #endif
+
+// The executable's path as the loader saw it, NUL-terminated in the buffer: its length,
+// or -1 when the system cannot say or the buffer is too small.
+intptr_t lb_rt_executable_path(uint8_t* buffer, size_t capacity) {
+#ifdef _WIN32
+    wchar_t wide[32768];
+    DWORD count = GetModuleFileNameW(NULL, wide, 32768);
+    if (count == 0 || count >= 32768 || capacity == 0) return -1;
+    int size = WideCharToMultiByte(CP_UTF8, 0, wide, (int)count, (char*)buffer, (int)capacity - 1, NULL, NULL);
+    if (size <= 0) return -1;
+    buffer[size] = 0;
+    return size;
+#elif defined(__APPLE__)
+    uint32_t size = (uint32_t)capacity;
+    if (_NSGetExecutablePath((char*)buffer, &size) != 0) return -1;
+    return (intptr_t)strlen((char*)buffer);
+#else
+    ssize_t count = readlink("/proc/self/exe", (char*)buffer, capacity - 1);
+    if (count < 0) return -1;
+    buffer[count] = 0;
+    return count;
+#endif
+}
 
 // One directory under an existing parent; an existing path of any kind is a failure.
 int lb_files_create_directory(const char* path, uint32_t permissions) {

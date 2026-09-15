@@ -458,15 +458,20 @@ auto Checker::check_error_code_package(Node* n) -> Type* {
         return ty_errcode != nullptr ? ty_errcode : t_error();
     }
     uint32_t code = static_cast<uint32_t>(v);
-    for (size_t i = 0; i < package_codes.size(); i++) {
-        if (package_codes[i] == code) {
-            fail_n(n, "lucb.check.shadow", "duplicate `ErrorCode.package` value");
-            break;
+    // a standard module's codes belong to the `luce` package (§16.6), never the program's
+    const bool standard = current_module != nullptr && current_module->left != nullptr &&
+                          std::string_view(current_module->left->text).substr(0, 6) == "<std>/";
+    if (!standard) {
+        for (size_t i = 0; i < package_codes.size(); i++) {
+            if (package_codes[i] == code) {
+                fail_n(n, "lucb.check.shadow", "duplicate `ErrorCode.package` value");
+                break;
+            }
         }
+        package_codes.push_back(code);
     }
-    package_codes.push_back(code);
     // the value carries the package's identity in its high half (§11.3)
-    n->cached = (static_cast<uint64_t>(package_identity(package_name)) << 16) | code;
+    n->cached = (static_cast<uint64_t>(package_identity(standard ? "luce" : package_name)) << 16) | code;
     n->flags |= FlagPackageCode;
     if (n->left != nullptr) {
         n->left->ty = intern_func(&ty_u32, 1, ty_errcode, false);

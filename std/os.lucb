@@ -7,6 +7,9 @@ extern func WideCharToMultiByte(page: u32, flags: u32, input: const u16*, length
 extern func GetEnvironmentVariableW(name: u16*, output: u16*, capacity: u32) -> u32
 extern func GetLastError() -> u32
 extern func SetLastError(error: u32)
+extern func lb_rt_executable_path(buffer: u8*, capacity: usize) -> isize
+local var executable_path: u8[4096]
+pub let failed: ErrorCode = ErrorCode.package(12)
 local var environment_wide: u16[32768]
 local var environment_utf8: u8[131073]
 local var environment_key: u16[32768]
@@ -28,3 +31,11 @@ pub func env(variable: c.str) -> str?:
             return none
     environment_utf8[(usize)size] = 0
     return (str)environment_utf8[..<(usize)size]
+
+## The path of this program's executable as the loader saw it, in storage stable until
+## the next call.
+pub func executable() -> str!:
+    let count = lb_rt_executable_path(&executable_path[0], 4096)
+    if count < 0:
+        error(failed, "the executable path cannot be read")
+    return (str)executable_path[..<(usize)count]

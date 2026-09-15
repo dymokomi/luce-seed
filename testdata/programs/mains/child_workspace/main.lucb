@@ -3,6 +3,7 @@
 import c
 import files
 import process
+import os
 
 pub func main(arguments: str[]) -> i32!:
     if arguments.length > 1:
@@ -17,6 +18,8 @@ pub func main(arguments: str[]) -> i32!:
     try files.create_directory((c.str)inner, 493u32)
     assert(files.exists((c.str)inner))
     let executable = try files.canonical((c.str)arguments[0])
+    let running = try os.executable()
+    assert(files.exists((c.str)running) and try files.canonical((c.str)running) == executable)
     let child: c.str[1] = ["child"]
     let variables: c.str[1] = ["LUCE_CHILD_TEST=value"]
     let environment: const c.str[] = variables
