@@ -812,6 +812,20 @@ static int lb_remove_tree_windows(const wchar_t* path) {
 }
 #endif
 
+// One directory under an existing parent; an existing path of any kind is a failure.
+int lb_files_create_directory(const char* path, uint32_t permissions) {
+#ifdef _WIN32
+    (void)permissions;
+    wchar_t* wide = lb_windows_text(path);
+    if (!wide) return 7;
+    int result = CreateDirectoryW(wide, NULL) ? 0 : 7;
+    free(wide);
+    return result;
+#else
+    return mkdir(path, (mode_t)permissions) == 0 ? 0 : 7;
+#endif
+}
+
 int lb_files_remove_tree(const char* path) {
 #ifdef _WIN32
     wchar_t* wide = lb_windows_text(path);

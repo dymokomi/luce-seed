@@ -617,8 +617,8 @@ auto Emitter::emit_call(Node* n) -> string {
         if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
             n->resolved->kind == NodeKind::Func) {
             if (lt->name == "files" && (callee->text == "canonical" ||
-                callee->text == "create_temporary_directory" || callee->text == "remove_tree" ||
-                callee->text == "rename")) {
+                callee->text == "create_temporary_directory" || callee->text == "create_directory" ||
+                callee->text == "remove_tree" || callee->text == "rename")) {
                 const bool text_result = callee->text == "canonical" || callee->text == "create_temporary_directory";
                 string prefix;
                 vector<string> arguments;

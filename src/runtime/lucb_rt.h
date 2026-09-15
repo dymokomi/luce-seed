@@ -318,6 +318,7 @@ int lb_utf8_ok(const char* s, size_t n);
 uint32_t lb_utf8_scalar(const char* s, size_t n, size_t i, size_t* width);
 int lb_files_canonical(lb_iface allocator, const char* path, lb_str* output);
 int lb_files_temporary_directory(lb_iface allocator, const char* parent, uint32_t permissions, lb_str* output);
+int lb_files_create_directory(const char* path, uint32_t permissions);
 int lb_files_remove_tree(const char* path);
 int lb_files_rename(const char* source, const char* destination, bool replace);
 bool lb_files_exists(const char* path);

@@ -505,8 +505,8 @@ auto Interp::eval_call(Node* n) -> Value {
                 return v_bool(result == 0);
             }
             if (lt->name == "files" && (callee->text == "canonical" ||
-                callee->text == "create_temporary_directory" || callee->text == "remove_tree" ||
-                callee->text == "rename")) {
+                callee->text == "create_temporary_directory" || callee->text == "create_directory" ||
+                callee->text == "remove_tree" || callee->text == "rename")) {
                 fail("filesystem ownership operations require compiled execution");
                 return v_unit();
             }

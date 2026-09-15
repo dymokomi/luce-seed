@@ -346,7 +346,7 @@ auto Checker::bind_memory() -> void {
     f_exists->ty = t_bool();
     f_list->next = f_exists;
     Node* file_tail = f_exists;
-    for (const char* name : {"canonical", "create_temporary_directory", "remove_tree", "rename"}) {
+    for (const char* name : {"canonical", "create_temporary_directory", "create_directory", "remove_tree", "rename"}) {
         Node* function = syn_node(NodeKind::Func, name);
         function->flags |= FlagFallible;
         Node* path = syn_node(NodeKind::Param, std::string_view(name) == "rename" ? "source" :
@@ -356,7 +356,7 @@ auto Checker::bind_memory() -> void {
         const bool text_result = std::string_view(name) == "canonical" ||
                                  std::string_view(name) == "create_temporary_directory";
         function->ty = text_result ? ty_str : t_unit();
-        if (std::string_view(name) == "create_temporary_directory") {
+        if (std::string_view(name) == "create_temporary_directory" || std::string_view(name) == "create_directory") {
             Node* permissions = syn_node(NodeKind::Param, "permissions");
             permissions->ty = ty_u32;
             path->next = permissions;

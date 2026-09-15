@@ -12,6 +12,10 @@ pub func main(arguments: str[]) -> i32!:
     defer files.remove_tree((c.str)directory) catch failure:
         trap(failure.message)
     let absolute = try files.canonical((c.str)directory)
+    var inner_name: u8[4096]
+    let inner = try format(inner_name, f"{absolute}/inner")
+    try files.create_directory((c.str)inner, 493u32)
+    assert(files.exists((c.str)inner))
     let executable = try files.canonical((c.str)arguments[0])
     let child: c.str[1] = ["child"]
     let variables: c.str[1] = ["LUCE_CHILD_TEST=value"]
