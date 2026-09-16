@@ -11,6 +11,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_SANITIZERS "Address and undefined sanitizers" OFF)
 
+if(MINGW)
+    # A MinGW executable resolves libstdc++-6.dll through PATH at load time; Git for
+    # Windows ships an older copy ahead of the toolchain's, and the loader then fails
+    # with STATUS_ENTRYPOINT_NOT_FOUND. The seed carries its C++ runtime instead.
+    add_link_options(-static-libstdc++ -static-libgcc)
+endif()
+
 function(lucb_warnings target)
     target_compile_options(${target} PRIVATE
         -Wall -Wextra -Wpedantic -Werror
