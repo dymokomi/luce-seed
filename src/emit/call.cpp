@@ -1147,6 +1147,8 @@ auto Emitter::is_place_expression(Node* e) -> bool {
         return true;
     case NodeKind::Unary:
         return e->op == TokenKind::Star;
+    case NodeKind::Group:
+        return is_place_expression(e->left);
     case NodeKind::Member:
         if (e->resolved != nullptr && e->resolved->kind == NodeKind::EnumCase) {
             return false;

@@ -198,7 +198,22 @@ auto Interp::lvalue(Node* n) -> Value* {
                 return nullptr;
             }
         }
-        Value* obj = lvalue(n->left);
+        Value* obj = nullptr;
+        if (is_ptr(lt) && !is_place_expression(n->left)) {
+            // a member through a pointer that is a value, `((T*)p).field`, is the storage
+            // the pointer names (§9.4)
+            Value p = eval(n->left);
+            if (trapped) {
+                return nullptr;
+            }
+            if (p.ptr == nullptr) {
+                fail("null pointer");
+                return nullptr;
+            }
+            obj = p.ptr;
+        } else {
+            obj = lvalue(n->left);
+        }
         if (obj != nullptr && obj->kind == TypeKind::Pointer && obj->ptr != nullptr) {
             obj = obj->ptr;
         }
