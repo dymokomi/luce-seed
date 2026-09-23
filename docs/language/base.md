@@ -174,7 +174,7 @@ Types, interfaces, and unions are `PascalCase`; functions, methods, bindings, fi
 
 Names resolve lexically. A module's declarations share one namespace and are order-independent. Members of a type have their own namespace. Locals are sequential; use before declaration is rejected. A local or a parameter may not shadow another visible local, a parameter, an imported name, or a declaration of its module; renaming is the repair. A loop, `catch`, `if let`, or `match` binding owns its nested scope. A loop label (§8.5) lives in its own namespace.
 
-The compiler-known core namespace cannot be redeclared: no declaration of any kind, a binding, a parameter, a function, a type, a field, an enum case, a label, or an alias, may take a core name, and a compiler carries exactly this dictionary:
+The compiler-known core namespace cannot be redeclared: no declaration that binds a name in a scope, a binding, a parameter, a function, a type, an enum case, a label, or an alias, may take a core name. A struct field and an extern function's parameter bind nothing (a field is reached through its value, an extern parameter has no body), so they may: a library's `format` field shadows nothing. A compiler carries exactly this dictionary:
 
 ```text
 assert discard error trap hash print format sizeof alignof offsetof hex bin pad
@@ -182,7 +182,7 @@ bool i8 i16 i32 i64 isize u8 u16 u32 u64 usize f16 f32 f64 char str
 unit never void fmt Error ErrorCode
 ```
 
-The reserved words of §3.6 are excluded the same way, by the lexer. A standard module's name, `io` or `c`, binds only where it is imported, so a local named `c` in a module that does not import `c` is ordinary. The standard modules themselves may declare core names, since they are what those names mean. Calls such as `sizeof` parse as ordinary calls; only their checked types and semantics are special. `luce.location` and its pieces are not calls: they are compile-time replacements.
+The reserved words of §3.6 are excluded the same way, by the lexer. A standard module's name, `io` or `c`, binds only where it is imported, so a local named `c` in a module that does not import `c` is ordinary. The prelude alone may declare core names, since it is what those names mean. Calls such as `sizeof` parse as ordinary calls; only their checked types and semantics are special. `luce.location` and its pieces are not calls: they are compile-time replacements.
 
 **Why.** No shadowing removes a refactoring hazard and keeps every diagnostic that names a binding unambiguous. Making `sizeof` a core name rather than a keyword keeps the grammar small: it is a call whose argument may be a type.
 

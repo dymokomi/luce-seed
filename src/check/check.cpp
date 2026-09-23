@@ -643,7 +643,7 @@ auto Checker::check_struct(Node* st) -> void {
             }
         }
         if (m->kind == NodeKind::Field) {
-            check_declared_name(m, m->text);
+            // a field binds no name in a scope, so it may take a core name (section 3.5)
             if (struct_member(st, m->text, NodeKind::Func) != nullptr) {
                 fail_n(m, "lucb.check.shadow", "a method already uses this name");
             }
