@@ -700,6 +700,11 @@ auto Interp::eval_member(Node* n) -> Value {
         // `module.constant`: another module's public top-level binding.
         if (n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Const || n->resolved->kind == NodeKind::Global)) {
+            // not bound yet: its module's initialisers run in a later pass (load_globals)
+            if (unbound_globals.count(n->resolved) != 0) {
+                fail("unknown name at runtime");
+                return v_unit();
+            }
             Slot* slot = find_slot(n->resolved->text, n->resolved);
             if (slot != nullptr) {
                 return slot->value;
