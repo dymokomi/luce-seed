@@ -176,6 +176,13 @@ TEST(agree_infallible_initializer) {
                  "    return value.value + (wrapped() catch:\n        recover 0)\n"));
 }
 
+TEST(agree_string_match) {
+    CHECK(agrees("func opposite(cond: str) -> str:\n    match cond:\n        \"eq\": return \"ne\"\n        \"lo\", \"hs\": return \"flip\"\n        \"\": return \"empty\"\n        _: return cond\n"
+                 "func weigh(word: str, heavy: bool) -> i64:\n    let w = match word:\n        \"one\" if heavy => 10\n        \"two\" => 1\n        _ => 0\n    return w\n"
+                 "pub func answer() -> i64:\n    var n: i64 = 0\n    if opposite(\"eq\") == \"ne\":\n        n += 10\n    if opposite(\"hs\") == \"flip\":\n        n += 10\n    if opposite(\"\") == \"empty\":\n        n += 10\n    if opposite(\"gt\") == \"gt\":\n        n += 1\n"
+                 "    return n + weigh(\"one\", true) + weigh(\"one\", false) + weigh(\"two\", true)\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

@@ -875,6 +875,44 @@ auto Emitter::emit_match(Node* n, const string& dest) -> void {
         line("}");
         return;
     }
+    if (st != nullptr && st->kind == TypeKind::Str) {
+        // text against literal patterns, the first arm that equals it, `_` any text
+        bool first = true;
+        for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
+            string cond = "0";
+            for (Node* pat = arm->left; pat != nullptr; pat = pat->next) {
+                if (pat->text == "_") {
+                    cond = "1";
+                    break;
+                }
+                if (pat->left == nullptr) {
+                    continue;
+                }
+                int pid = tmp();
+                string pv = "_lb_mp" + std::to_string(pid);
+                cond += " || ({ lb_str " + pv + " = " + emit_expr(pat->left) + "; (" + sv +
+                        ".length == " + pv + ".length && (" + sv + ".length == 0 || memcmp(" + sv +
+                        ".data, " + pv + ".data, " + sv + ".length) == 0)); })";
+            }
+            if (arm->type != nullptr) {
+                // a guard: the arm is taken only when it holds, else the next is tried
+                cond = "(" + cond + ") && !!(" + emit_expr(arm->type) + ")";
+            }
+            pad();
+            out += first ? "if (" : "else if (";
+            out += cond + ") {\n";
+            first = false;
+            indent++;
+            if (!dest.empty()) {
+                line(dest + " = " + emit_expr(arm->body) + ";");
+            } else {
+                emit_stmt(arm->body);
+            }
+            indent--;
+            line("}");
+        }
+        return;
+    }
     if (is_opt(st)) {
         bool first = true;
         for (Node* arm = n->body; arm != nullptr; arm = arm->next) {
