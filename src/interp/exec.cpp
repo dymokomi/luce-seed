@@ -63,7 +63,9 @@ auto Interp::exec(Node* n) -> void {
                     breaking = false;
                     continuing = false;
                     Node* dn = d[static_cast<size_t>(i)].n;
-                    if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
+                    if (dn->right != nullptr) {
+                        exec(dn->right);
+                    } else if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
                         exec(dn->left);
                     } else {
                         Value dv = eval(dn->left);
@@ -305,6 +307,8 @@ auto Interp::exec(Node* n) -> void {
         d.err_only = n->kind == NodeKind::Errdefer;
         if (!defers.empty()) {
             defers.back().push_back(d);
+        } else if (n->right != nullptr) {
+            exec(n->right);
         } else {
             eval(n->left);
         }

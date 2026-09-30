@@ -127,10 +127,31 @@ auto Parser::parse_simple_stmt() -> Node* {
         Token t = take();
         Node* n =
             make(t.kind == TokenKind::KwDefer ? NodeKind::Defer : NodeKind::Errdefer, start.span);
+        // `defer:` with a block, or `defer target = value`: deferred statements, kept in
+        // `right` (base.md §8.8)
+        if (eat(TokenKind::Colon)) {
+            n->right = parse_suite();
+            n->span = span_from(start);
+            return n;
+        }
         if (at(TokenKind::KwFree)) {
             n->left = parse_free();
         } else {
-            n->left = parse_expression();
+            Token here = cur();
+            Node* left = parse_unary();
+            if (left != nullptr && is_assign_op(cur().kind)) {
+                Node* a = make(NodeKind::Assign, here.span);
+                a->op = cur().kind;
+                take();
+                a->left = left;
+                a->right = parse_expression();
+                a->span = span_from(here);
+                n->right = a;
+                expect_stmt_newline(a->right);
+                n->span = span_from(start);
+                return n;
+            }
+            n->left = finish_expression(left);
         }
         if (n->left != nullptr && n->left->kind == NodeKind::Catch) {
             // `defer call catch failure:` — the handler suite ended the line.

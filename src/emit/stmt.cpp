@@ -23,7 +23,9 @@ auto Emitter::run_defers(const vector<Node*>& d, bool failing) -> void {
         if (dn->kind == NodeKind::Errdefer && !failing) {
             continue;
         }
-        if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
+        if (dn->right != nullptr) {
+            emit_stmt(dn->right);
+        } else if (dn->left != nullptr && dn->left->kind == NodeKind::Free) {
             emit_free(dn->left);
         } else {
             line("(void)(" + emit_expr(dn->left) + ");");
@@ -309,6 +311,8 @@ auto Emitter::emit_stmt(Node* n) -> void {
     case NodeKind::Errdefer:
         if (!scopes.empty()) {
             scopes.back().defers.push_back(n);
+        } else if (n->right != nullptr) {
+            emit_stmt(n->right);
         } else if (n->left != nullptr && n->left->kind == NodeKind::Free) {
             emit_free(n->left);
         } else {

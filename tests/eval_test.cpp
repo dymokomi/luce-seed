@@ -1019,6 +1019,17 @@ TEST(eval_globals_address_each_other) {
     CHECK_EQ(r.answer, 57);
 }
 
+// §8.8: `defer` takes an assignment and a block, run last in, first out at the scope's end,
+// reading names as they then are
+TEST(eval_defer_statements) {
+    EvalResult r = run("var log: i64 = 0\n"
+                       "func run(n: i64) -> i64:\n    var depth: i64 = n\n    if n > 0:\n        defer depth = 100\n"
+                       "        defer:\n            log += depth\n            if depth > 50:\n                log += 1000\n        depth += 1\n    return depth\n"
+                       "pub func answer() -> i64:\n    let a = run(3)\n    return a * 10000 + log\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 1000004);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"
