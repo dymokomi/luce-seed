@@ -225,6 +225,10 @@ auto Checker::check_ctor(Node* n, Node* st) -> Type* {
     Type* ty = st->ty;
     Node* init = struct_member(st, "init", NodeKind::Func);
     if (init != nullptr) {
+        // a top-level `let` is checked before the methods' signatures: resolve this one now
+        if (init->ty == nullptr && !is_generic_decl(st)) {
+            resolve_sig(init);
+        }
         n->resolved = init;
         check_func_call(n, init, nullptr);
         if ((init->flags & FlagFallible) != 0) {

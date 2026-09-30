@@ -1000,6 +1000,15 @@ TEST(eval_literal_as_span_of_optionals) {
     CHECK_EQ(r.answer, 2102);
 }
 
+// §6.3: a top-level `let` made through a type's `init`, checked before the methods'
+// signatures are, is made once before the program runs
+TEST(eval_let_made_through_init) {
+    EvalResult r = run("var inits: i64 = 0\nstruct Made:\n    var n: i64\n    func init(x: i64):\n        inits += 1\n        self.n = x * 2\n"
+                       "let made: Made = Made(3)\npub func answer() -> i64:\n    return made.n * 10 + inits\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 61);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"
