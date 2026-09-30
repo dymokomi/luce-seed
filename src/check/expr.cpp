@@ -610,6 +610,10 @@ auto Checker::check_array_lit(Node* n, Type* expected) -> Type* {
     if (expected != nullptr && is_array(expected)) {
         elem = expected->elem;
     }
+    // a literal passed as a span takes the span's element type: `f([none, 2])` for `T?[]`
+    if (expected != nullptr && is_span(expected) && expected->elem != nullptr) {
+        elem = expected->elem;
+    }
     for (Node* e = n->body; e != nullptr; e = e->next) {
         Type* want = elem;
         if (want != nullptr && want->kind == TypeKind::UntypedInt) {

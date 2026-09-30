@@ -990,6 +990,16 @@ TEST(eval_thread_local_starts_initialised) {
     CHECK_EQ(r.answer, 73);
 }
 
+// §7.1, §13.1: a literal passed as a span takes the span's element type, written type
+// arguments included, so `none` may come first
+TEST(eval_literal_as_span_of_optionals) {
+    EvalResult r = run("type MaybeInt = i64?\nfunc count[T](items: const T[]) -> i64:\n    return (i64)items.length\n"
+                       "func sum(values: const MaybeInt[]) -> i64:\n    var total: i64 = 0\n    for v in values:\n        total += v else 100\n    return total\n"
+                       "pub func answer() -> i64:\n    return count[i64?]([none, 2]) * 1000 + sum([none, 2])\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 2102);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"
