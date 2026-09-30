@@ -31,4 +31,12 @@ double decimal_to_double(std::string_view text, int width);
 // a subnormal included, with `f` or `f16` naming the narrower widths.
 std::string hex_float(uint64_t bits, int width);
 
+// A float field's text in a formatted string (base.md §14): the shortest decimal that
+// reads back as the value, the closest of those, laid out as double-conversion's
+// ToShortest (decimal notation for a decimal exponent from -6 to 14, else `1.5e-7`,
+// `1e15`), a `.0` after digits with no point (`5.0`, `-0.0`), and `inf`, `-inf`, `nan`.
+// `width` 64 takes the double's digits; 32 and 16 the float's (an f16 shows its value's
+// shortest f32 digits).
+std::string float_display(double value, int width);
+
 } // namespace lucb

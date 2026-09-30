@@ -611,7 +611,17 @@ auto Checker::check_slice(Node* n) -> Type* {
     return intern_sp(elem, cnst);
 }
 
+// The type an optional or fallible `expected` holds: what a tuple or array literal inside
+// it takes its members' types from (`(k, 0)` for `(u32, u32)?`).
+static Type* inside_optional(Type* expected) {
+    while (expected != nullptr && (is_opt(expected) || expected->kind == TypeKind::Fallible) && expected->elem != nullptr) {
+        expected = expected->elem;
+    }
+    return expected;
+}
+
 auto Checker::check_array_lit(Node* n, Type* expected) -> Type* {
+    expected = inside_optional(expected);
     Type* elem = nullptr;
     uint64_t count = 0;
     if (expected != nullptr && is_array(expected)) {
@@ -1332,6 +1342,7 @@ auto Checker::check_match(Node* n, Type* expected) -> Type* {
 }
 
 auto Checker::check_tuple_expr(Node* n, Type* expected) -> Type* {
+    expected = inside_optional(expected);
     int nfields = 0;
     for (Node* e = n->body; e != nullptr; e = e->next) {
         nfields++;

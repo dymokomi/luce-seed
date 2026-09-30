@@ -213,13 +213,80 @@ int lb_fmtbuf_u64(lb_fmtbuf* b, uint64_t v) {
     return lb_fmtbuf_put(b, tmp, (size_t)n);
 }
 
-int lb_fmtbuf_f64(lb_fmtbuf* b, double v) {
-    char tmp[64];
-    int n = snprintf(tmp, sizeof(tmp), "%g", v);
-    if (n < 0) {
-        return 1;
+size_t lb_float_text(char* out, double v, int single) {
+    if (isnan(v)) {
+        memcpy(out, "nan", 3);
+        return 3;
     }
-    return lb_fmtbuf_put(b, tmp, (size_t)n);
+    if (isinf(v)) {
+        memcpy(out, v < 0 ? "-inf" : "inf", v < 0 ? 4 : 3);
+        return v < 0 ? 4 : 3;
+    }
+    if (v == 0) {
+        memcpy(out, signbit(v) ? "-0.0" : "0.0", signbit(v) ? 4 : 3);
+        return signbit(v) ? 4 : 3;
+    }
+    /* the fewest significant digits that read back as the value; printf rounds correctly,
+       so those digits are the closest of their length */
+    char sci[48];
+    for (int precision = 1; precision <= 17; precision++) {
+        snprintf(sci, sizeof(sci), "%.*e", precision - 1, fabs(v));
+        if (single ? strtof(sci, NULL) == (float)fabs(v) : strtod(sci, NULL) == fabs(v)) {
+            break;
+        }
+    }
+    char digits[24];
+    int count = 0;
+    char* e = strchr(sci, 'e');
+    for (char* p = sci; p < e; p++) {
+        if (*p != '.') {
+            digits[count++] = *p;
+        }
+    }
+    while (count > 1 && digits[count - 1] == '0') {
+        count--;
+    }
+    int power = atoi(e + 1);
+    int point = power + 1;
+    size_t at = 0;
+    if (v < 0) {
+        out[at++] = '-';
+    }
+    if (power >= -6 && power < 15) {
+        if (point <= 0) {
+            out[at++] = '0';
+            out[at++] = '.';
+            for (int i = 0; i < -point; i++) out[at++] = '0';
+            for (int i = 0; i < count; i++) out[at++] = digits[i];
+        } else if (point >= count) {
+            for (int i = 0; i < count; i++) out[at++] = digits[i];
+            for (int i = count; i < point; i++) out[at++] = '0';
+            out[at++] = '.';
+            out[at++] = '0';
+        } else {
+            for (int i = 0; i < point; i++) out[at++] = digits[i];
+            out[at++] = '.';
+            for (int i = point; i < count; i++) out[at++] = digits[i];
+        }
+        return at;
+    }
+    out[at++] = digits[0];
+    if (count > 1) {
+        out[at++] = '.';
+        for (int i = 1; i < count; i++) out[at++] = digits[i];
+    }
+    at += (size_t)snprintf(out + at, 8, "e%d", power);
+    return at;
+}
+
+int lb_fmtbuf_f64(lb_fmtbuf* b, double v) {
+    char tmp[48];
+    return lb_fmtbuf_put(b, tmp, lb_float_text(tmp, v, 0));
+}
+
+int lb_fmtbuf_f32(lb_fmtbuf* b, double v) {
+    char tmp[48];
+    return lb_fmtbuf_put(b, tmp, lb_float_text(tmp, v, 1));
 }
 
 int lb_fmtbuf_bool(lb_fmtbuf* b, bool v) {
@@ -1887,5 +1954,11 @@ void lb_print_str(lb_str value) {
 }
 
 void lb_print_f64(double value) {
-    printf("%g\n", value);
+    char tmp[48];
+    printf("%.*s\n", (int)lb_float_text(tmp, value, 0), tmp);
+}
+
+void lb_print_f32(double value) {
+    char tmp[48];
+    printf("%.*s\n", (int)lb_float_text(tmp, value, 1), tmp);
 }

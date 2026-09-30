@@ -524,7 +524,7 @@ auto Emitter::emit_call(Node* n) -> string {
             return "lb_print_str(" + e + ")";
         }
         if (is_float(t)) {
-            return "lb_print_f64((double)(" + e + "))";
+            return string(t->kind == TypeKind::F32 || t->kind == TypeKind::F16 ? "lb_print_f32" : "lb_print_f64") + "((double)(" + e + "))";
         }
         if (t != nullptr && is_unsigned_int(t)) {
             return "lb_print_u64((uint64_t)(" + e + "))";

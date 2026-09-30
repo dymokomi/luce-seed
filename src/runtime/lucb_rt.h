@@ -243,6 +243,7 @@ void lb_print_bool(bool value);
 void lb_print_str(lb_str value);
 int lb_str_compare(lb_str a, lb_str b);
 void lb_print_f64(double value);
+void lb_print_f32(double value);
 static inline void lb_check_index(uint64_t i, uint64_t n) {
     if (i >= n) {
         lb_trap("index out of bounds");
@@ -271,6 +272,11 @@ int lb_fmtbuf_put(lb_fmtbuf* b, const char* s, size_t n);
 int lb_fmtbuf_i64(lb_fmtbuf* b, int64_t v);
 int lb_fmtbuf_u64(lb_fmtbuf* b, uint64_t v);
 int lb_fmtbuf_f64(lb_fmtbuf* b, double v);
+int lb_fmtbuf_f32(lb_fmtbuf* b, double v);
+/* A float's text as a formatted field shows it (base.md §14): the shortest decimal that
+   reads back as the value (a float's own digits when `single`), laid out as ToShortest,
+   `.0` after digits with no point. `out` holds 40 bytes; the length. */
+size_t lb_float_text(char* out, double v, int single);
 int lb_fmtbuf_bool(lb_fmtbuf* b, bool v);
 // The UTF-8 bytes of one scalar, and their count: how a `char` displays (§14.4).
 size_t lb_utf8_encode(uint32_t cp, char out[4]);

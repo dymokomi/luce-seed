@@ -71,7 +71,7 @@ auto Emitter::emit_display_buf(const string& b, Node* v) -> string {
         return "lb_fmtbuf_put(&" + b + ", " + e + ".data, " + e + ".length)";
     }
     if (is_float(t)) {
-        return "lb_fmtbuf_f64(&" + b + ", (double)(" + e + "))";
+        return string(t->kind == TypeKind::F32 || t->kind == TypeKind::F16 ? "lb_fmtbuf_f32" : "lb_fmtbuf_f64") + "(&" + b + ", (double)(" + e + "))";
     }
     if (t != nullptr && is_unsigned_int(t)) {
         return "lb_fmtbuf_u64(&" + b + ", (uint64_t)(" + e + "))";
@@ -193,7 +193,8 @@ auto Emitter::emit_print_formatted(Node* n) -> string {
             } else if (t != nullptr && (t->kind == TypeKind::Str || t->kind == TypeKind::Fmt)) {
                 s += "fwrite(" + e + ".data, 1, " + e + ".length, stdout); ";
             } else if (is_float(t)) {
-                s += "fprintf(stdout, \"%g\", (double)(" + e + ")); ";
+                const bool single = t->kind == TypeKind::F32 || t->kind == TypeKind::F16;
+                s += string("{ char _lb_ft[48]; fwrite(_lb_ft, 1, lb_float_text(_lb_ft, (double)(") + e + "), " + (single ? "1" : "0") + "), stdout); } ";
             } else if (t != nullptr && is_unsigned_int(t)) {
                 s += "fprintf(stdout, \"%llu\", (unsigned long long)(" + e + ")); ";
             } else {

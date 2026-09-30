@@ -16,6 +16,8 @@
 // literal keeps at most 800 significant digits: every float and every midpoint between
 // two floats has a decimal expansion shorter than that, so what follows can only decide
 // a tie, which the sticky bit records.
+#include <charconv>
+#include <cmath>
 #include "support/decimal.h"
 
 #include <cstring>
@@ -407,6 +409,55 @@ std::string hex_float(uint64_t bits, int width) {
     } else if (width == 16) {
         out += "f16";
     }
+    return out;
+}
+
+std::string float_display(double value, int width) {
+    if (std::isnan(value)) {
+        return "nan";
+    }
+    if (std::isinf(value)) {
+        return value < 0 ? "-inf" : "inf";
+    }
+    if (value == 0) {
+        return std::signbit(value) ? "-0.0" : "0.0";
+    }
+    char sci[64];
+    std::to_chars_result r = width == 64
+        ? std::to_chars(sci, sci + sizeof(sci), value, std::chars_format::scientific)
+        : std::to_chars(sci, sci + sizeof(sci), static_cast<float>(value), std::chars_format::scientific);
+    std::string text(sci, r.ptr);
+    const bool negative = text[0] == '-';
+    if (negative) {
+        text.erase(0, 1);
+    }
+    // d[.ddd]e±XX: the digits and the power of ten of the first
+    const size_t e = text.find('e');
+    std::string digits;
+    for (size_t i = 0; i < e; i++) {
+        if (text[i] != '.') {
+            digits += text[i];
+        }
+    }
+    const int power = std::stoi(text.substr(e + 1));
+    const int count = static_cast<int>(digits.size());
+    const int point = power + 1;
+    std::string out = negative ? "-" : "";
+    if (power >= -6 && power < 15) {
+        if (point <= 0) {
+            out += "0." + std::string(static_cast<size_t>(-point), '0') + digits;
+        } else if (point >= count) {
+            out += digits + std::string(static_cast<size_t>(point - count), '0') + ".0";
+        } else {
+            out += digits.substr(0, static_cast<size_t>(point)) + "." + digits.substr(static_cast<size_t>(point));
+        }
+        return out;
+    }
+    out += digits.substr(0, 1);
+    if (count > 1) {
+        out += "." + digits.substr(1);
+    }
+    out += "e" + std::to_string(power);
     return out;
 }
 

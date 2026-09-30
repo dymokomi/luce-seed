@@ -12,6 +12,7 @@
 #include "interp/interp_impl.h"
 #include "interp/punning.h"
 
+#include "support/decimal.h"
 #include "support/literal.h"
 #include <cerrno>
 #include <cstdio>
@@ -369,9 +370,8 @@ auto Interp::show(const Value& v) -> string {
         return decode_string(v.str); // a forwarded `fmt` parameter shows its text
     }
     if (is_float(v.type) || is_float_kind(v.kind)) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%g", v.f);
-        return buf;
+        const TypeKind kind = v.type != nullptr && is_float(v.type) ? v.type->kind : v.kind;
+        return float_display(v.f, kind == TypeKind::F16 ? 16 : kind == TypeKind::F32 ? 32 : 64);
     }
     if (is_unsigned_int(v.type) || v.kind == TypeKind::U8 || v.kind == TypeKind::U16 ||
         v.kind == TypeKind::U32 || v.kind == TypeKind::U64 || v.kind == TypeKind::Usize ||

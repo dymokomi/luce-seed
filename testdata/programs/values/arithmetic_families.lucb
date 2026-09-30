@@ -50,4 +50,4 @@ pub func answer() -> i64:
     total += one("abc" < "abd") + one("b" > "abc") + one("" < "a")
     total += one(hash("abc") == hash("abc")) + one(hash(7) != hash(8))
     return total
-# answer: 225
+# answer: 231
