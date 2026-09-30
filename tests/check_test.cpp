@@ -277,6 +277,13 @@ TEST(check_core_names_are_not_declared) {
     CHECK(check_ok("struct P:\n    var format: i64\n    var str: i64\npub func answer() -> i64:\n    let p = P(format = 41, str = 1)\n    return p.format + p.str\n"));
 }
 
+// §6.4: a construction is constant only when the field defaults it leaves out are
+TEST(check_construction_default_that_runs) {
+    CHECK(check_has("func start() -> i64:\n    return 5\nstruct C:\n    var n: i64 = start()\nvar c: C = C()\npub func answer() -> i64:\n    return c.n\n", "lucb.check.type"));
+    CHECK(check_ok("func start() -> i64:\n    return 5\nstruct C:\n    var n: i64 = start()\nvar c: C = C(n = 2)\npub func answer() -> i64:\n    return c.n\n"));
+    CHECK(check_ok("struct C:\n    var n: i64 = 5\nvar c: C = C()\npub func answer() -> i64:\n    return c.n\n"));
+}
+
 TEST(check_escape_local) {
     CHECK(check_has("pub func answer() -> i64*:\n    var n: i64 = 1\n    return &n\n",
                     "lucb.check.escape"));

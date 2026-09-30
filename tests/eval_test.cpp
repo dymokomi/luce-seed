@@ -981,6 +981,15 @@ TEST(eval_thread_local_per_thread) {
     CHECK_EQ(r.answer, 0);
 }
 
+// §6.3: a spawned thread's `local var` starts from its initialiser, not from zero
+TEST(eval_thread_local_starts_initialised) {
+    EvalResult r = run("import thread\nlocal var mine: u64 = 7\n"
+                       "func read(context: void*):\n    let out = (u64*)context\n    *out = mine\n    mine = 100\n"
+                       "pub func answer() -> i64!:\n    var seen: u64 = 0\n    mine = 3\n    let h = try thread.spawn(read, &seen)\n    try h.join()\n    return (i64)(seen * 10 + mine)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 73);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"

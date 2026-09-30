@@ -126,6 +126,14 @@ auto Checker::is_constant_expr(Node* n) -> bool {
             (callee->text == "sizeof" || callee->text == "alignof" || callee->text == "offsetof")) {
             return true;
         }
+        // a call not checked yet (a field default read before its struct's body) of a
+        // function runs, whatever resolves it later
+        if (n->resolved == nullptr && callee != nullptr && callee->kind == NodeKind::Name) {
+            Binding* b = lookup(callee->text);
+            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Func) {
+                return false;
+            }
+        }
         // a struct construction, a payload case, or `ErrorCode.package` from constants
         const bool builds = n->resolved == nullptr ||
                             n->resolved->kind == NodeKind::Struct || n->resolved->kind == NodeKind::EnumCase;
@@ -135,6 +143,22 @@ auto Checker::is_constant_expr(Node* n) -> bool {
         for (Node* a = n->body; a != nullptr; a = a->next) {
             if (!is_constant_expr(a->left)) {
                 return false;
+            }
+        }
+        // the default of every field the construction leaves out must be constant too
+        Node* st = n->resolved != nullptr ? n->resolved : (callee != nullptr ? callee->resolved : nullptr);
+        if (st != nullptr && st->kind == NodeKind::Struct) {
+            for (Node* f = st->body; f != nullptr; f = f->next) {
+                if (f->kind != NodeKind::Field || f->left == nullptr) {
+                    continue;
+                }
+                bool given = false;
+                for (Node* a = n->body; a != nullptr; a = a->next) {
+                    given = given || a->text == f->text;
+                }
+                if (!given && !is_constant_expr(f->left)) {
+                    return false;
+                }
             }
         }
         return true;

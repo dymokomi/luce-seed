@@ -793,14 +793,20 @@ auto Interp::eval_call(Node* n) -> Value {
                     n->body != nullptr && n->body->next != nullptr ? n->body->next : nullptr;
                 if (fn != nullptr) {
                     // the thread runs to completion here; a `local var` is one per
-                    // thread (§15.3), so the new thread sees zeroes and the spawner's values
-                    // return afterwards
+                    // thread (§6.3), so the new thread starts from each one's initialiser
+                    // (zero without one) and the spawner's values return afterwards
                     vector<std::pair<size_t, Value>> saved;
                     for (size_t i = 0; i < globals.slots.size(); i++) {
                         Node* g = globals.slots[i].decl;
                         if (g != nullptr && (g->flags & FlagThreadLocal) != 0) {
                             saved.emplace_back(i, globals.slots[i].value);
-                            globals.slots[i].value = zero_of(globals.slots[i].value.type);
+                            Type* type = globals.slots[i].value.type;
+                            Value start = g->left != nullptr ? eval(g->left) : zero_of(type);
+                            if (type != nullptr) {
+                                start.type = type;
+                                start.kind = type->kind;
+                            }
+                            globals.slots[i].value = start;
                         }
                     }
                     call_func(fn, nullptr, ctxn);
