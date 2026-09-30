@@ -82,14 +82,24 @@ auto Interp::load_globals() -> void {
             }
         }
     }
+    // Every global has its storage before any initialiser runs, so one may take the address
+    // of another bound later (`&thing_info` in the table before it, §6.4); reading the value
+    // of one not yet bound waits for a later pass.
+    for (Node* d : pending) {
+        Slot s;
+        s.name = d->text;
+        s.decl = d;
+        s.value = zero_of(d->ty);
+        globals.slots.push_back(s);
+        unbound_globals.insert(d);
+    }
     while (!pending.empty()) {
         vector<Node*> later;
         for (Node* d : pending) {
-            Slot s;
-            s.name = d->text;
-            s.decl = d;
+            Slot* s = find_slot(d->text, d);
+            Value value;
             if (d->left != nullptr) {
-                s.value = eval(d->left);
+                value = eval(d->left);
                 if (trapped && trap == "unknown name at runtime") {
                     trapped = false;
                     trap.clear();
@@ -97,13 +107,14 @@ auto Interp::load_globals() -> void {
                     continue;
                 }
             } else {
-                s.value = zero_of(d->ty);
+                value = zero_of(d->ty);
             }
             if (d->ty != nullptr) {
-                s.value.type = d->ty;
-                s.value.kind = d->ty->kind;
+                value.type = d->ty;
+                value.kind = d->ty->kind;
             }
-            globals.slots.push_back(s);
+            s->value = value;
+            unbound_globals.erase(d);
         }
         if (later.size() == pending.size()) {
             fail("unknown name at runtime");

@@ -1009,6 +1009,16 @@ TEST(eval_let_made_through_init) {
     CHECK_EQ(r.answer, 61);
 }
 
+// §6.4: top-level lets may take each other's address, the earlier naming the later
+TEST(eval_globals_address_each_other) {
+    EvalResult r = run("struct Info:\n    let tag: i64\n    let table: const void*\nstruct Table:\n    let info: const Info*\n    let value: i64\n"
+                       "let thing_table: Table = Table(info = &thing_info, value = 7)\n"
+                       "let thing_info: Info = Info(tag = 5, table = (const void*)&thing_table)\n"
+                       "pub func answer() -> i64:\n    let table = (const Table*)thing_info.table\n    return table.info.tag * 10 + table.value\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 57);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"

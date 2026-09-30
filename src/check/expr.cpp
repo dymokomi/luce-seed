@@ -350,6 +350,13 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
     if (b->from_local) {
         mark_local(n);
     }
+    // a top-level `let` or `var` named before the declaration pass reached it (`&later` in an
+    // earlier initialiser): its written type is its type
+    if ((b->type == nullptr || b->type->kind == TypeKind::Error) && b->decl != nullptr &&
+        (b->decl->kind == NodeKind::Const || b->decl->kind == NodeKind::Global) &&
+        b->decl->type != nullptr) {
+        b->type = resolve_type(b->decl->type);
+    }
     return b->type;
 }
 

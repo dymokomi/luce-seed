@@ -508,6 +508,11 @@ auto Interp::eval_uncast(Node* n) -> Value {
             return v;
         }
         {
+            // a global whose initialiser has not run yet has storage but no value (load_globals)
+            if (n->resolved != nullptr && unbound_globals.count(n->resolved) != 0) {
+                fail("unknown name at runtime");
+                return v_unit();
+            }
             Value* p = lvalue(n);
             if (p == nullptr) {
                 return v_unit();

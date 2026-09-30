@@ -16,6 +16,7 @@
 
 #include <deque>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace lucb {
 
@@ -44,6 +45,8 @@ struct Interp {
     Value ret;
     string err_storage;
     Frame globals;
+    // globals whose storage exists but whose initialiser has not run yet (load_globals)
+    std::unordered_set<Node*> unbound_globals;
     Value current_alloc;
     Value stdio_dummy;
     std::deque<string> strings;
