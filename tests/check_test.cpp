@@ -282,6 +282,9 @@ TEST(check_construction_default_that_runs) {
     CHECK(check_has("func start() -> i64:\n    return 5\nstruct C:\n    var n: i64 = start()\nvar c: C = C()\npub func answer() -> i64:\n    return c.n\n", "lucb.check.type"));
     CHECK(check_ok("func start() -> i64:\n    return 5\nstruct C:\n    var n: i64 = start()\nvar c: C = C(n = 2)\npub func answer() -> i64:\n    return c.n\n"));
     CHECK(check_ok("struct C:\n    var n: i64 = 5\nvar c: C = C()\npub func answer() -> i64:\n    return c.n\n"));
+    // a default argument is made at each call: it may run an `init` or a field default
+    CHECK(check_ok("struct V:\n    var x: i64\n    func init(x: i64):\n        self.x = x * 2\nfunc f(v: V = V(3)) -> i64:\n    return v.x\npub func answer() -> i64:\n    return f()\n"));
+    CHECK(check_has("struct V:\n    var x: i64\n    func init(x: i64):\n        self.x = x * 2\nvar g: V = V(3)\npub func answer() -> i64:\n    return g.x\n", "lucb.check.type"));
 }
 
 TEST(check_escape_local) {

@@ -126,17 +126,12 @@ auto Checker::is_constant_expr(Node* n) -> bool {
             (callee->text == "sizeof" || callee->text == "alignof" || callee->text == "offsetof")) {
             return true;
         }
-        // a call not checked yet (a field default read before its struct's body) of a
-        // function runs, whatever resolves it later
-        if (n->resolved == nullptr && callee != nullptr && callee->kind == NodeKind::Name) {
-            Binding* b = lookup(callee->text);
-            if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Func) {
-                return false;
-            }
-        }
-        // a struct construction, a payload case, or `ErrorCode.package` from constants
-        const bool builds = n->resolved == nullptr ||
-                            n->resolved->kind == NodeKind::Struct || n->resolved->kind == NodeKind::EnumCase;
+        // a struct construction (through its own `init` too: a default argument is made at
+        // each call), a payload case, or `ErrorCode.package` from constants; what runs code
+        // is kept out of a global's storage by is_static_value
+        const bool builds = n->resolved == nullptr || n->resolved->kind == NodeKind::Struct ||
+                            n->resolved->kind == NodeKind::EnumCase ||
+                            (n->resolved->kind == NodeKind::Func && n->resolved->text == "init");
         if (!builds) {
             return false;
         }
@@ -145,7 +140,25 @@ auto Checker::is_constant_expr(Node* n) -> bool {
                 return false;
             }
         }
-        // the default of every field the construction leaves out must be constant too
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+// Whether a constant expression makes its value without running code, as a global's
+// storage needs it before anything runs (§6.3): no construction through a type's own
+// `init`, none leaving out a field default that calls.
+auto Checker::is_static_value(Node* n) -> bool {
+    if (n == nullptr) {
+        return true;
+    }
+    if (n->kind == NodeKind::Call) {
+        if (n->resolved != nullptr && n->resolved->kind == NodeKind::Func && n->resolved->text == "init") {
+            return false;
+        }
+        Node* callee = n->left;
         Node* st = n->resolved != nullptr ? n->resolved : (callee != nullptr ? callee->resolved : nullptr);
         if (st != nullptr && st->kind == NodeKind::Struct) {
             for (Node* f = st->body; f != nullptr; f = f->next) {
@@ -156,16 +169,42 @@ auto Checker::is_constant_expr(Node* n) -> bool {
                 for (Node* a = n->body; a != nullptr; a = a->next) {
                     given = given || a->text == f->text;
                 }
-                if (!given && !is_constant_expr(f->left)) {
+                if (!given && !(is_constant_expr(f->left) && is_static_value(f->left) && !calls_a_function(f->left))) {
                     return false;
                 }
             }
         }
+        for (Node* a = n->body; a != nullptr; a = a->next) {
+            if (!is_static_value(a->left)) {
+                return false;
+            }
+        }
         return true;
     }
-    default:
+    if (n->kind == NodeKind::ArrayLit || n->kind == NodeKind::Tuple || n->kind == NodeKind::CaseValue) {
+        for (Node* e = n->body; e != nullptr; e = e->next) {
+            if (!is_static_value(n->kind == NodeKind::CaseValue ? e->left : e)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return is_static_value(n->left) && is_static_value(n->right);
+}
+
+// A field default not checked yet (read before its struct's body) calling a function: it
+// runs, whatever resolves it later.
+auto Checker::calls_a_function(Node* n) -> bool {
+    if (n == nullptr) {
         return false;
     }
+    if (n->kind == NodeKind::Call && n->resolved == nullptr && n->left != nullptr && n->left->kind == NodeKind::Name) {
+        Binding* b = lookup(n->left->text);
+        if (b != nullptr && b->decl != nullptr && b->decl->kind == NodeKind::Func) {
+            return true;
+        }
+    }
+    return calls_a_function(n->left) || calls_a_function(n->right) || calls_a_function(n->body);
 }
 
 // `&global` and a function name are constant addresses (§6.4); so is a top-level `let`.
@@ -986,6 +1025,8 @@ auto Checker::collect_module(Node* mod) -> void {
                 in_top_const = saved_const;
                 if (!is_constant_expr(d->left)) {
                     fail_n(d->left, "lucb.check.type", "a top-level initialiser is a constant expression");
+                } else if (d->kind == NodeKind::Global && !is_static_value(d->left)) {
+                    fail_n(d->left, "lucb.check.type", "a global's initialiser is a constant expression that runs nothing");
                 }
                 if (t == nullptr) {
                     if (init != nullptr && init->kind == TypeKind::UntypedInt) {

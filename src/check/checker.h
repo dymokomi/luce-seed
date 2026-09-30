@@ -261,6 +261,8 @@ struct Checker {
     Type* check_float_from_bits(Node* n, Node* obj);
     void enter_loop(Node* n);
     bool is_constant_expr(Node* n);
+    bool is_static_value(Node* n);
+    bool calls_a_function(Node* n);
     bool is_global_place(Node* n);
     Node* bracket_value_decl(string_view text);
     Node* bracket_name_expr(Node* arg);
