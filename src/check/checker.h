@@ -132,6 +132,8 @@ struct Checker {
     Node* current_struct = nullptr;
     Type* return_type = nullptr;
     bool fallible_fn = false;
+    // inside a deferred statement or block (§8.8), which nothing may leave
+    int in_defer = 0;
     bool expression_effect = false;
     uint64_t effect_count = 0;
     bool in_catch = false;
@@ -363,6 +365,7 @@ struct Checker {
     bool place_is_local(Node* n);
     bool imported_owner(Node* st);
     void check_stmt(Node* n);
+    void check_deferred(Node* n);
     bool is_call_statement(Node* e);
     bool always_returns(Node* n);
     bool contains_break(Node* n);

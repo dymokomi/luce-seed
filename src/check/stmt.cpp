@@ -70,6 +70,20 @@ auto Checker::syn_call(Node* receiver, const char* method, Span span) -> Node* {
     return call;
 }
 
+// A deferred statement or block (§8.8): checked where it is written, and nothing leaves
+// it: no `return`, no `break` or `continue` to a loop outside it, no failure escaping.
+auto Checker::check_deferred(Node* n) -> void {
+    vector<string_view> saved_loops = loop_labels;
+    const bool saved_fallible = fallible_fn;
+    loop_labels.clear();
+    fallible_fn = false;
+    in_defer++;
+    check_stmt(n);
+    in_defer--;
+    fallible_fn = saved_fallible;
+    loop_labels = saved_loops;
+}
+
 auto Checker::check_stmt(Node* n) -> void {
     if (n == nullptr) {
         return;
@@ -271,6 +285,9 @@ auto Checker::check_stmt(Node* n) -> void {
         break;
     }
     case NodeKind::Return: {
+        if (in_defer > 0) {
+            fail_n(n, "lucb.check.type", "a deferred block cannot `return` (§8.8)");
+        }
         Type* t = t_unit();
         if (n->left != nullptr) {
             t = check_expr(n->left, return_type);
@@ -402,7 +419,7 @@ auto Checker::check_stmt(Node* n) -> void {
     }
     case NodeKind::Defer:
         if (n->right != nullptr) {
-            check_stmt(n->right);
+            check_deferred(n->right);
         } else if (n->left != nullptr && n->left->kind == NodeKind::Free) {
             check_free(n->left);
         } else {
@@ -424,7 +441,7 @@ auto Checker::check_stmt(Node* n) -> void {
             fail_n(n, "lucb.check.type", "`errdefer` is only valid in a fallible function");
         }
         if (n->right != nullptr) {
-            check_stmt(n->right);
+            check_deferred(n->right);
         } else if (n->left != nullptr && n->left->kind == NodeKind::Free) {
             check_free(n->left);
         } else {

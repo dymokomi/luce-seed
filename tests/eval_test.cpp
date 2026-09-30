@@ -1030,6 +1030,16 @@ TEST(eval_defer_statements) {
     CHECK_EQ(r.answer, 1000004);
 }
 
+// §8.8: nothing leaves a deferred block: a `return`, or a failure through `try`, is refused
+TEST(check_defer_block_cannot_leave) {
+    EvalResult r = run("func might() -> !:\n    return\n"
+                       "func run() -> !:\n    defer:\n        try might()\n    return\n"
+                       "pub func answer() -> i64:\n    run() catch failure:\n        return 1\n    return 0\n");
+    CHECK(!r.ok);
+    EvalResult s = run("pub func answer() -> i64:\n    defer:\n        return\n    return 0\n");
+    CHECK(!s.ok);
+}
+
 // §15.1: `cas` on a pointer compares addresses, and `none` against a set pointer fails
 TEST(eval_pointer_cas) {
     EvalResult r = run("struct N:\n    var v: i64\n"
