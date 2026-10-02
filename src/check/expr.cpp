@@ -930,6 +930,15 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
             R->kind == TypeKind::UntypedInt && expected == nullptr && !is_checked_arith(op)) {
             return t_untyped();
         }
+        if ((op == TokenKind::LtLt || op == TokenKind::GtGt) && L != nullptr && R != nullptr &&
+            L->kind == TypeKind::UntypedInt && is_int(R)) {
+            // the count does not type the value shifted: an untyped value takes its
+            // context's integer type, and with none computes as `i64` (base.md §7.5:
+            // `(u32)(1 << 40)` is 0), as luce-base does
+            Type* shifted = expected != nullptr && is_int(expected) ? expected : t_i64();
+            n->left->ty = coerce(n->left, L, shifted);
+            return shifted;
+        }
         Type* u = unify_int(L, R);
         if (op == TokenKind::Plus || op == TokenKind::Minus || op == TokenKind::Star) {
             if (is_float(L) && is_float(R)) {

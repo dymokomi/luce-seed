@@ -65,6 +65,13 @@ TEST(eval_conversion_into_optional) {
     CHECK_EQ(r.answer, 34);
 }
 
+TEST(eval_untyped_shift_takes_no_type_from_its_count) {
+    EvalResult r = run("func wide(code: u8) -> u16:\n    return (u16)(1 << (code - 2))\n"
+                       "pub func answer() -> i64:\n    return (i64)wide(10)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 256);
+}
+
 TEST(eval_arithmetic) {
     EvalResult r = run("pub func answer() -> i64:\n    return (1 + 2) * 3 - 4 // 2\n");
     CHECK(r.ok);
