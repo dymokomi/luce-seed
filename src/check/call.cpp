@@ -735,7 +735,8 @@ auto Checker::check_memory_rw(Node* n, string_view name) -> Type* {
             fail_n(n, "lucb.check.call", "`memory.read` takes an address");
         }
         if (n->body != nullptr) {
-            Type* at = check_expr(n->body->left, voidp);
+            // `memory.read` takes `const void*` (std/memory.lucb): any pointer, const or not
+            Type* at = check_expr(n->body->left, intern_ptr(ty_void, true, false, false));
             if (!is_ptr(at) && (at == nullptr || at->kind != TypeKind::Void)) {
                 fail_n(n, "lucb.check.type", "`memory.read` needs a pointer");
             }

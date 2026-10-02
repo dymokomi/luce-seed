@@ -189,6 +189,12 @@ TEST(agree_conversion_into_optional) {
                  "pub func answer() -> i64:\n    let a = find(5, 3) else return 1\n    let b = widened(4) else return 2\n    if let c = find(2, 3):\n        return 3\n    return (i64)a * 10 + (i64)b\n"));
 }
 
+TEST(agree_memory_read_const) {
+    CHECK(agrees("import memory\n"
+                 "func first(bytes: const u8[]) -> u64:\n    return memory.read[u64](&bytes[0])\n"
+                 "pub func answer() -> i64:\n    let text = \"ABCDEFGH\"\n    return (i64)(first(text.bytes) & 255)\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }
