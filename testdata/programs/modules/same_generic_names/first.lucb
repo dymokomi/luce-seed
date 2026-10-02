@@ -1,0 +1,5 @@
+pub struct Table[T]:
+    pub var value: T
+
+    pub func doubled() -> i64:
+        return 2

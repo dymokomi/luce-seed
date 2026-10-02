@@ -1,0 +1,6 @@
+pub struct Table[T]:
+    pub var item: T
+    pub var extra: i64
+
+    pub func doubled() -> i64:
+        return 20

@@ -1,0 +1,11 @@
+## Two modules may each declare a generic of one name (base.md §16.3): their instances over
+## one argument, `first.Table[i64]` and `second.Table[i64]`, are two types and two sets of
+## methods in the C, each qualified by its module.
+import first
+import second
+
+pub func answer() -> i64:
+    let a = first.Table[i64](value = 10)
+    let b = second.Table[i64](item = 5, extra = 3)
+    return a.value + b.item + b.extra + a.doubled() + b.doubled() + 2
+# answer: 42

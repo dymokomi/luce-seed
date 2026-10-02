@@ -139,6 +139,8 @@ auto Checker::clone_node(Node* n) -> Node* {
     c->kind = n->kind;
     c->span = n->span;
     c->text = n->text;
+    // an instance keeps its generic's module, so two modules' `Table[str]` stay apart in C
+    c->module = n->module;
     c->op = n->op;
     c->evaluation_order = n->evaluation_order;
     // Instances recheck propagation with their concrete result types.
