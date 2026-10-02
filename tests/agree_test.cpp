@@ -198,7 +198,8 @@ TEST(agree_memory_read_const) {
 TEST(agree_untyped_shift_takes_no_type_from_its_count) {
     CHECK(agrees("func wide(code: u8) -> u16:\n    return (u16)(1 << (code - 2))\n"
                  "func narrow(code: u8) -> u16:\n    let x: u16 = 1 << (code - 2)\n    return x\n"
-                 "pub func answer() -> i64:\n    return (i64)wide(10) + (i64)narrow(12)\n"));
+                 "func masked(cases: u64, index: usize) -> bool:\n    return (cases & (1 << index)) != 0\n"
+                 "pub func answer() -> i64:\n    return (i64)wide(10) + (i64)narrow(12) + (1 if masked(1 << 40, 40) else 0)\n"));
 }
 
 TEST(agree_hello) {
