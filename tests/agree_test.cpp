@@ -183,6 +183,12 @@ TEST(agree_string_match) {
                  "    return n + weigh(\"one\", true) + weigh(\"one\", false) + weigh(\"two\", true)\n"));
 }
 
+TEST(agree_conversion_into_optional) {
+    CHECK(agrees("func find(count: usize, want: usize) -> u32?:\n    var i: usize = 0\n    while i < count:\n        if i == want:\n            return u32(i)\n        i += 1\n    return none\n"
+                 "func widened(i: usize) -> u32?:\n    let x: u32? = u32(i)\n    return x\n"
+                 "pub func answer() -> i64:\n    let a = find(5, 3) else return 1\n    let b = widened(4) else return 2\n    if let c = find(2, 3):\n        return 3\n    return (i64)a * 10 + (i64)b\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

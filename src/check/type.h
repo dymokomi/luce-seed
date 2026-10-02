@@ -140,6 +140,9 @@ bool is_int_enum(const Type* t);
 // `T(x)` with no function behind it (§7.5): the callee names a scalar, an integer-backed
 // enum, or a `c` type, `i64(x)`, `Kind(x)`, `c.long(x)`, and the result is that type.
 bool is_checked_conversion(const Node* n);
+// The type a checked conversion yields: its node's type, less the optional a `T?` context
+// widened it to.
+Type* conversion_type(const Node* n);
 bool is_union(const Type* t);
 inline bool is_atomic(const Type* t) {
     return t != nullptr && t->kind == TypeKind::Atomic;

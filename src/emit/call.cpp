@@ -565,7 +565,7 @@ auto Emitter::emit_call(Node* n) -> string {
         return emit_str_conv(n->body->left, checked);
     }
     if (is_checked_conversion(n)) {
-        return emit_conv(n->body->left, n->ty, true);
+        return emit_conv(n->body->left, conversion_type(n), true);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
         return emit_ctor(n, n->resolved);

@@ -348,21 +348,31 @@ bool is_int_enum(const Type* t) {
     return is_enum(t) && t->elem != nullptr && is_int(t->elem);
 }
 
+Type* conversion_type(const Node* n) {
+    if (n == nullptr || n->ty == nullptr) {
+        return nullptr;
+    }
+    // `return u32(i)` from a function returning `u32?` widens the call's type to the optional;
+    // the conversion still yields the written type, and the context wraps it
+    return is_opt(n->ty) && n->ty->elem != nullptr ? n->ty->elem : n->ty;
+}
+
 bool is_checked_conversion(const Node* n) {
     const Node* callee = n != nullptr ? n->left : nullptr;
     if (callee == nullptr || n->body == nullptr || n->ty == nullptr) {
         return false;
     }
+    Type* ty = conversion_type(n);
     bool c_type = callee->kind == NodeKind::Member && callee->left != nullptr &&
                   callee->left->kind == NodeKind::Name && callee->left->text == "c";
     if (callee->kind != NodeKind::Name && !c_type) {
         return false;
     }
     if (n->resolved != nullptr &&
-        !(n->resolved->kind == NodeKind::Enum && is_int_enum(n->ty))) {
+        !(n->resolved->kind == NodeKind::Enum && is_int_enum(ty))) {
         return false;
     }
-    return is_int(n->ty) || is_float(n->ty) || n->ty->kind == TypeKind::Char || is_int_enum(n->ty);
+    return is_int(ty) || is_float(ty) || ty->kind == TypeKind::Char || is_int_enum(ty);
 }
 
 bool is_union(const Type* t) {

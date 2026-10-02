@@ -275,7 +275,7 @@ auto Interp::eval_call(Node* n) -> Value {
         return eval_str_conv(x, src, n->ty, checked);
     }
     if (is_checked_conversion(n)) {
-        return eval_conv(n->body->left, n->ty, true);
+        return eval_conv(n->body->left, conversion_type(n), true);
     }
     if (n->resolved != nullptr && n->resolved->kind == NodeKind::Struct) {
         return eval_ctor(n, n->resolved);
