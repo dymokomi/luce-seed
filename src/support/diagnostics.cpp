@@ -16,6 +16,27 @@ string Diagnostic::format() const {
            (warning ? "warning: " : "") + message + " [" + code + "]";
 }
 
+void DiagnosticBag::assembled(const string& path, const vector<Segment>& segments) {
+    modules.push_back(Assembled{path, segments});
+}
+
+void DiagnosticBag::locate(Diagnostic& item) const {
+    for (const Assembled& module : modules) {
+        if (module.path != item.path || module.segments.empty()) {
+            continue;
+        }
+        const Segment* found = &module.segments[0];
+        for (const Segment& segment : module.segments) {
+            if (segment.start_line <= item.span.line) {
+                found = &segment;
+            }
+        }
+        item.path = found->path;
+        item.span.line = item.span.line - found->start_line + 1;
+        return;
+    }
+}
+
 void DiagnosticBag::warn(string code, string path, Span span, string message) {
     Diagnostic item;
     item.code = code;
@@ -23,6 +44,7 @@ void DiagnosticBag::warn(string code, string path, Span span, string message) {
     item.span = span;
     item.message = message;
     item.warning = true;
+    locate(item);
     warnings.push_back(item);
 }
 
@@ -41,6 +63,7 @@ void DiagnosticBag::add(string code, string path, Span span, string message) {
     item.path = path;
     item.span = span;
     item.message = message;
+    locate(item);
     items.push_back(item);
 }
 

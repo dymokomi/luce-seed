@@ -30,6 +30,9 @@ struct DiagnosticBag {
 
     void add(string code, string path, Span span, string message);
     void warn(string code, string path, Span span, string message);
+    // The fragments the module at `path` was assembled from (§16.1): a diagnostic there
+    // names the fragment file and its line, not the assembled text's.
+    void assembled(const string& path, const vector<Segment>& segments);
     bool has_warning(string_view code) const;
     bool has_code(string_view code) const;
     const Diagnostic* first() const;
@@ -39,6 +42,14 @@ struct DiagnosticBag {
     bool empty() const {
         return items.empty();
     }
+
+  private:
+    struct Assembled {
+        string path;
+        vector<Segment> segments;
+    };
+    vector<Assembled> modules;
+    void locate(Diagnostic& item) const;
 };
 
 } // namespace lucb

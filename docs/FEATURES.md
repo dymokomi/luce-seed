@@ -84,6 +84,7 @@ not land in this tree).
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user conformance works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
 | 13.1 | Generic functions and structs, monomorphise | done | `agree_generic_id`, `agree_generic_first`, `agree_generic_pair`, `agree_generic_pair_infer`, `agree_generic_span` |
+| 13.1 | An argument takes context from type parameters earlier arguments fixed | done | `programs_generics` (`argument_context`) |
 | 13.1 | Constraints, declaration-time checking | done | `agree_generic_comparable`, `check_generic_plus_rejected`; user interfaces as constraints |
 | 14.1 | Interface declaration, conformance | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
@@ -114,6 +115,8 @@ not land in this tree).
 | 12.4 | `Allocator` parameter from `FixedBuffer`, a struct, or a pointer | done | `programs_memory` (`alloc_in_pointer`), `examples/symbols/` |
 | 16.3 | `module.Type`, `module.Enum.case(...)`, `module.constant` | done | `programs_modules` (`new_qualified`, `constants`), `examples/vm/`, `examples/json/` |
 | 16.6 | One `Writer` type across modules | done | `examples/json/` |
+| 16.1 | A module as a directory of fragments in `ORDER` order; imports open each fragment; positions name the fragment | done | `programs_modules` (`fragments`) |
+| 9.5 | `extend Type:` adds methods from another fragment | done | `programs_modules` (`fragments`) |
 | 11.2 | `return try f()` | done | `programs_errors` (`return_try_*`) |
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
 | 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |

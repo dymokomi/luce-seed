@@ -219,6 +219,7 @@ struct Checker {
     string sanitize_ty(const string& s);
     string mangle_inst(string_view base, const vector<Type*>& args);
     int index_of_param(Node* generic, Type* p);
+    bool all_inferred(Type* t, Node* generic, const vector<Type*>& inf);
     void apply_bounds(Node* g, Type* t);
     void bind_generic_params(Node* gen);
     void desugar_iterable_for(Node* n);

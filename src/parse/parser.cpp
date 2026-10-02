@@ -9,6 +9,9 @@
 //==============================================================================================
 
 #include "parse/parser.h"
+
+#include <algorithm>
+#include <cstring>
 #include "parse/parser_impl.h"
 
 namespace lucb {
@@ -347,8 +350,25 @@ ParseResult parse(const Source& source, const vector<Token>& tokens, Arena& aren
     p.arena = &arena;
     p.diag = &diagnostics;
     result.module = p.parse_module();
-    if (result.module != nullptr && !source.directives().empty()) {
-        const vector<Directive>& ds = source.directives();
+    if (result.module != nullptr && (!source.directives().empty() || !source.segments().empty())) {
+        // the text's own directives and, for an assembled module, each fragment's start,
+        // in line order; a fragment's start comes after a directive on the same line, so it
+        // ends that directive's reach
+        vector<Directive> ds = source.directives();
+        for (const Segment& segment : source.segments()) {
+            char* file = static_cast<char*>(arena.alloc(segment.path.size() + 1, 1));
+            memcpy(file, segment.path.data(), segment.path.size());
+            file[segment.path.size()] = 0;
+            Directive d;
+            d.base_line = segment.start_line;
+            d.file = string_view(file, segment.path.size());
+            d.line = 1;
+            d.fragment = true;
+            ds.push_back(d);
+        }
+        std::stable_sort(ds.begin(), ds.end(), [](const Directive& a, const Directive& b) {
+            return a.base_line < b.base_line || (a.base_line == b.base_line && !a.fragment && b.fragment);
+        });
         Directive* copy = static_cast<Directive*>(arena.alloc(sizeof(Directive) * ds.size(), alignof(Directive)));
         for (size_t i = 0; i < ds.size(); i++) {
             new (copy + i) Directive(ds[i]);

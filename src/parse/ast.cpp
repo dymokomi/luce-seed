@@ -12,18 +12,37 @@
 
 namespace lucb {
 
-string position_text(const Node* module, uint32_t line, uint32_t column) {
-    string file = "t.lucb";
-    if (module != nullptr) {
-        if (module->left != nullptr && !module->left->text.empty()) {
-            file = string(module->left->text);
-        } else if (!module->text.empty()) {
-            file = string(module->text);
+SourcePlace fragment_place(const Node* module, uint32_t line) {
+    SourcePlace place{"t.lucb", line};
+    if (module == nullptr) {
+        return place;
+    }
+    if (module->left != nullptr && !module->left->text.empty()) {
+        place.file = string(module->left->text);
+    } else if (!module->text.empty()) {
+        place.file = string(module->text);
+    }
+    const Directive* fragment = nullptr;
+    for (uint32_t i = 0; i < module->ndirectives; i++) {
+        if (module->directives[i].fragment && module->directives[i].base_line <= line) {
+            fragment = &module->directives[i];
         }
+    }
+    if (fragment != nullptr) {
+        place.file = string(fragment->file);
+        place.line = line - fragment->base_line + 1;
+    }
+    return place;
+}
+
+string position_text(const Node* module, uint32_t line, uint32_t column) {
+    if (module != nullptr) {
+        // the last directive reaching `line`, unless a fragment's start ended its reach
         const Directive* found = nullptr;
         for (uint32_t i = 0; i < module->ndirectives; i++) {
-            if (module->directives[i].base_line <= line) {
-                found = &module->directives[i];
+            const Directive& d = module->directives[i];
+            if (d.base_line <= line) {
+                found = d.fragment ? nullptr : &d;
             }
         }
         if (found != nullptr && !found->file.empty()) {
@@ -31,7 +50,8 @@ string position_text(const Node* module, uint32_t line, uint32_t column) {
                    std::to_string(found->column);
         }
     }
-    return file + ":" + std::to_string(line) + ":" + std::to_string(column);
+    SourcePlace place = fragment_place(module, line);
+    return place.file + ":" + std::to_string(place.line) + ":" + std::to_string(column);
 }
 
 namespace {
@@ -282,6 +302,8 @@ const char* node_kind_name(NodeKind kind) {
         return "extern_struct";
     case NodeKind::ExternUnion:
         return "extern_union";
+    case NodeKind::Extend:
+        return "extend";
     case NodeKind::Assert:
         return "assert";
     case NodeKind::Asm:

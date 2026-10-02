@@ -235,6 +235,10 @@ struct Parser {
         diag->add(code, string(source->path()), t.span, message);
     }
 
+    void fail_at(const Node* n, const char* code, const string& message) {
+        diag->add(code, string(source->path()), n->span, message);
+    }
+
     bool expect(TokenKind k, const char* code, const char* message) {
         if (eat(k)) {
             return true;
@@ -310,6 +314,8 @@ struct Parser {
     Node* parse_interface(uint32_t flags);
     Node* parse_extern(uint32_t flags);
     Node* parse_handle(uint32_t flags);
+    Node* parse_extend();
+    void merge_extensions(Node* module);
     Node* parse_test();
     Node* parse_assert();
     Node* parse_asm();

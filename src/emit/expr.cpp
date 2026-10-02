@@ -19,12 +19,18 @@
 
 namespace lucb {
 
-auto Emitter::emit_src_file() -> string {
-    // the file of the use site (§6.4): the module being emitted, else the entry
-    string file = src_file.empty() ? string("t.lucb") : src_file;
+// The file and line of the use site `n` (§6.4): the module being emitted, its fragment
+// for a module assembled from a directory, else the entry.
+auto Emitter::src_place(Node* n) -> SourcePlace {
+    uint32_t line = n != nullptr ? n->span.line : 1;
     if (current_module != nullptr && current_module->left != nullptr && !current_module->left->text.empty()) {
-        file = string(current_module->left->text);
+        return fragment_place(current_module, line);
     }
+    return SourcePlace{src_file.empty() ? string("t.lucb") : src_file, line};
+}
+
+auto Emitter::emit_src_file(Node* n) -> string {
+    string file = src_place(n).file;
     return "((lb_str){" + c_escape(file) + ", " + std::to_string(file.size()) + "})";
 }
 
@@ -44,10 +50,9 @@ auto Emitter::emit_src_function() -> string {
 }
 
 auto Emitter::emit_src_location(Node* n) -> string {
-    uint32_t line = n != nullptr ? n->span.line : 1;
     char lbuf[16];
-    snprintf(lbuf, sizeof(lbuf), "%u", line);
-    return "((lb_Location){ .file = " + emit_src_file() + ", .line = " + lbuf +
+    snprintf(lbuf, sizeof(lbuf), "%u", src_place(n).line);
+    return "((lb_Location){ .file = " + emit_src_file(n) + ", .line = " + lbuf +
            "u, .function = " + emit_src_function() + " })";
 }
 
@@ -1144,11 +1149,11 @@ auto Emitter::emit_member(Node* n) -> string {
                 return emit_src_location(n);
             }
             if (n->text == "file") {
-                return emit_src_file();
+                return emit_src_file(n);
             }
             if (n->text == "line") {
                 char lbuf[16];
-                snprintf(lbuf, sizeof(lbuf), "%uu", n->span.line);
+                snprintf(lbuf, sizeof(lbuf), "%uu", src_place(n).line);
                 return lbuf;
             }
             if (n->text == "function") {

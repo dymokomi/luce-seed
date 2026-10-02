@@ -595,6 +595,27 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
     return t;
 }
 
+// Whether every parameter of `generic` that `t` mentions is bound in `inf`; a type that
+// mentions none, or another generic's, needs nothing inferred here.
+auto Checker::all_inferred(Type* t, Node* generic, const vector<Type*>& inf) -> bool {
+    if (t == nullptr) {
+        return true;
+    }
+    if (t->kind == TypeKind::Param) {
+        int i = index_of_param(generic, t);
+        return i < 0 || (i < static_cast<int>(inf.size()) && inf[static_cast<size_t>(i)] != nullptr);
+    }
+    if (!all_inferred(t->elem, generic, inf)) {
+        return false;
+    }
+    for (int i = 0; i < t->ntargs && t->args != nullptr; i++) {
+        if (!all_inferred(t->args[i], generic, inf)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 auto Checker::read_explicit_targs(Node* n, Node* generic, vector<Type*>& inf) -> Type* {
     if (n == nullptr || n->type == nullptr) {
         return nullptr;
@@ -624,7 +645,10 @@ auto Checker::check_generic_call(Node* n, Node* fn, Node* recv) -> Type* {
         Node* p = fn->right;
         Node* a = n->body;
         while (p != nullptr && a != nullptr) {
-            Type* at = check_expr(a->left, nullptr);
+            // once earlier arguments fixed every parameter this one names, it is checked
+            // against the substituted type and takes context from it: `put(&box, .number(1))`
+            Type* want = all_inferred(p->ty, fn, inf) ? subst_type(p->ty, fn, inf) : nullptr;
+            Type* at = check_expr(a->left, want);
             unify_into(p->ty, at, fn, inf, a);
             p = p->next;
             a = a->next;

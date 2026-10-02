@@ -1,0 +1,11 @@
+## A fragment opens with imports of its own and extends a type another fragment declares.
+import luce
+import units
+
+extend Rect:
+    pub func scaled_area() -> i64:
+        return self.area() * units.scale
+
+    ## The line `luce.line` is written on: 11 of this fragment, not of the assembled module.
+    pub static func here() -> u32:
+        return luce.line

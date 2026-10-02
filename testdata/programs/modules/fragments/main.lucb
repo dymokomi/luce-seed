@@ -1,0 +1,8 @@
+## A module may be a directory whose `ORDER` lists its fragments (base.md §16.1); a type's
+## methods may be declared under `extend` in another fragment (§9.5).
+import shapes
+
+pub func answer() -> i64:
+    let r = shapes.Rect(width = 3, height = 5)
+    return r.scaled_area() + i64(shapes.Rect.here())
+# answer: 41

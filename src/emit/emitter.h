@@ -41,7 +41,8 @@ struct Emitter {
     void emit_builtin_iface_typedef(Node* iface);
     string current_sink; // the `lb_iface` a Display field writes through, while emitting it
     void emit_writer_rt();
-    string emit_src_file();
+    SourcePlace src_place(Node* n);
+    string emit_src_file(Node* n);
     string assert_message(Node* call);
     string emit_src_function();
     string emit_src_location(Node* n);

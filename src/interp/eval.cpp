@@ -663,15 +663,15 @@ auto Interp::eval_member(Node* n) -> Value {
             if (here == nullptr) {
                 here = module;
             }
-            string file = here != nullptr && here->left != nullptr && !here->left->text.empty()
-                              ? string(here->left->text)
-                              : (here != nullptr && !here->text.empty() ? string(here->text) : string("t.lucb"));
+            // a module assembled from a directory names the fragment (§16.1)
+            SourcePlace place = fragment_place(here, n->span.line);
+            const string& file = place.file;
             if (n->text == "file") {
                 strings.push_back(file);
                 return v_str(strings.back());
             }
             if (n->text == "line") {
-                return v_int(n->ty != nullptr ? n->ty : nullptr, n->span.line);
+                return v_int(n->ty != nullptr ? n->ty : nullptr, place.line);
             }
             if (n->text == "function") {
                 string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
@@ -686,7 +686,7 @@ auto Interp::eval_member(Node* n) -> Value {
                 v.fields.push_back(v_str(strings.back()));
                 Value line;
                 line.kind = TypeKind::U32;
-                line.u = n->span.line;
+                line.u = place.line;
                 v.fields.push_back(line);
                 string fn = current_fn != nullptr ? string(current_fn->text) : string("answer");
                 strings.push_back(fn);

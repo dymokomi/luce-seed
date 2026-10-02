@@ -34,6 +34,8 @@ enum class NodeKind : uint16_t {
     ExternVar,
     ExternStruct,
     ExternUnion,
+    // `extend Type:` (§9.5): joined to its type's declaration before the parser returns
+    Extend,
     Assert,
     Asm,
     Field,
@@ -167,6 +169,13 @@ struct Node {
 // `file:line:column` for a statement of `module` (§11.5): the last position directive
 // above the line names what the line was compiled from; without one, or after a bare
 // `#:`, the file's own position.
+// The file and line a line of `module` was written at: its fragment's for a module
+// assembled from a directory (§16.1), else its own.
+struct SourcePlace {
+    string file;
+    uint32_t line;
+};
+SourcePlace fragment_place(const Node* module, uint32_t line);
 string position_text(const Node* module, uint32_t line, uint32_t column);
 
 // Field map, by kind:

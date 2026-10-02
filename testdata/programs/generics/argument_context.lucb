@@ -1,0 +1,19 @@
+## Once earlier arguments fix every type parameter a later one names, that argument is
+## checked against the substituted type and takes context from it (base.md §13.1).
+enum Item:
+    number(value: i64)
+    nothing
+
+struct Box[T]:
+    var value: T
+
+func put[T](this: Box[T]*, value: T):
+    this.value = value
+
+pub func answer() -> i64:
+    var box = Box[Item](value = Item.nothing)
+    put(&box, .number(42))
+    match box.value:
+        .number(v): return v
+        .nothing: return 0
+# answer: 42

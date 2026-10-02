@@ -16,22 +16,27 @@ namespace lucb {
 auto Parser::parse_module() -> Node* {
     Token start = cur();
     Node* mod = make(NodeKind::Module, start.span);
-    skip_docs();
-    while (at(TokenKind::KwImport) || at(TokenKind::KwFrom)) {
-        Node* imp = parse_import();
-        append(&mod->body, imp);
-        skip_docs();
-    }
-    while (!at(TokenKind::EndOfFile)) {
+    // the fragment whose declarations have begun: a file's, or each fragment's, imports
+    // come before its declarations (§16.1)
+    bool declaring = false;
+    size_t declaring_in = 0;
+    while (true) {
         skip_docs();
         if (at(TokenKind::EndOfFile)) {
             break;
         }
+        size_t fragment = source->segment_of(cur().span.line);
         if (at(TokenKind::KwImport) || at(TokenKind::KwFrom)) {
-            fail("lucb.parse.import", "imports must appear at the top of the file");
-            parse_import();
+            if (declaring && declaring_in == fragment) {
+                fail("lucb.parse.import", "imports come before a file's declarations (§16.1)");
+                parse_import();
+                continue;
+            }
+            append(&mod->body, parse_import());
             continue;
         }
+        declaring = true;
+        declaring_in = fragment;
         int here = pos;
         Node* decl = parse_top();
         if (decl != nullptr) {
@@ -41,8 +46,79 @@ auto Parser::parse_module() -> Node* {
             take();
         }
     }
+    merge_extensions(mod);
     mod->span.end = cur().span.end;
     return mod;
+}
+
+// `extend Name:` and methods beneath: more of a type this module declares (§9.5).
+auto Parser::parse_extend() -> Node* {
+    Token start = cur();
+    take();
+    Node* n = make(NodeKind::Extend, start.span);
+    n->text = take().text;
+    expect(TokenKind::Colon, "lucb.parse.expect", "expected `:`");
+    expect(TokenKind::Newline, "lucb.parse.expect", "expected newline");
+    expect(TokenKind::Indent, "lucb.parse.expect", "expected an indented body");
+    while (!at(TokenKind::Dedent) && !at(TokenKind::EndOfFile)) {
+        skip_docs();
+        if (at(TokenKind::Dedent)) {
+            break;
+        }
+        int here = pos;
+        Node* m = parse_type_member(false);
+        if (m != nullptr && m->kind != NodeKind::Func) {
+            fail_at(m, "lucb.parse.extend",
+                    "an extension adds methods; a field belongs in the type's declaration (§9.5)");
+        } else if (m != nullptr) {
+            append(&n->body, m);
+        }
+        if (pos == here) {
+            take();
+        }
+    }
+    expect(TokenKind::Dedent, "lucb.parse.expect", "expected a dedent");
+    return n;
+}
+
+// Every `extend Name:` of `module` joined to the declaration of `Name` in the same module,
+// its methods after the ones the declaration holds, and gone from the module's list, so
+// the checker and the backend see one type with all of its methods (§9.5).
+void Parser::merge_extensions(Node* module) {
+    Node* previous = nullptr;
+    Node* d = module->body;
+    while (d != nullptr) {
+        Node* next = d->next;
+        if (d->kind != NodeKind::Extend) {
+            previous = d;
+            d = next;
+            continue;
+        }
+        Node* target = nullptr;
+        for (Node* t = module->body; t != nullptr; t = t->next) {
+            if (t->text == d->text &&
+                (t->kind == NodeKind::Struct || t->kind == NodeKind::Enum || t->kind == NodeKind::Union)) {
+                target = t;
+                break;
+            }
+        }
+        if (target == nullptr) {
+            fail_at(d, "lucb.parse.extend",
+                    "no struct, enum, or union of this module is named `" + string(d->text) + "`");
+        } else {
+            Node** last = &target->body;
+            while (*last != nullptr) {
+                last = &(*last)->next;
+            }
+            *last = d->body;
+        }
+        if (previous != nullptr) {
+            previous->next = next;
+        } else {
+            module->body = next;
+        }
+        d = next;
+    }
 }
 
 auto Parser::parse_import() -> Node* {
@@ -201,6 +277,10 @@ auto Parser::parse_top() -> Node* {
     }
     if (at(TokenKind::KwAsm)) {
         return parse_asm();
+    }
+    // `extend` is a word only here, before a type's name and `:` (§9.5)
+    if (at_name("extend") && peek(1).kind == TokenKind::Name && peek(2).kind == TokenKind::Colon) {
+        return parse_extend();
     }
     if (at(TokenKind::Name) && cur().text == "assert" && peek(1).kind == TokenKind::LParen) {
         return parse_assert();

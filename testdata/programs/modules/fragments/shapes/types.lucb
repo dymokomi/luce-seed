@@ -1,0 +1,7 @@
+## The shape type and its first method; more of its methods are in `measure.lucb`.
+pub struct Rect:
+    pub var width: i64
+    pub var height: i64
+
+    pub func area() -> i64:
+        return self.width * self.height

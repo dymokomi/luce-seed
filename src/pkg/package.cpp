@@ -135,15 +135,19 @@ LoadedModule* find_loaded(Program& program, string_view name) {
     return nullptr;
 }
 
+// The file of module `dotted`, or the directory standing for it when an `ORDER` there
+// lists its fragments (§16.1); under the package root, then under `src`.
 string resolve_file(const Program& program, string_view dotted) {
-    string rel = dotted_to_path(dotted) + ".lucb";
-    string a = join_path(program.manifest.root, rel);
-    if (is_file(a)) {
-        return a;
-    }
-    string b = join_path(join_path(program.manifest.root, "src"), rel);
-    if (is_file(b)) {
-        return b;
+    string rel = dotted_to_path(dotted);
+    for (const string& root : {program.manifest.root, join_path(program.manifest.root, "src")}) {
+        string file = join_path(root, rel + ".lucb");
+        if (is_file(file)) {
+            return file;
+        }
+        string directory = join_path(root, rel);
+        if (is_file(join_path(directory, "ORDER"))) {
+            return directory;
+        }
     }
     return {};
 }
@@ -205,12 +209,59 @@ bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vect
     return diagnostics.empty();
 }
 
+bool load_source(Program& program, const string& name, Source source, DiagnosticBag& diagnostics,
+                 vector<string>& stack);
+
 bool load_bytes(Program& program, const string& path, const string& name, const string& bytes,
                 DiagnosticBag& diagnostics, vector<string>& stack) {
+    return load_source(program, name, Source::from_bytes(path, bytes, diagnostics), diagnostics, stack);
+}
+
+// The fragments a directory's `ORDER` lists, whitespace apart, read in order and assembled
+// as one module whose positions name the fragment files (§16.1).
+bool load_fragments(Program& program, const string& directory, const string& name,
+                    DiagnosticBag& diagnostics, vector<string>& stack) {
+    string error;
+    string order = slurp_file(join_path(directory, "ORDER"), &error);
+    if (!error.empty()) {
+        diagnostics.add("lucb.check.import", directory, Span{}, error);
+        return false;
+    }
+    vector<string> paths;
+    vector<string> texts;
+    size_t start = 0;
+    for (size_t i = 0; i <= order.size(); i++) {
+        bool blank = i == order.size() || order[i] == '\n' || order[i] == ' ' || order[i] == '\r' ||
+                     order[i] == '\t';
+        if (blank && i > start) {
+            string fragment = join_path(directory, order.substr(start, i - start));
+            texts.push_back(slurp_file(fragment, &error));
+            if (!error.empty()) {
+                diagnostics.add("lucb.check.import", fragment, Span{}, error);
+                return false;
+            }
+            paths.push_back(fragment);
+        }
+        if (blank) {
+            start = i + 1;
+        }
+    }
+    if (paths.empty()) {
+        diagnostics.add("lucb.check.import", directory, Span{}, "an `ORDER` names at least one fragment");
+        return false;
+    }
+    Source source = Source::assembled(directory, paths, texts, diagnostics);
+    diagnostics.assembled(directory, source.segments());
+    return load_source(program, name, std::move(source), diagnostics, stack);
+}
+
+bool load_source(Program& program, const string& name, Source source, DiagnosticBag& diagnostics,
+                 vector<string>& stack) {
+    string path(source.path());
     LoadedModule loaded;
     loaded.path = path;
     loaded.name = name;
-    loaded.source = Source::from_bytes(path, bytes, diagnostics);
+    loaded.source = std::move(source);
     if (!loaded.source.ok()) {
         return false;
     }
@@ -274,15 +325,18 @@ bool load_one(Program& program, const string& path, const string& name, Diagnost
     if (find_loaded(program, name) != nullptr) {
         return true;
     }
+    if (!file_names_a_module(path)) {
+        diagnostics.add("lucb.check.import", path, Span{},
+                        "a module's file name is an identifier (§16.1)");
+        return false;
+    }
+    if (is_dir(path)) {
+        return load_fragments(program, path, name, diagnostics, stack);
+    }
     string error;
     string bytes = slurp_file(path, &error);
     if (!error.empty()) {
         diagnostics.add("lucb.check.import", path, Span{}, error);
-        return false;
-    }
-    if (!file_names_a_module(path)) {
-        diagnostics.add("lucb.check.import", path, Span{},
-                        "a module's file name is an identifier (§16.1)");
         return false;
     }
     return load_bytes(program, path, name, bytes, diagnostics, stack);

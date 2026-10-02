@@ -361,4 +361,38 @@ Span Source::span_at(size_t byte, size_t end_byte) const {
     return span;
 }
 
+Source Source::assembled(std::string path, const std::vector<std::string>& paths,
+                         const std::vector<std::string>& texts, DiagnosticBag& diagnostics) {
+    std::string bytes;
+    std::vector<Segment> segments;
+    uint32_t line = 1;
+    for (size_t k = 0; k < paths.size() && k < texts.size(); k++) {
+        segments.push_back(Segment{paths[k], line});
+        const std::string& text = texts[k];
+        bytes += text;
+        for (char c : text) {
+            if (c == '\n') {
+                line += 1;
+            }
+        }
+        if (text.empty() || text.back() != '\n') {
+            bytes += '\n';
+            line += 1;
+        }
+    }
+    Source source = from_bytes(std::move(path), std::move(bytes), diagnostics);
+    source.segments_ = std::move(segments);
+    return source;
+}
+
+size_t Source::segment_of(uint32_t line) const {
+    size_t found = 0;
+    for (size_t k = 0; k < segments_.size(); k++) {
+        if (segments_[k].start_line <= line) {
+            found = k;
+        }
+    }
+    return found;
+}
+
 } // namespace lucb
