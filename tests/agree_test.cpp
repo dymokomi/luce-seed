@@ -202,6 +202,11 @@ TEST(agree_untyped_shift_takes_no_type_from_its_count) {
                  "pub func answer() -> i64:\n    return (i64)wide(10) + (i64)narrow(12) + (1 if masked(1 << 40, 40) else 0)\n"));
 }
 
+TEST(agree_generic_method_calls_one_below) {
+    CHECK(agrees("struct Box[T]:\n    var item: T\n    var count: u32\n\n    pub mutating func put(value: T, n: u32):\n        self.store(value, n + 1)\n\n    mutating func store(value: T, n: u32):\n        self.item = value\n        self.count = n\n"
+                 "pub func answer() -> i64:\n    var b = Box[i64](item = 0, count = 0)\n    b.put(5, 1)\n    return b.item + (i64)b.count\n"));
+}
+
 TEST(agree_hello) {
     CHECK(agrees("pub func answer() -> i64:\n    var counter = 40\n    return counter\n"));
 }

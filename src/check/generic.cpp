@@ -577,9 +577,14 @@ auto Checker::instantiate_struct(Node* st, const vector<Type*>& args, Node* at) 
             m->ty = resolve_type(m->type);
         }
     }
+    // every method's signature before any body, so a method may call one declared below it
     for (Node* m = clone->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Func) {
             resolve_sig(m);
+        }
+    }
+    for (Node* m = clone->body; m != nullptr; m = m->next) {
+        if (m->kind == NodeKind::Func) {
             check_func(m, clone);
         }
     }
