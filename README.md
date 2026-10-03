@@ -13,7 +13,7 @@ luce-base  (written in Base)     compiles itself; C first, then native
 luce-full  (written in Base)     compiles full Luce
 ```
 
-The language is specified in [`docs/language/base.md`](docs/language/base.md).
+The language is specified in luce-base's [`docs/language/base.md`](https://github.com/dymokomi/luce-base/blob/main/docs/language/base.md), the one copy of the specification; the seed's §24 test reads it from a luce-base checkout beside this one (or `LUCE_SPEC`).
 That document is the law. Architecture of *this* compiler is
 [`docs/DESIGN.md`](docs/DESIGN.md). What each section of the specification has here is
 [`docs/FEATURES.md`](docs/FEATURES.md); what stays out is [`docs/PLAN.md`](docs/PLAN.md).
@@ -62,7 +62,7 @@ testdata/
   lex/ check/  fixtures for the lexer and checker tests
 examples/   complete programs shaped like compiler work: a calculator compiler,
             a lexer, a symbol table, a bytecode VM, a JSON parser
-docs/       the language, this compiler's design, plan, ledger, and conventions
+docs/       this compiler's design, plan, ledger, and conventions
 tools/      scripts used to maintain the tree
 cmake/      the runtime-embedding step
 ```

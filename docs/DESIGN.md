@@ -1,7 +1,7 @@
 # Design of luce-seed
 
 A C++ seed compiler for Luce Base. The language specification is
-[`language/base.md`](language/base.md). This file is the architecture of the
+[`base.md`](https://github.com/dymokomi/luce-base/blob/main/docs/language/base.md). This file is the architecture of the
 compiler, not of the language.
 
 This repo is the seed. It does not grow into `luce-base`. A feature lands

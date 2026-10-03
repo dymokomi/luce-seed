@@ -1,6 +1,6 @@
 # Documentation
 
-- [Language](language/base.md) — Luce Base, the only language this seed
+- [Language](https://github.com/dymokomi/luce-base/blob/main/docs/language/base.md) — Luce Base, the only language this seed
   implements.
 - [Design](DESIGN.md) — architecture of luce-seed.
 - [Plan](PLAN.md) — what this tree still does, and what stays out of it.

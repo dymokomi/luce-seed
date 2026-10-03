@@ -32,6 +32,7 @@
 #include "support/test.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -380,14 +381,19 @@ TEST(examples) {
     prove_directory("examples");
 }
 
-// The fifteen §24 programs in testdata/spec/ are the ones in base.md.
+// The fifteen §24 programs in testdata/spec/ are the ones in base.md. The specification
+// lives in luce-base: LUCE_SPEC names it, else a luce-base checkout beside this one.
 TEST(spec_programs_match_document) {
     static const char* names[15] = {
         "arguments",    "percentage",  "ring_buffer",    "arena",       "intrusive_list",
         "tagged_union", "flags",       "calling_c",      "exporting_c", "spinlock",
         "generic_span", "text_format", "string_builder", "hash_map",    "error_handling",
     };
-    std::string doc = slurp("docs/language/base.md");
+    const char* named = std::getenv("LUCE_SPEC");
+    std::string doc = slurp(named != nullptr ? named : "../luce-base/docs/language/base.md");
+    if (doc.empty()) {
+        std::fprintf(stderr, "  base.md not found: set LUCE_SPEC or check luce-base out beside the seed\n");
+    }
     CHECK(!doc.empty());
     for (int i = 0; i < 15; i++) {
         std::string heading = "### 24." + std::to_string(i + 1) + " ";

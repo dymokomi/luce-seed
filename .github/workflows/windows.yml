@@ -12,8 +12,15 @@ jobs:
     env:
       CC: gcc
       CXX: g++
+      LUCE_SPEC: luce-base/docs/language/base.md
     steps:
       - uses: actions/checkout@v7
+      # the specification the seed implements, which its §24 test reads (LUCE_SPEC)
+      - uses: actions/checkout@v7
+        with:
+          repository: dymokomi/luce-base
+          path: luce-base
+          sparse-checkout: docs
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64

@@ -34,6 +34,12 @@ jobs:
         with:
           path: luce-seed
           fetch-depth: 0
+      # the specification the seed implements, which its §24 test reads
+      - uses: actions/checkout@v7
+        with:
+          repository: dymokomi/luce-base
+          path: luce-base
+          sparse-checkout: docs
       - name: Select Clang for generated C
         run: |
           mkdir -p "$RUNNER_TEMP/luce-bin"

@@ -1,6 +1,6 @@
 # Conformance ledger
 
-Every section of [`language/base.md`](language/base.md) maps to tests. A row
+Every section of [`base.md`](https://github.com/dymokomi/luce-base/blob/main/docs/language/base.md) maps to tests. A row
 is never silently omitted: it is `unsupported` until a slice lands.
 
 Status: `done` (gate-green), `partial`, `unsupported`, `out of seed` (will

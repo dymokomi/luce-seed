@@ -2,7 +2,7 @@
 
 Nothing is planned for this tree beyond parity with the specification. The seed exists to
 build `luce-base`, which is pinned to a tag of it (`bootstrap/SEED` there): a change to
-[`language/base.md`](language/base.md) that `luce-base` needs lands here first, with its
+[`base.md`](https://github.com/dymokomi/luce-base/blob/main/docs/language/base.md) that `luce-base` needs lands here first, with its
 test, a `VERSION` bump, and a tag `luce-seed-N`; then `luce-base` pins the tag. What each
 section of the specification has here is [`FEATURES.md`](FEATURES.md).
 
