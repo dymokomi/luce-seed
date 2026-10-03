@@ -996,6 +996,46 @@ auto Checker::check_method_call(Node* n) -> Type* {
         int nargs = count_args(n->body);
         Binding* ob = lookup("Ordering");
         Type* ord = ob != nullptr ? ob->type : ty_i32;
+        // base.md §15.1: an argument is named as the specification spells it, and `.signal`
+        // orders a fence alone
+        {
+            const char* load_names[] = {"order"};
+            const char* value_names[] = {"value", "order"};
+            const char* cas_names[] = {"expected", "desired", "success", "failure", "weak"};
+            const char* wait_names[] = {"expected"};
+            const char* wake_names[] = {"count"};
+            const char** names = value_names;
+            int count = 2;
+            if (mem->text == "load") {
+                names = load_names;
+                count = 1;
+            } else if (mem->text == "cas") {
+                names = cas_names;
+                count = 5;
+            } else if (mem->text == "wait") {
+                names = wait_names;
+                count = 1;
+            } else if (mem->text == "wake") {
+                names = wake_names;
+                count = 1;
+            }
+            for (Node* a = n->body; a != nullptr; a = a->next) {
+                if (!a->text.empty()) {
+                    bool known = false;
+                    for (int k = 0; k < count; k++) {
+                        known = known || a->text == names[k];
+                    }
+                    if (!known) {
+                        fail_n(a, "lucb.check.call", "this atomic method has no argument of this name");
+                    }
+                }
+                if (a->left != nullptr &&
+                    (a->left->kind == NodeKind::CaseValue || a->left->kind == NodeKind::Member) &&
+                    a->left->text == "signal") {
+                    fail_n(a, "lucb.check.type", "`.signal` orders a fence alone, `atomic.fence(.signal)`");
+                }
+            }
+        }
         if (mem->text == "load") {
             if (nargs > 1) {
                 fail_n(n, "lucb.check.call", "`load` takes an optional ordering");
