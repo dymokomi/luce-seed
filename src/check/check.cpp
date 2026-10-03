@@ -296,6 +296,10 @@ auto Checker::bind_type_argument(string_view name, Type* type) -> void {
 }
 
 auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* import_src) -> bool {
+    // `_` is the wildcard (§3.4): it binds nothing, so it is never read and never collides
+    if (name == "_") {
+        return true;
+    }
     if (import_src == nullptr && decl != nullptr && (decl->flags & FlagBuiltin) == 0) {
         check_declared_name(decl, name);
     }

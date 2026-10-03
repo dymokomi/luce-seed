@@ -1,0 +1,8 @@
+## The wildcard `_` binds nothing (base.md §3.4), so nested loops may each use it.
+pub func answer() -> i64:
+    var count: i64 = 0
+    for _ in 0..<6:
+        for _ in 0..<7:
+            count += 1
+    return count
+# answer: 42
