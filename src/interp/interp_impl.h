@@ -95,7 +95,6 @@ struct Interp {
     Value unary_scalar(Type* t, const Value& x, TokenKind op);
     Value eval_splat(Node* n);
     Value eval_vector_fold(Node* callee, Node* n);
-    bool is_place_expression(Node* e);
     Value copy_value(const Value& v);
     Value zero_of(Type* t);
     Slot* find_slot(string_view name, Node* decl = nullptr);

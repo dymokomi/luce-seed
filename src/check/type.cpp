@@ -991,4 +991,28 @@ Type* TypeSet::intern_struct(string_view name, Node* decl, Arena& arena) {
     return t;
 }
 
+bool is_place(const Node* e) {
+    if (e == nullptr) {
+        return false;
+    }
+    switch (e->kind) {
+    case NodeKind::Name:
+    case NodeKind::Self:
+    case NodeKind::Index:
+        return true;
+    case NodeKind::Unary:
+        return e->op == TokenKind::Star;
+    case NodeKind::Group:
+        return is_place(e->left);
+    case NodeKind::Member:
+        if (e->resolved != nullptr && e->resolved->kind == NodeKind::EnumCase) {
+            return false;
+        }
+        return is_place(e->left) ||
+               (e->left != nullptr && e->left->ty != nullptr && e->left->ty->kind == TypeKind::Pointer);
+    default:
+        return false;
+    }
+}
+
 } // namespace lucb

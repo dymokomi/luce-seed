@@ -200,7 +200,7 @@ auto Interp::lvalue(Node* n) -> Value* {
             }
         }
         Value* obj = nullptr;
-        if (is_ptr(lt) && !is_place_expression(n->left)) {
+        if (is_ptr(lt) && !is_place(n->left)) {
             // a member through a pointer that is a value, `((T*)p).field`, is the storage
             // the pointer names (§9.4)
             Value p = eval(n->left);

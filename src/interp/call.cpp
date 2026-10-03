@@ -1150,7 +1150,7 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         // a method on a place takes the place; on a value, `Flags.b.name()` or a call's
         // result, a temporary holds the receiver
-        if (is_place_expression(callee->left)) {
+        if (is_place(callee->left)) {
             Value* recv = lvalue(callee->left);
             if (recv != nullptr) {
                 if (recv->kind == TypeKind::Pointer) {
@@ -1441,33 +1441,6 @@ auto Interp::eval_float_bits(Node* callee, Node* n) -> Value {
 } // namespace lucb
 
 namespace lucb {
-
-// Whether an expression names storage: a binding, `self`, an element, a dereference, or a
-// member of one of those. An enum case or a call's result is a value, not a place.
-auto Interp::is_place_expression(Node* e) -> bool {
-    if (e == nullptr) {
-        return false;
-    }
-    switch (e->kind) {
-    case NodeKind::Name:
-    case NodeKind::Self:
-        return true;
-    case NodeKind::Index:
-        return true;
-    case NodeKind::Unary:
-        return e->op == TokenKind::Star;
-    case NodeKind::Group:
-        return is_place_expression(e->left);
-    case NodeKind::Member:
-        if (e->resolved != nullptr && e->resolved->kind == NodeKind::EnumCase) {
-            return false;
-        }
-        return is_place_expression(e->left) ||
-               (e->left != nullptr && is_ptr(e->left->ty));
-    default:
-        return false;
-    }
-}
 
 } // namespace lucb
 

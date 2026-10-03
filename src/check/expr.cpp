@@ -360,27 +360,6 @@ auto Checker::check_name(Node* n, Type* expected) -> Type* {
     return b->type;
 }
 
-// A place: something with an address (§6.6): a name, `self`, a member, an element, a
-// dereference, or one of those in parentheses.
-auto Checker::is_place_expr(Node* n) -> bool {
-    if (n == nullptr) {
-        return false;
-    }
-    switch (n->kind) {
-    case NodeKind::Name:
-    case NodeKind::Self:
-    case NodeKind::Member:
-    case NodeKind::Index:
-        return true;
-    case NodeKind::Group:
-        return is_place_expr(n->left);
-    case NodeKind::Unary:
-        return n->op == TokenKind::Star;
-    default:
-        return false;
-    }
-}
-
 // A tuple or array literal holding a local's address is as local as that address:
 // `return (1, &n)` leaves the frame through the tuple (§6.6).
 auto Checker::mark_if_member_local(Node* n) -> void {
@@ -529,11 +508,11 @@ auto Checker::check_unary(Node* n, Type* expected) -> Type* {
             fail_n(n, "lucb.check.type", "cannot take the address of a literal");
             return t_error();
         }
-        if (!is_place_expr(n->left)) {
+        Type* inner = check_expr(n->left, nullptr);
+        if (!is_place(n->left)) {
             fail_n(n, "lucb.check.type", "cannot take the address of a temporary; bind it first");
             return t_error();
         }
-        Type* inner = check_expr(n->left, nullptr);
         bool mut = is_mut_place(n->left);
         Type* p = intern_ptr(inner, !mut, false, false);
         if (n->left != nullptr && n->left->kind == NodeKind::Member) {

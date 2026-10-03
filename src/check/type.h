@@ -89,6 +89,11 @@ inline int pointer_bits() {
 
 string type_name(const Type* t);
 bool type_eq(const Type* a, const Type* b);
+// Whether checked expression `e` names storage with an address (§6.6): a binding, `self`,
+// an element, a dereference, a member of one of those or reached through a pointer, or one
+// of those in parentheses. A call's result, and a member of it, is a temporary; an enum
+// case is a value. The checker's `&`, the emitter, and the interpreter all ask this.
+bool is_place(const Node* e);
 bool is_zeroable(const Type* t);
 
 bool is_int(const Type* t);
