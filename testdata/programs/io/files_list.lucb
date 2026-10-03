@@ -1,6 +1,6 @@
 # answer: 1
 
-import files
+import luce_std.files
 
 pub func answer() -> i64!:
     let names = try files.list("testdata/programs")

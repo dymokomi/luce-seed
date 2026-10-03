@@ -163,11 +163,56 @@ bool is_std_module(string_view name) {
            name == "sync";
 }
 
+// The seed carries luce-std's modules itself (§16.6), so the package's namespace maps onto
+// them: `import luce_std.paths` is `import paths`, `from luce_std.paths import join` is
+// `from paths import join`, and `from luce_std import files, paths` imports those modules
+// (§16.3). A module keeps one name however it is reached, so its types are one type.
+void luce_std_as_standard(Program& program, Node* module) {
+    const string_view prefix = "luce_std.";
+    Node* previous = nullptr;
+    for (Node* d = module->body; d != nullptr;) {
+        Node* next = d->next;
+        if ((d->kind == NodeKind::Import || d->kind == NodeKind::FromImport) &&
+            d->text.size() > prefix.size() && d->text.substr(0, prefix.size()) == prefix) {
+            d->text = d->text.substr(prefix.size());
+        } else if (d->kind == NodeKind::FromImport && d->text == "luce_std") {
+            Node* first = nullptr;
+            Node* last = nullptr;
+            for (Node* n = d->body; n != nullptr; n = n->next) {
+                Node* one = program.arena->make<Node>();
+                one->kind = NodeKind::Import;
+                one->span = n->span;
+                one->text = n->text;
+                if (last == nullptr) {
+                    first = one;
+                } else {
+                    last->next = one;
+                }
+                last = one;
+            }
+            if (last != nullptr) {
+                last->next = next;
+                if (previous == nullptr) {
+                    module->body = first;
+                } else {
+                    previous->next = first;
+                }
+                previous = last;
+                d = next;
+                continue;
+            }
+        }
+        previous = d;
+        d = next;
+    }
+}
+
 bool load_imports(Program& program, size_t idx, DiagnosticBag& diagnostics, vector<string>& stack) {
     Node* module = program.files[idx].module;
     if (module == nullptr) {
         return false;
     }
+    luce_std_as_standard(program, module);
     for (Node* d = module->body; d != nullptr; d = d->next) {
         if (d->kind != NodeKind::Import && d->kind != NodeKind::FromImport) {
             continue;

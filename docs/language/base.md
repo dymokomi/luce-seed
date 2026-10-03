@@ -734,7 +734,7 @@ rows: for y in 0..<height:
 ### 8.8 `defer` and `errdefer`
 
 ```luce
-import files
+import luce_std.files
 
 let file = try files.open(path)
 defer file.close() catch failure:
@@ -855,7 +855,7 @@ A function value is a C function pointer (§5.6). A non-fallible function conver
 ### 9.5 Methods
 
 ```luce
-import math
+import luce_std.math
 
 struct Point:
     pub let x: f64
@@ -1026,7 +1026,7 @@ let w = create_window() else error(no_window, "no window") # absence becomes fai
 ### 11.2 Fallible functions
 
 ```luce
-import files
+import luce_std.files
 
 func load(path: c.str) -> Config!:
     let data = try files.read(path)
@@ -1054,7 +1054,7 @@ error(not_found, "configuration file does not exist")
 ### 11.4 `catch` and `recover`
 
 ```luce
-import files
+import luce_std.files
 
 let text = files.read(path) catch failure:
     if failure.code == files.missing:
@@ -2066,7 +2066,7 @@ A type that implements `Allocator`, remembers its parent, and is used through `w
 
 ```luce
 import c
-import files
+import luce_std.files
 import memory
 from memory import Allocator
 
@@ -2460,7 +2460,7 @@ A fallible function calling another, one `catch` that recovers, one that adds co
 
 ```luce
 import c
-import files
+import luce_std.files
 
 pub let missing_field: ErrorCode = ErrorCode.package(4)
 

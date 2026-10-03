@@ -1,7 +1,7 @@
 import c
 import emit
-import files
-import process
+import luce_std.files
+import luce_std.process
 
 pub func answer() -> i64!:
     var builder = try emit.Builder.create(8)

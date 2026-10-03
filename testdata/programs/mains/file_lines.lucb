@@ -1,4 +1,4 @@
-import files
+import luce_std.files
 import io
 
 pub func main(arguments: str[]) -> i32!:

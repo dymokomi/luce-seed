@@ -1,7 +1,7 @@
 # answer: 7
 
 import c
-import process
+import luce_std.process
 import platform
 
 pub func answer() -> i64!:

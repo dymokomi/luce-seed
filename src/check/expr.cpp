@@ -810,6 +810,9 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
         if (against_none && ((L != nullptr && L->kind == TypeKind::Interface) || (R != nullptr && R->kind == TypeKind::Interface))) {
             return t_bool(); // `view == none` asks whether the optional view holds one (§14.3)
         }
+        if (against_none && (is_opt(L) || is_opt(R))) {
+            return t_bool(); // `x == none` asks whether the optional holds a value, whatever its payload (§7.4)
+        }
         if ((L != nullptr && L->kind == TypeKind::Interface) ||
             (R != nullptr && R->kind == TypeKind::Interface)) {
             fail_n(n, "lucb.check.type", "interface views cannot be compared");

@@ -1,8 +1,8 @@
 # oracle: none
 # This exercises native bootstrap filesystem ownership and child process state.
 import c
-import files
-import process
+import luce_std.files
+import luce_std.process
 import os
 
 pub func main(arguments: str[]) -> i32!:

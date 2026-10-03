@@ -1,7 +1,7 @@
 ## The bootstrap's text and path operations share Base's standard implementation.
 import c
-import files
-import paths
+import luce_std.files
+import luce_std.paths
 import strings
 
 pub func answer() -> i64!:

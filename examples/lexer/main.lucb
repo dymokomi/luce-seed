@@ -2,7 +2,7 @@
 ## Tokenize a file and print one line per token, then a count per kind.
 
 import c
-import files
+import luce_std.files
 import io
 import lexer
 import token
