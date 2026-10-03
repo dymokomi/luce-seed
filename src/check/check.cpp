@@ -476,6 +476,40 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
             return const_u64(d->left, out);
         }
     }
+    if (n->kind == NodeKind::Cast && n->type != nullptr) {
+        // `(u8)-864` is 160: the value converted to the cast's integer type (§7.5)
+        uint64_t a = 0;
+        if (!const_u64(n->left, &a)) {
+            return false;
+        }
+        Type* t = resolve_type(n->type);
+        if (!is_int(t)) {
+            return false;
+        }
+        int bits = int_bits(t);
+        if (bits < 64) {
+            uint64_t mask = (uint64_t(1) << bits) - 1;
+            a &= mask;
+            if (is_signed_int(t) && ((a >> (bits - 1)) & 1) != 0) {
+                a |= ~mask;
+            }
+        }
+        *out = a;
+        return true;
+    }
+    if (n->kind == NodeKind::Member && n->left != nullptr && n->left->kind == NodeKind::Name) {
+        // `Enum.case` of an integer-backed enum: its declared value (§10.3)
+        Binding* eb = lookup(n->left->text);
+        Node* owner = eb != nullptr ? eb->decl : nullptr;
+        if (owner != nullptr && owner->kind == NodeKind::Enum) {
+            for (Node* c = owner->body; c != nullptr; c = c->next) {
+                if (c->kind == NodeKind::EnumCase && c->text == n->text && c->left != nullptr) {
+                    return const_u64(c->left, out);
+                }
+            }
+            return false;
+        }
+    }
     if (n->kind == NodeKind::Member && n->left != nullptr && n->left->kind == NodeKind::Name) {
         // `module.NAME`: a constant of an imported module (§6.4, §16.3)
         Node* d = n->resolved;

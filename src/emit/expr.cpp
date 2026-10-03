@@ -1115,6 +1115,11 @@ auto Emitter::emit_conv(Node* src, Type* dest, bool checked) -> string {
     }
     if ((is_int(st) || (st != nullptr && st->kind == TypeKind::Char)) &&
         (is_int(dest) || dest->kind == TypeKind::Char)) {
+        if (at_file_scope && !checked && st->kind != TypeKind::Char && dest->kind != TypeKind::Char) {
+            // a file-scope initialiser is a C constant expression, which calls none: the
+            // wrapping cast is C's own cast, the same bits on a two's-complement target
+            return "((" + c_type(dest) + ")(" + e + "))";
+        }
         Type* from = st;
         int fb = from->kind == TypeKind::Char ? 32 : int_bits(from);
         int tb = dest->kind == TypeKind::Char ? 32 : int_bits(dest);

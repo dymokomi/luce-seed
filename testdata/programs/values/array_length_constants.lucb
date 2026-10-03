@@ -1,0 +1,16 @@
+## An array length is any constant integer expression (base.md §5.4, §6.4): casts,
+## arithmetic, and an integer-backed enum case's declared value, through typed constants.
+enum Id as u16:
+    first = 0
+    last = 35
+
+let size_from_enum: usize = (usize)(u16)Id.last + 1
+
+struct Bits:
+    var flags: bool[size_from_enum]
+
+pub func answer() -> i64:
+    var bits: Bits = ---
+    var direct: u8[(usize)Id.last // 5]
+    return i64(bits.flags.length) + i64(direct.length)
+# answer: 43
