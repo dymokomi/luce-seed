@@ -385,14 +385,4 @@ Source Source::assembled(std::string path, const std::vector<std::string>& paths
     return source;
 }
 
-size_t Source::segment_of(uint32_t line) const {
-    size_t found = 0;
-    for (size_t k = 0; k < segments_.size(); k++) {
-        if (segments_[k].start_line <= line) {
-            found = k;
-        }
-    }
-    return found;
-}
-
 } // namespace lucb

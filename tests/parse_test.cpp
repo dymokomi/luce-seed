@@ -550,9 +550,10 @@ TEST(parse_spawn_belongs_to_full_luce) {
     CHECK(p.has("lucb.parse.tier"));
 }
 
-TEST(parse_import_not_top) {
+TEST(parse_import_beside_declarations) {
+    // an import may stand anywhere among the top-level declarations (§16.1)
     Parsed p("func f() -> i64:\n    return 1\nimport util\n");
-    CHECK(p.has("lucb.parse.import"));
+    CHECK(p.diagnostics.empty());
 }
 
 TEST(parse_const_without_star) {

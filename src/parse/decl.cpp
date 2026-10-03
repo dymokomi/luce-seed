@@ -16,27 +16,16 @@ namespace lucb {
 auto Parser::parse_module() -> Node* {
     Token start = cur();
     Node* mod = make(NodeKind::Module, start.span);
-    // the fragment whose declarations have begun: a file's, or each fragment's, imports
-    // come before its declarations (§16.1)
-    bool declaring = false;
-    size_t declaring_in = 0;
+    // an import may stand anywhere among the top-level declarations (§16.1)
     while (true) {
         skip_docs();
         if (at(TokenKind::EndOfFile)) {
             break;
         }
-        size_t fragment = source->segment_of(cur().span.line);
         if (at(TokenKind::KwImport) || at(TokenKind::KwFrom)) {
-            if (declaring && declaring_in == fragment) {
-                fail("lucb.parse.import", "imports come before a file's declarations (§16.1)");
-                parse_import();
-                continue;
-            }
             append(&mod->body, parse_import());
             continue;
         }
-        declaring = true;
-        declaring_in = fragment;
         int here = pos;
         Node* decl = parse_top();
         if (decl != nullptr) {

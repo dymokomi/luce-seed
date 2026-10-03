@@ -76,8 +76,6 @@ struct Source {
     const vector<Segment>& segments() const {
         return segments_;
     }
-    // Which fragment a line of an assembled module belongs to; 0 for one file.
-    size_t segment_of(uint32_t line) const;
 
   private:
     string path_;

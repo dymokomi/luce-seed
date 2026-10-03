@@ -115,7 +115,7 @@ not land in this tree).
 | 12.4 | `Allocator` parameter from `FixedBuffer`, a struct, or a pointer | done | `programs_memory` (`alloc_in_pointer`), `examples/symbols/` |
 | 16.3 | `module.Type`, `module.Enum.case(...)`, `module.constant` | done | `programs_modules` (`new_qualified`, `constants`), `examples/vm/`, `examples/json/` |
 | 16.6 | One `Writer` type across modules | done | `examples/json/` |
-| 16.1 | A module as a directory of fragments in `ORDER` order; imports open each fragment; positions name the fragment | done | `programs_modules` (`fragments`) |
+| 16.1 | A module as a directory of fragments in `ORDER` order; imports anywhere among declarations; positions name the fragment | done | `programs_modules` (`fragments`) |
 | 9.5 | `extend Type:` adds methods from another fragment | done | `programs_modules` (`fragments`) |
 | 11.2 | `return try f()` | done | `programs_errors` (`return_try_*`) |
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
