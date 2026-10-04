@@ -368,7 +368,8 @@ int32_t eval_main(const vector<Node*>& modules, Node* entry, const vector<string
         // `main` returned an error: report it the way the native shim does.
         if (result != nullptr) {
             result->err +=
-                "error " + std::to_string(ip.ret.err_code) + ": " + string(ip.ret.err_msg) + "\n";
+                "error: " + string(ip.ret.err_msg) + " (code " +
+                std::to_string(static_cast<unsigned>(ip.ret.err_code) & 0xFFFFu) + ")\n";
         }
         return 1;
     }

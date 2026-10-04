@@ -426,8 +426,8 @@ auto Emitter::emit_answer_unwrap(Node* mod) -> void {
     line(fail_c_name(fn->ty) + " r = lb_answer_impl();");
     line("if (r.failed) {");
     indent++;
-    line("fprintf(stderr, \"error %d: %.*s\\n\", r.error.code, (int)r.error.message.length, "
-         "r.error.message.data);");
+    line("fprintf(stderr, \"error: %.*s (code %u)\\n\", (int)r.error.message.length, "
+         "r.error.message.data, (unsigned)r.error.code & 0xFFFFu);");
     line("exit(1);");
     indent--;
     line("}");
@@ -452,8 +452,8 @@ auto Emitter::emit_c_main(Node* fn) -> void {
         out += "    " + aty + " args = { " + cast + "argv, (size_t)argc };\n";
         if (fail) {
             out += "    lb_r_i32 r = lb_main(args);\n";
-            out += "    if (r.failed) { fprintf(stderr, \"error %d: %.*s\\n\", r.error.code, "
-                   "(int)r.error.message.length, r.error.message.data); return 1; }\n";
+            out += "    if (r.failed) { fprintf(stderr, \"error: %.*s (code %u)\\n\", "
+                   "(int)r.error.message.length, r.error.message.data, (unsigned)r.error.code & 0xFFFFu); return 1; }\n";
             out += "    return (int)r.value;\n";
         } else {
             out += "    return (int)lb_main(args);\n";
@@ -470,8 +470,8 @@ auto Emitter::emit_c_main(Node* fn) -> void {
         if (fail) {
             out += "    lb_r_i32 r = lb_main(args);\n";
             out += "    int code = r.failed ? 1 : (int)r.value;\n";
-            out += "    if (r.failed) { fprintf(stderr, \"error %d: %.*s\\n\", r.error.code, "
-                   "(int)r.error.message.length, r.error.message.data); }\n";
+            out += "    if (r.failed) { fprintf(stderr, \"error: %.*s (code %u)\\n\", "
+                   "(int)r.error.message.length, r.error.message.data, (unsigned)r.error.code & 0xFFFFu); }\n";
             out += "    free(items);\n";
             out += "    return code;\n";
         } else {
