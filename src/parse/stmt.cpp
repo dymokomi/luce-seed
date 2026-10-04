@@ -139,6 +139,12 @@ auto Parser::parse_simple_stmt() -> Node* {
         } else {
             Token here = cur();
             Node* left = parse_unary();
+            if (is_drop(left)) {
+                n->left = parse_drop(here);
+                n->span = span_from(start);
+                expect_stmt_newline(n->left->body->left);
+                return n;
+            }
             if (left != nullptr && is_assign_op(cur().kind)) {
                 Node* a = make(NodeKind::Assign, here.span);
                 a->op = cur().kind;
@@ -183,13 +189,14 @@ auto Parser::parse_simple_stmt() -> Node* {
         expect_stmt_newline(n != nullptr ? n->left : nullptr);
         return n;
     }
-    if (at(TokenKind::KwGoto)) {
-        fail("lucb.parse.reserved", "goto is reserved and not implemented");
-        sync_line();
-        return make(NodeKind::ExprStmt, start.span);
-    }
-
     Node* left = parse_unary();
+    if (is_drop(left)) {
+        Node* n = make(NodeKind::ExprStmt, start.span);
+        n->left = parse_drop(start);
+        expect_stmt_newline(n->left->body->left);
+        n->span = span_from(start);
+        return n;
+    }
     if (left != nullptr && is_assign_op(cur().kind)) {
         Node* n = make(NodeKind::Assign, start.span);
         n->op = cur().kind;
@@ -206,6 +213,28 @@ auto Parser::parse_simple_stmt() -> Node* {
     expect_stmt_newline(expr);
     n->span = span_from(start);
     return n;
+}
+
+// `_ = value` (§7.9): the left side of an assignment that only drops what it is given.
+auto Parser::is_drop(Node* left) const -> bool {
+    return left != nullptr && left->kind == NodeKind::Name && left->text == "_" && at(TokenKind::Eq);
+}
+
+// The value after `_ =`, as the checker's intrinsic that evaluates and drops it: a `discard`
+// call the language marks as its own. A `catch` handler on the value may end without
+// `recover`, since nothing reads what it would give.
+auto Parser::parse_drop(Token start) -> Node* {
+    take();
+    Node* value = parse_expression();
+    Node* c = make(NodeKind::Call, start.span);
+    c->left = make(NodeKind::Name, start.span);
+    c->left->text = "discard";
+    c->left->flags |= FlagIntrinsic;
+    Node* a = make(NodeKind::Param, value->span);
+    a->left = value;
+    c->body = a;
+    c->span = span_from(start);
+    return c;
 }
 
 auto Parser::parse_binding() -> Node* {

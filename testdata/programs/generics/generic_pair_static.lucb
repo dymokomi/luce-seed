@@ -2,7 +2,7 @@ pub struct Pair[K, V]:
     var key: K
     var value: V
 
-    pub static func create(key: K, value: V) -> Pair[K, V]:
+    pub func create(key: K, value: V) -> Pair[K, V]:
         return Pair(key = key, value = value)
 
     pub func sum() -> V:

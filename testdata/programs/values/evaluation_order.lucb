@@ -20,8 +20,8 @@ struct Acc:
 
 pub func answer() -> i64:
     var acc = Acc(total = 0)
-    discard(sum3(step(1), step(2), step(3)))
-    discard(acc.add(step(4), step(5)))
+    _ = sum3(step(1), step(2), step(3))
+    _ = acc.add(step(4), step(5))
     var i: usize = 0
     while i < 5:
         if trace[i] != (u8)(i + 1):

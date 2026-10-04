@@ -138,6 +138,9 @@ enum : uint64_t {
     FlagIndexed = 1ull << 36, // `for (i, x) in items.indexed()`: `right` is the sequence, `left` the value name
     FlagPackageCode = 1ull << 35, // `cached` holds an `ErrorCode.package` value with its package identity
     FlagVectorSplat = 1ull << 37, // a call `T[N](x)`: the vector whose every lane is `x` (§5.12)
+    FlagIntrinsic = 1ull << 38,   // a callee the parser made the language's own: `discard` for `_ = x`,
+                                  // `format`, `hash`, `sizeof`, `alignof`, `offsetof` (§3.5)
+    FlagDropped = 1ull << 39,     // a `catch` whose value `_ =` drops: its handler may fall through
 };
 
 struct Node {
@@ -228,6 +231,12 @@ string position_text(const Node* module, uint32_t line, uint32_t column);
 //   Pattern:           text / op / left / right / body as for match patterns
 //   Param (call arg):  text = name if named, left = value
 //   Asm:               text = arch, left = operands, body = raw lines
+
+// Whether `callee` is the intrinsic `name`, spelled by the parser rather than by a program.
+inline bool is_intrinsic(const Node* callee, string_view name) {
+    return callee != nullptr && callee->kind == NodeKind::Name && (callee->flags & FlagIntrinsic) != 0 &&
+           callee->text == name;
+}
 
 const char* node_kind_name(NodeKind kind);
 

@@ -13,7 +13,7 @@ pub struct Percentage:
             error(out_of_range, "percentage must be 0 through 100")
         self.value = value
 
-    pub static func half() -> Percentage:
+    pub func half() -> Percentage:
         return Percentage(value = 50.0) catch failure: trap("50 is in range")
 
 pub func main(arguments: str[]) -> i32!:

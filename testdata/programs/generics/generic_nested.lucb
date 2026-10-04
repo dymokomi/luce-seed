@@ -1,9 +1,11 @@
+import memory
+
 pub struct Vec[T]:
     var items: T[]
     var length: usize
-    pub static func create(capacity: usize) -> Vec[T]!:
-        return Vec(items = try alloc T[capacity], length = 0)
-    pub mutating func push(item: T) -> !:
+    pub func create(capacity: usize) -> Vec[T]!:
+        return Vec(items = try new T[capacity] ---, length = 0)
+    pub func push(item: T) -> !:
         if self.length == self.items.length:
             error(1, "full")
         self.items[self.length] = item
@@ -33,4 +35,4 @@ pub func answer() -> i64!:
     let v = first.at(0) else 0
     let head = nodes.at(0) else return 0
     let tail = head.next else return 0
-    return v + tail.value + head.value + x + y * 0 + i64(rows.count()) + i64(sizeof(Node)) - 16
+    return v + tail.value + head.value + x + y * 0 + i64(rows.count()) + i64(memory.size_of(Node)) - 16

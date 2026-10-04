@@ -1,15 +1,17 @@
+import strings
+
 pub let syntax: ErrorCode = ErrorCode.package(1)
 struct P:
     var offset: usize
     var scratch: u8[]
     func fail(what: str) -> i64*!:
-        let message = try format(self.scratch, f"{what} at byte {self.offset}")
+        let message = try strings.format(self.scratch, f"{what} at byte {self.offset}")
         error(syntax, message)
-    mutating func expect(ok: bool) -> !:
+    func expect(ok: bool) -> !:
         if not ok:
-            discard(try self.fail("expected"))
+            _ = try self.fail("expected")
         self.offset += 1
-    mutating func parse() -> i64!:
+    func parse() -> i64!:
         try self.expect(true)
         try self.expect(false)
         return 1

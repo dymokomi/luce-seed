@@ -1,4 +1,6 @@
 # answer: 40
+import memory
+
 ## `f16` is a real binary16 (§5.1): two bytes in memory, every result rounded to half
 ## precision, converted to and from the other floats and the integers.
 struct Sample:
@@ -17,7 +19,7 @@ pub func answer() -> i64:
         total += 20
     if f32(back) > 0.29 and f32(back) < 0.31:
         total += 20
-    if sizeof(Sample) == 4:
+    if memory.size_of(Sample) == 4:
         total += 0
     else:
         total += 1

@@ -3,7 +3,7 @@
 //   emit/memory - Allocation: new, alloc, free, with, and the current allocator
 //
 //   DESCRIPTION:
-//       `new` and `alloc` become `lb_allocate_call` on the chosen allocator view with the
+//       `new`, `new T[n] ---` and `memory.allocate` become `lb_allocate_call` on the chosen allocator view with the
 //       element size and alignment the checker fixed; `free` becomes `lb_release_call`;
 //       `with` swaps the thread-local current allocator and restores it on every exit through
 //       the scope machinery in stmt.cpp. Exhaustion is the recoverable `memory.exhausted`

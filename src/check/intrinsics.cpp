@@ -3,10 +3,11 @@
 //   check/intrinsics - The one-word core functions
 //
 //   DESCRIPTION:
-//       `sizeof`, `alignof`, `offsetof`, `assert`, `trap`, `error`, `discard`, `hash`, `hex`,
-//       `bin`, `pad`, `print`, `format`, and formatted strings: the names base.md §3.5
-//       reserves for the language. They parse as ordinary calls; only their checked types and
-//       semantics are special.
+//       `assert`, `trap`, `error`, `print` and formatted strings, the names base.md §3.5
+//       reserves for the language, and what the parser makes the language's own though a
+//       standard module or a statement spells it: `memory.size_of`, `memory.align_of` and
+//       `memory.offset_of` (§6.4), `strings.format` (§5.5), `value.hash()` (§7.4) and
+//       `_ = value` (§7.9). They are calls; only their checked types and semantics are special.
 //
 //==============================================================================================
 
@@ -245,65 +246,6 @@ auto Checker::check_hash(Node* n) -> Type* {
     return ty_u64;
 }
 
-auto Checker::check_hex(Node* n) -> Type* {
-    n->resolved = nullptr;
-    if (count_args(n->body) != 1) {
-        fail_n(n, "lucb.check.call", "`hex` takes one argument");
-        return ty_fmt;
-    }
-    Type* a = check_expr(n->body->left, nullptr);
-    if (a != nullptr && a->kind == TypeKind::UntypedInt) {
-        a = coerce(n->body->left, a, t_i64());
-        n->body->left->ty = a;
-    }
-    if (!is_int(a) && !is_ptr(a) && (a == nullptr || a->kind != TypeKind::Char)) {
-        fail_n(n, "lucb.check.type", "`hex` takes an integer or a pointer");
-    }
-    return ty_fmt;
-}
-
-auto Checker::check_bin(Node* n) -> Type* {
-    n->resolved = nullptr;
-    if (count_args(n->body) != 1) {
-        fail_n(n, "lucb.check.call", "`bin` takes one argument");
-        return ty_fmt;
-    }
-    Type* a = check_expr(n->body->left, nullptr);
-    if (a != nullptr && a->kind == TypeKind::UntypedInt) {
-        a = coerce(n->body->left, a, t_i64());
-        n->body->left->ty = a;
-    }
-    if (!is_int(a) && (a == nullptr || a->kind != TypeKind::Char)) {
-        fail_n(n, "lucb.check.type", "`bin` takes an integer");
-    }
-    return ty_fmt;
-}
-
-auto Checker::check_pad(Node* n) -> Type* {
-    n->resolved = nullptr;
-    if (count_args(n->body) != 2) {
-        fail_n(n, "lucb.check.call", "`pad` takes a value and a width");
-        return ty_fmt;
-    }
-    Type* a = check_expr(n->body->left, nullptr);
-    if (a != nullptr && a->kind == TypeKind::UntypedInt) {
-        a = coerce(n->body->left, a, t_i64());
-        n->body->left->ty = a;
-    }
-    if (!is_display(a)) {
-        fail_n(n, "lucb.check.type", "`pad` needs a displayable value");
-    }
-    Type* w = check_expr(n->body->next != nullptr ? n->body->next->left : nullptr, t_usize());
-    if (w != nullptr && w->kind == TypeKind::UntypedInt) {
-        w = coerce(n->body->next->left, w, t_usize());
-        n->body->next->left->ty = w;
-    }
-    if (!is_int(w) && (w == nullptr || w->kind != TypeKind::Usize)) {
-        fail_n(n, "lucb.check.type", "`pad` width must be `usize`");
-    }
-    return ty_fmt;
-}
-
 auto Checker::check_formatted(Node* n) -> Type* {
     for (Node* p = n->body; p != nullptr; p = p->next) {
         if (p->kind == NodeKind::FormatField) {
@@ -493,11 +435,12 @@ auto Checker::check_trap(Node* n) -> Type* {
     return t_never();
 }
 
+// `_ = value` (§7.9): the value is checked as a binding's would be and dropped; a `catch`
+// on it may fall through, since nothing reads what it would recover.
 auto Checker::check_discard(Node* n) -> Type* {
     n->resolved = nullptr;
-    if (count_args(n->body) != 1) {
-        fail_n(n, "lucb.check.call", "`discard` takes one argument");
-        return t_unit();
+    if (n->body->left->kind == NodeKind::Catch) {
+        n->body->left->flags |= FlagDropped;
     }
     Type* t = check_expr(n->body->left, nullptr);
     if (is_fail(t)) {

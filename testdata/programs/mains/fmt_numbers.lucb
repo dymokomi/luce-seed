@@ -1,4 +1,5 @@
 import io
+import strings
 
 pub func main(arguments: str[]) -> i32!:
     let out = io.stdout()
@@ -8,6 +9,6 @@ pub func main(arguments: str[]) -> i32!:
     let d: f64 = 1.5
     let e: bool = true
     var buf: u8[64]
-    let s = try format(buf, f"{a},{b},{c},{d},{e},{hex(c)}")
+    let s = try strings.format(buf, f"{a},{b},{c},{d},{e}")
     try out.write(f"{s}|{s.length}\n")
     return 0

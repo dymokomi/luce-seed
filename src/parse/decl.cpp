@@ -180,9 +180,8 @@ auto Parser::weak_is_attribute() -> bool {
                     t.text == "naked" || t.text == "used")) {
             i += 1;
         } else {
-            return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwStatic ||
-                   t.kind == TokenKind::KwMutating || t.kind == TokenKind::KwVar ||
-                   t.kind == TokenKind::KwLocal;
+            return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwVar ||
+                   (t.kind == TokenKind::Name && t.text == "local");
         }
     }
 }
@@ -255,12 +254,6 @@ auto Parser::parse_top() -> Node* {
         }
         return nullptr;
     }
-    if (at(TokenKind::KwGoto)) {
-        fail("lucb.parse.reserved", "goto is reserved and not implemented");
-        take();
-        sync_line();
-        return nullptr;
-    }
     if (at(TokenKind::KwTest)) {
         return parse_test();
     }
@@ -274,7 +267,9 @@ auto Parser::parse_top() -> Node* {
     if (at(TokenKind::Name) && cur().text == "assert" && peek(1).kind == TokenKind::LParen) {
         return parse_assert();
     }
-    if (eat(TokenKind::KwExport)) {
+    // `export` is a word only before a function (§17.6)
+    if (at_name("export") && (peek(1).kind == TokenKind::KwFunc || peek(1).kind == TokenKind::Name)) {
+        take();
         Node* fn = parse_func(0);
         if (fn != nullptr) {
             fn->flags |= FlagExport;
@@ -289,7 +284,7 @@ auto Parser::parse_top() -> Node* {
     Node* attrs = nullptr;
     flags |= parse_attributes(&attrs);
 
-    if (at(TokenKind::KwLocal) || at(TokenKind::KwVar)) {
+    if (at_local() || at(TokenKind::KwVar)) {
         return with_attrs(parse_global(flags), attrs);
     }
     if (at(TokenKind::KwLet)) {
@@ -298,8 +293,7 @@ auto Parser::parse_top() -> Node* {
     if (at(TokenKind::KwType)) {
         return parse_type_alias(flags);
     }
-    if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
-        at_name("inline") || at(TokenKind::KwExtern)) {
+    if (at(TokenKind::KwFunc) || at_name("inline") || at(TokenKind::KwExtern)) {
         if (at(TokenKind::KwExtern)) {
             return parse_extern(flags);
         }
@@ -384,7 +378,8 @@ auto Parser::parse_const(uint32_t flags) -> Node* {
 auto Parser::parse_global(uint32_t flags) -> Node* {
     Token start = cur();
     Node* n = make(NodeKind::Global, start.span);
-    if (eat(TokenKind::KwLocal)) {
+    if (at_local()) {
+        take();
         flags |= FlagThreadLocal;
     }
     Node* attrs = nullptr;
@@ -436,15 +431,6 @@ auto Parser::parse_func(uint32_t flags) -> Node* {
     Token start = cur();
     Node* attrs = nullptr;
     flags |= parse_attributes(&attrs);
-    if (eat(TokenKind::KwStatic)) {
-        flags |= FlagStatic;
-    }
-    if (eat(TokenKind::KwMutating)) {
-        flags |= FlagMutating;
-    }
-    if ((flags & FlagStatic) != 0 && (flags & FlagMutating) != 0) {
-        fail("lucb.parse.expect", "a static method cannot be `mutating`");
-    }
     expect(TokenKind::KwFunc, "lucb.parse.expect", "expected `func`");
     Node* n = make(NodeKind::Func, start.span);
     n->attrs = attrs;
@@ -622,7 +608,8 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
     if (eat(TokenKind::KwPub)) {
         flags |= FlagPub;
     }
-    if (eat(TokenKind::KwExport)) {
+    if (at_name("export") && peek(1).kind != TokenKind::Colon) {
+        take();
         flags |= FlagExport;
     }
     if (at_name("weak") &&
@@ -663,8 +650,7 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
         f->span = span_from(start);
         return f;
     }
-    if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
-        at_name("inline")) {
+    if (at(TokenKind::KwFunc) || at_name("inline")) {
         return parse_func(flags);
     }
     fail("lucb.parse.expect", "expected a field or method");
@@ -708,8 +694,7 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
         if (eat(TokenKind::KwPub)) {
             mflags |= FlagPub;
         }
-        if (at(TokenKind::KwStatic) || at(TokenKind::KwMutating) ||
-            (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name)) {
+        if (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name) {
             append(&n->body, parse_func(mflags));
             continue;
         }
@@ -752,8 +737,7 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
         if (at(TokenKind::Dedent)) {
             break;
         }
-        if (at(TokenKind::KwFunc) || at(TokenKind::KwMutating) ||
-            (at(TokenKind::KwPub) && peek(1).kind != TokenKind::Name)) {
+        if (at(TokenKind::KwFunc) || (at(TokenKind::KwPub) && peek(1).kind != TokenKind::Name)) {
             uint32_t mflags = 0;
             if (eat(TokenKind::KwPub)) {
                 mflags |= FlagPub;
@@ -805,13 +789,8 @@ auto Parser::parse_interface(uint32_t flags) -> Node* {
         }
         int here = pos;
         Token fs = cur();
-        uint32_t mflags = 0;
-        if (eat(TokenKind::KwMutating)) {
-            mflags |= FlagMutating;
-        }
         expect(TokenKind::KwFunc, "lucb.parse.expect", "expected `func`");
         Node* fn = make(NodeKind::Func, fs.span);
-        fn->flags = mflags;
         if (!at(TokenKind::Name)) {
             fail("lucb.parse.expect", "expected a method name");
         } else {

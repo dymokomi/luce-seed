@@ -7,7 +7,7 @@ from luce import Iterable, Iterator
 struct Countdown: Iterator[u32]:
     var n: u32
 
-    mutating func next() -> u32?:
+    func next() -> u32?:
         if self.n == 0:
             return none
         self.n -= 1

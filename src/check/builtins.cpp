@@ -567,7 +567,7 @@ auto Checker::bind_memory() -> void {
     if (lb != nullptr && lb->decl != nullptr) {
         append_builtin_text(lb->decl,
                             "pub interface Iterator[T]:\n"
-                            "    mutating func next() -> T?\n"
+                            "    func next() -> T?\n"
                             "pub interface Iterable[T, I: Iterator[T]]:\n"
                             "    func iterator() -> I\n"
                             "pub interface Display:\n"
@@ -580,7 +580,7 @@ auto Checker::bind_memory() -> void {
                             "pub interface Equatable:\n"
                             "    func equals(other: void*) -> bool\n"
                             "pub interface Hashable:\n"
-                            "    func hashed() -> u64\n");
+                            "    func hash() -> u64\n");
     }
 }
 

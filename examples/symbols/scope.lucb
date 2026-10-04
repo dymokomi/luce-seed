@@ -21,19 +21,19 @@ pub struct Table:
     var marks: usize[16]
     pub var depth: u32
 
-    pub static func create(capacity: usize) -> Table!:
-        return Table(symbols = try alloc Symbol[capacity], count = 0, depth = 0)
+    pub func create(capacity: usize) -> Table!:
+        return Table(symbols = try new Symbol[capacity] ---, count = 0, depth = 0)
 
-    pub mutating func enter():
+    pub func enter():
         self.marks[(usize)self.depth] = self.count
         self.depth += 1
 
-    pub mutating func leave():
+    pub func leave():
         self.depth -= 1
         self.count = self.marks[(usize)self.depth]
 
     ## Declare in the innermost scope; a repeat in the same scope is an error.
-    pub mutating func declare(name: u32, kind: Kind) -> !:
+    pub func declare(name: u32, kind: Kind) -> !:
         var i = self.count
         let floor = (usize)0 if self.depth == 0 else self.marks[(usize)self.depth - 1]
         while i > floor:
@@ -53,5 +53,5 @@ pub struct Table:
                 return self.symbols[i]
         return none
 
-    pub mutating func destroy():
+    pub func destroy():
         free(self.symbols)

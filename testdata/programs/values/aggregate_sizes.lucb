@@ -1,4 +1,6 @@
 # answer: 88
+import memory
+
 ## `sizeof` of a tuple, an optional, and a fallible result follows C's layout, tail padding
 ## included (§5.7, §5.8, §5.11): what the interpreter answers is what the C compiler lays out.
 pub func answer() -> i64:
@@ -7,7 +9,7 @@ pub func answer() -> i64:
     let byte_opt: u8? = 4
     let wide: (u8, i64) = (5, 6)
     var total: i64 = 0
-    total += i64(sizeof(pair)) + i64(sizeof(opt)) + i64(sizeof(byte_opt)) + i64(sizeof(wide))
-    total += i64(alignof((i64, u8))) + i64(alignof(u8?))
-    total += i64(sizeof(i64!)) + i64(sizeof(unit!))
+    total += i64(memory.size_of(pair)) + i64(memory.size_of(opt)) + i64(memory.size_of(byte_opt)) + i64(memory.size_of(wide))
+    total += i64(memory.align_of((i64, u8))) + i64(memory.align_of(u8?))
+    total += i64(memory.size_of(i64!)) + i64(memory.size_of(unit!))
     return total - 16 - 16 - 2 - 16 - 8 - 1 - 40 - 32 + 88

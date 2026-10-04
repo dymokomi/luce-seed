@@ -1,5 +1,5 @@
 pub func answer() -> i64!:
-    let p = try alloc i64[3]
+    let p = try new i64[3] ---
     defer free(p)
     p[0] = 10
     p[1] = 20

@@ -241,6 +241,12 @@ auto Parser::parse_postfix() -> Node* {
             return value;
         }
         chain++;
+        if (at(TokenKind::Dot) && peek(1).kind == TokenKind::Name && peek(2).kind == TokenKind::LParen) {
+            if (Node* intrinsic = parse_standard_call(value, start)) {
+                value = intrinsic;
+                continue;
+            }
+        }
         if (eat(TokenKind::Dot)) {
             Node* m = make(NodeKind::Member, start.span);
             m->left = value;
@@ -290,6 +296,47 @@ auto Parser::parse_postfix() -> Node* {
         }
     }
     return value;
+}
+
+// The calls the checker keeps as the language's own, though a standard module names them:
+// `strings.format(buffer, text)` (§5.5), `memory.allocate(size, alignment)` (§12.2), and
+// `value.hash()` (§7.4). Null when the call at `.name(` is an ordinary one.
+auto Parser::parse_standard_call(Node* value, Token start) -> Node* {
+    string_view name = peek(1).text;
+    bool module = value->kind == NodeKind::Name;
+    if (module && value->text == "strings" && name == "format") {
+        take();
+        Token word = take();
+        Node* c = make(NodeKind::Call, start.span);
+        c->left = make_tok(NodeKind::Name, word);
+        c->left->flags |= FlagIntrinsic;
+        c->body = parse_arg_list();
+        c->span = span_from(start);
+        return c;
+    }
+    if (module && value->text == "memory" && name == "allocate") {
+        take();
+        take();
+        Node* n = make(NodeKind::Alloc, start.span);
+        n->body = parse_arg_list();
+        n->span = span_from(start);
+        return n;
+    }
+    if (name == "hash" && peek(3).kind == TokenKind::RParen) {
+        take();
+        Token word = take();
+        take();
+        take();
+        Node* c = make(NodeKind::Call, start.span);
+        c->left = make_tok(NodeKind::Name, word);
+        c->left->flags |= FlagIntrinsic;
+        Node* a = make(NodeKind::Param, value->span);
+        a->left = value;
+        c->body = a;
+        c->span = span_from(start);
+        return c;
+    }
+    return nullptr;
 }
 
 auto Parser::expr_as_type(Node* value) -> Node* {
@@ -397,10 +444,20 @@ auto Parser::parse_type_args() -> Node* {
     return list;
 }
 
+// `memory.size_of(T)`, `memory.align_of(T)` and `memory.offset_of(T, field)`, or the bare names
+// a `from memory import` brings (§6.4): the argument may be a type. The callee becomes the
+// checker's intrinsic, `sizeof`, `alignof` or `offsetof`, marked as the language's own.
 auto Parser::parse_type_builtin() -> Node* {
-    Token start = take();
+    Token start = cur();
+    if (at_name("memory")) {
+        take();
+        take();
+    }
+    Token word = take();
     Node* n = make(NodeKind::Call, start.span);
-    n->left = make_tok(NodeKind::Name, start);
+    n->left = make_tok(NodeKind::Name, word);
+    n->left->text = word.text == "size_of" ? "sizeof" : word.text == "align_of" ? "alignof" : "offsetof";
+    n->left->flags |= FlagIntrinsic;
     expect(TokenKind::LParen, "lucb.parse.expect", "expected `(`");
     Node* list = nullptr;
     if (!at(TokenKind::RParen)) {
@@ -408,7 +465,7 @@ auto Parser::parse_type_builtin() -> Node* {
         bool as_type = at(TokenKind::KwConst) || at(TokenKind::KwFunc) ||
                        at(TokenKind::KwVolatile) || at(TokenKind::At) || at(TokenKind::LParen);
         if (at(TokenKind::Name)) {
-            // `sizeof(n.next)` measures a member; `sizeof(c.long)` and `sizeof(m.Type*)`
+            // `size_of(n.next)` measures a member; `size_of(c.long)` and `size_of(m.Type*)`
             // name a type, which the checker tells apart when nothing follows the name
             TokenKind nxt = peek(1).kind;
             if (nxt == TokenKind::Dot) {
@@ -444,9 +501,8 @@ auto Parser::parse_type_builtin() -> Node* {
 
 auto Parser::parse_primary() -> Node* {
     Token start = cur();
-    if (at(TokenKind::Name) &&
-        (cur().text == "sizeof" || cur().text == "alignof" || cur().text == "offsetof") &&
-        peek(1).kind == TokenKind::LParen) {
+    if (at_type_builtin(0) ||
+        (at_name("memory") && peek(1).kind == TokenKind::Dot && at_type_builtin(2))) {
         return parse_type_builtin();
     }
     if (at(TokenKind::FormatStart)) {
@@ -489,10 +545,7 @@ auto Parser::parse_primary() -> Node* {
         return parse_match(true);
     }
     if (at(TokenKind::KwNew)) {
-        return parse_new_or_alloc(false);
-    }
-    if (at(TokenKind::KwAlloc)) {
-        return parse_new_or_alloc(true);
+        return parse_new();
     }
     fail("lucb.parse.expect", "expected an expression");
     return make(NodeKind::Name, start.span);
@@ -613,35 +666,25 @@ auto Parser::parse_array_lit() -> Node* {
     return n;
 }
 
-// `alloc (T)[n]` parenthesises a type; `alloc(size, alignment)` opens on an expression.
-auto Parser::paren_type_ahead() const -> bool {
-    Token inner = peek(1);
-    if (inner.kind == TokenKind::KwFunc || inner.kind == TokenKind::KwConst || inner.kind == TokenKind::KwVolatile) {
-        return true;
-    }
-    return inner.kind == TokenKind::Name && !inner.text.empty() &&
-           (is_core_type(inner.text) || (inner.text[0] >= 'A' && inner.text[0] <= 'Z'));
-}
-
-auto Parser::parse_new_or_alloc(bool is_alloc) -> Node* {
+// `new T(...)`, `new T`, `new T.case(...)`, `new T[n]` zeroed, and `new T[n] ---` whose
+// elements stay unwritten (§12.2), the last an `Alloc` node; `in allocator` may follow.
+auto Parser::parse_new() -> Node* {
     Token start = take();
-    Node* n = make(is_alloc ? NodeKind::Alloc : NodeKind::New, start.span);
-    if (is_alloc && at(TokenKind::LParen) && !paren_type_ahead()) {
+    Node* n = make(NodeKind::New, start.span);
+    n->type = parse_type();
+    if (at(TokenKind::LParen)) {
         n->body = parse_arg_list();
-    } else {
-        n->type = parse_type();
-        if (at(TokenKind::LParen)) {
-            n->body = parse_arg_list();
-        } else if (eat(TokenKind::Dot)) {
-            Node* cse = make(NodeKind::CaseValue, cur().span);
-            if (at(TokenKind::Name)) {
-                cse->text = take().text;
-            }
-            if (at(TokenKind::LParen)) {
-                cse->body = parse_arg_list();
-            }
-            n->body = cse;
+    } else if (eat(TokenKind::Dot)) {
+        Node* cse = make(NodeKind::CaseValue, cur().span);
+        if (at(TokenKind::Name)) {
+            cse->text = take().text;
         }
+        if (at(TokenKind::LParen)) {
+            cse->body = parse_arg_list();
+        }
+        n->body = cse;
+    } else if (eat(TokenKind::DashDashDash)) {
+        n->kind = NodeKind::Alloc;
     }
     if (eat(TokenKind::KwIn)) {
         n->right = parse_else_expr(); // `catch` after the allocator handles the allocation

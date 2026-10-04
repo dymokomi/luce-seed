@@ -12,15 +12,15 @@ pub struct Parser:
     var current: lexer.Token
     var allocator: Allocator
 
-    pub static func over(text: str) -> Parser!:
+    pub func over(text: str) -> Parser!:
         var lx = lexer.Lexer.over(text)
         let first = try lx.next()
         return Parser(lexer = lx, current = first, allocator = memory.allocator)
 
-    mutating func advance() -> !:
+    func advance() -> !:
         self.current = try self.lexer.next()
 
-    mutating func primary() -> Node*!:
+    func primary() -> Node*!:
         let tok = self.current
         if tok.kind == lexer.Kind.number:
             try self.advance()
@@ -41,7 +41,7 @@ pub struct Parser:
             return inner
         error(3, "unexpected token")
 
-    mutating func product() -> Node*!:
+    func product() -> Node*!:
         var left = try self.primary()
         while self.current.kind == lexer.Kind.star:
             try self.advance()
@@ -49,7 +49,7 @@ pub struct Parser:
             left = try new Node.binary(op = lexer.Kind.star, left = left, right = right) in self.allocator
         return left
 
-    pub mutating func sum() -> Node*!:
+    pub func sum() -> Node*!:
         var left = try self.product()
         while self.current.kind == lexer.Kind.plus:
             try self.advance()

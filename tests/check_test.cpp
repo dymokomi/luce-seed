@@ -92,13 +92,16 @@ TEST(check_foreign_declarations_and_requirements) {
     CHECK(check_has("extern type Handle = str\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
     CHECK(check_has("extern struct Record:\n    label: str\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
     CHECK(check_has("struct Holder:\n    var pattern: fmt\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
-    CHECK(check_has("interface Named:\n    func name() -> i64\nstruct P: Named:\n    var x: i64\n    static func name() -> i64:\n        return 1\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
     CHECK(check_has("pub func answer() -> i64:\n    var a: u8[2 - 3]\n    return 40\n", "lucb.check.type"));
 }
 
-TEST(check_method_modifiers_need_an_owner) {
-    CHECK(check_has("static func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
-    CHECK(check_has("mutating func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
+// A function inside a type that never names `self` is the type's (§9.5), called through the
+// type; one that implements a requirement stays a method though it does not name `self`.
+TEST(check_type_functions_are_inferred) {
+    CHECK(check_ok("struct P:\n    var x: i64\n    func origin() -> P:\n        return P(x = 2)\n"
+                   "pub func answer() -> i64:\n    return P.origin().x + 40\n"));
+    CHECK(check_ok("interface Named:\n    func name() -> i64\nstruct P: Named:\n    var x: i64\n    func name() -> i64:\n        return 1\n"
+                   "pub func answer() -> i64:\n    var p = P(x = 0)\n    let n: Named = &p\n    return n.name() + p.name() + 40\n"));
 }
 
 TEST(check_type_mismatch) {
@@ -121,22 +124,23 @@ TEST(check_label_cannot_take_a_core_name) {
     CHECK(check_ok("pub func answer() -> i64:\n    outer: for i in 0..<2:\n        break outer\n    return 42\n"));
 }
 
-TEST(check_mutating_needs_var) {
-    CHECK(check_has("struct Point:\n"
+// luce-base infers which methods change their receiver and checks the receiver at each call
+// (§9.5); the seed builds only what luce-base has checked, so it lets any method take any one.
+TEST(check_receivers_are_luce_bases_to_check) {
+    CHECK(check_ok("struct Point:\n"
                     "    var x: i64\n"
-                    "    mutating func bump():\n"
+                    "    func bump():\n"
                     "        self.x += 1\n"
                     "pub func answer() -> i64:\n"
                     "    let p = Point(x = 0)\n"
                     "    p.bump()\n"
-                    "    return p.x\n",
-                    "lucb.check.mut"));
+                    "    return p.x\n"));
 }
 
 TEST(check_explicit_self_rejected) {
     CHECK(check_has("struct Point:\n"
                     "    var x: i64\n"
-                    "    mutating func bump(self: Point):\n"
+                    "    func bump(self: Point):\n"
                     "        self.x += 1\n"
                     "pub func answer() -> i64:\n"
                     "    return 0\n",
@@ -215,7 +219,7 @@ TEST(warn_unused_import) {
 // builtins, so `io.stdout()` without `import io` is refused by luce-base, not here;
 // `testdata/programs/errors/from_import_brings_only_the_name` pins it for a user module.)
 TEST(check_from_import_brings_only_the_name) {
-    CHECK(!check_warns("import io\nfrom io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    discard(w)\n    return 42\n",
+    CHECK(!check_warns("import io\nfrom io import Writer\npub func answer() -> i64:\n    var w: Writer = io.stdout()\n    _ = w\n    return 42\n",
                        "lucb.warn.unused"));
 }
 
@@ -267,13 +271,15 @@ TEST(check_binding_forms_negative) {
 }
 
 TEST(check_core_names_are_not_declared) {
-    CHECK(check_has("enum Kind as u8:\n    i8 = 1\n    unit = 2\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
     CHECK(check_has("pub func answer() -> i64:\n    let error = 1\n    return 42\n", "lucb.check.shadow"));
-    CHECK(check_has("func f(format: i64) -> i64:\n    return format\npub func answer() -> i64:\n    return f(42)\n", "lucb.check.shadow"));
     CHECK(check_has("func trap() -> i64:\n    return 1\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
-    CHECK(check_has("struct S:\n    var n: i64\n    func pad() -> i64:\n        return self.n\npub func answer() -> i64:\n    return 42\n", "lucb.check.shadow"));
-    CHECK(check_ok("enum Kind as u8:\n    i8_ = 1\n    unit_ = 2\nstruct P:\n    var text: i64\npub func answer() -> i64:\n    let c = 1\n    return 41 + c\n"));
-    // a field binds no name in a scope, so it may take a core name
+    CHECK(check_has("func f(i32: i64) -> i64:\n    return i32\npub func answer() -> i64:\n    return f(42)\n", "lucb.check.shadow"));
+    // a field, a method or an enum case is reached through its value or type, so it may take a
+    // core name; `format`, `hash` and `sizeof` are no core names at all (§3.5)
+    CHECK(check_ok("enum Kind as u8:\n    i8 = 1\n    unit = 2\nstruct P:\n    var text: i64\n    var print: i64\n"
+                   "    func error() -> i64:\n        return self.print\n"
+                   "func f(format: i64, hash: i64, sizeof: i64) -> i64:\n    return format + hash + sizeof\n"
+                   "pub func answer() -> i64:\n    let c = 1\n    return 39 + c + f(1, 1, 0) - (i64)(u8)Kind.i8 + 1\n"));
     CHECK(check_ok("struct P:\n    var format: i64\n    var str: i64\npub func answer() -> i64:\n    let p = P(format = 41, str = 1)\n    return p.format + p.str\n"));
 }
 
@@ -386,7 +392,7 @@ TEST(check_new_zeroable) {
 
 TEST(check_interface_missing_method) {
     CHECK(check_has("interface Counter:\n"
-                    "    mutating func bump() -> i64\n"
+                    "    func bump() -> i64\n"
                     "struct Box: Counter:\n"
                     "    var n: i64\n"
                     "pub func answer() -> i64:\n"
@@ -419,14 +425,14 @@ TEST(check_atomic_bad_type) {
 // Generic interfaces (§14.4): declared with parameters, named with arguments in a
 // conformance, whose requirements are matched with the arguments substituted.
 TEST(check_generic_interface_conformance) {
-    CHECK(check_ok("interface Source[T]:\n    mutating func next() -> T?\n"
-                   "struct Ones: Source[u32]:\n    var n: u32\n    mutating func next() -> u32?:\n        if self.n == 0:\n            return none\n        self.n -= 1\n        return 1\n"
+    CHECK(check_ok("interface Source[T]:\n    func next() -> T?\n"
+                   "struct Ones: Source[u32]:\n    var n: u32\n    func next() -> u32?:\n        if self.n == 0:\n            return none\n        self.n -= 1\n        return 1\n"
                    "pub func answer() -> i64:\n    return 42\n"));
-    CHECK(check_has("interface Source[T]:\n    mutating func next() -> T?\n"
-                    "struct Ones: Source[u32]:\n    var n: u32\n    mutating func next() -> i64?:\n        return none\n"
+    CHECK(check_has("interface Source[T]:\n    func next() -> T?\n"
+                    "struct Ones: Source[u32]:\n    var n: u32\n    func next() -> i64?:\n        return none\n"
                     "pub func answer() -> i64:\n    return 42\n",
                     "lucb.check.type"));
-    CHECK(check_ok("from luce import Iterator\nstruct Ones: Iterator[u32]:\n    var n: u32\n    mutating func next() -> u32?:\n        return none\n"
+    CHECK(check_ok("from luce import Iterator\nstruct Ones: Iterator[u32]:\n    var n: u32\n    func next() -> u32?:\n        return none\n"
                    "pub func answer() -> i64:\n    return 42\n"));
 }
 
@@ -459,13 +465,13 @@ TEST(check_display_needed) {
     CHECK(check_has("struct Plain:\n    var n: u32\npub func answer() -> i64:\n    print(f\"{Plain(n = 1)}\")\n    return 42\n",
                     "lucb.check.type"));
     CHECK(check_ok("from luce import Display\nfrom io import Writer\nstruct Shown: Display:\n    var n: u32\n"
-                   "    func display(sink: Writer) -> !:\n        discard(try sink.write(f\"{self.n}\"))\n"
+                   "    func display(sink: Writer) -> !:\n        _ = try sink.write(f\"{self.n}\")\n"
                    "pub func answer() -> i64:\n    print(f\"{Shown(n = 1)}\")\n    return 42\n"));
 }
 
 // `for` over a type with `iterator()` consumes the Iterable protocol; anything else is refused.
 TEST(check_for_over_iterable) {
-    CHECK(check_has("struct Plain:\n    var n: u32\npub func answer() -> i64:\n    for x in Plain(n = 1):\n        discard(x)\n    return 42\n",
+    CHECK(check_has("struct Plain:\n    var n: u32\npub func answer() -> i64:\n    for x in Plain(n = 1):\n        _ = x\n    return 42\n",
                     "lucb.check.type"));
 }
 
@@ -518,18 +524,18 @@ TEST(check_handle_destroy) {
     CHECK(check_ok("pub handle File:\n"
                    "    destroy close\n"
                    "pub func close(file: File):\n"
-                   "    discard(file)\n"
+                   "    _ = file\n"
                    "pub func open() -> File?:\n"
                    "    return none\n"));
     CHECK(check_has("pub handle File:\n"
                     "    destroy close\n"
                     "func close(file: File):\n"
-                    "    discard(file)\n",
+                    "    _ = file\n",
                     "lucb.check.handle"));
     CHECK(check_has("pub handle File:\n"
                     "    destroy close\n"
                     "pub func close(file: File) -> !:\n"
-                    "    discard(file)\n",
+                    "    _ = file\n",
                     "lucb.check.handle"));
     CHECK(check_has("pub handle File:\n"
                     "    destroy shut\n",
@@ -759,7 +765,7 @@ TEST(check_atomic_store_mut) {
 
 TEST(check_alloc_needs_count) {
     CHECK(check_has("pub func answer() -> i64!:\n"
-                    "    let s = try alloc i64[]\n"
+                    "    let s = try new i64[] ---\n"
                     "    return 0\n",
                     "lucb.check.type"));
 }
@@ -776,7 +782,7 @@ TEST(check_sizeof_ptr_ok) {
     CHECK(check_ok("struct Node:\n"
                    "    var n: i64\n"
                    "pub func answer() -> i64:\n"
-                   "    return i64(sizeof(Node*))\n"));
+                   "    return i64(memory.size_of(Node*))\n"));
 }
 
 TEST(check_payload_arity) {
@@ -839,7 +845,7 @@ TEST(check_discard_ok) {
     CHECK(check_ok("func bump(n: i64) -> i64:\n"
                    "    return n + 1\n"
                    "pub func answer() -> i64:\n"
-                   "    discard(bump(3))\n"
+                   "    _ = bump(3)\n"
                    "    return 1\n"));
 }
 
@@ -847,7 +853,7 @@ TEST(check_discard_fallible) {
     CHECK(check_has("func boom() -> i64!:\n"
                     "    return 1\n"
                     "pub func answer() -> i64:\n"
-                    "    discard(boom())\n"
+                    "    _ = boom()\n"
                     "    return 0\n",
                     "lucb.check.type"));
 }
@@ -901,12 +907,12 @@ TEST(check_arena_implements_ok) {
                    "    var parent: Allocator\n"
                    "    var block: u8[]\n"
                    "    var used: usize\n"
-                   "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                   "    pub func allocate(size: usize, alignment: usize) -> u8[]?:\n"
                    "        return none\n"
-                   "    pub mutating func resize(block: u8[], size: usize) -> bool:\n"
+                   "    pub func resize(block: u8[], size: usize) -> bool:\n"
                    "        return false\n"
-                   "    pub mutating func release(block: u8[]):\n"
-                   "        discard(block.length)\n"
+                   "    pub func release(block: u8[]):\n"
+                   "        _ = block.length\n"
                    "pub func answer() -> i64:\n"
                    "    return 0\n"));
 }
@@ -955,8 +961,8 @@ TEST(check_process_run_ok) {
     CHECK(check_ok("import host_process\n" "import c\npub func answer() -> i64!:\n"
                    "    var args: c.str[1] = [\"\"]\n"
                    "    let (code, out, err) = try host_process.run(\"/bin/true\", args[0..<0])\n"
-                   "    discard(out)\n"
-                   "    discard(err)\n"
+                   "    _ = out\n"
+                   "    _ = err\n"
                    "    return i64(code)\n"));
 }
 
@@ -971,7 +977,7 @@ TEST(check_char_u8_eq_ok) {
 TEST(check_writer_fmt_ok) {
     CHECK(check_ok("struct Sink: Writer:\n"
                    "    var n: usize\n"
-                   "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                   "    func write(bytes: const u8[]) -> usize!:\n"
                    "        self.n += bytes.length\n"
                    "        return bytes.length\n"
                    "pub func answer() -> i64!:\n"
@@ -993,9 +999,9 @@ TEST(check_hashable_bound_ok) {
 
 TEST(check_hashable_bound_rejected) {
     CHECK(check_has("func intern[K: Hashable](key: K) -> u64:\n"
-                    "    return hash(key)\n"
+                    "    return key.hash()\n"
                     "interface Sink:\n"
-                    "    mutating func write(bytes: const u8[]) -> usize\n"
+                    "    func write(bytes: const u8[]) -> usize\n"
                     "pub func answer() -> i64:\n"
                     "    var s: Sink? = none\n"
                     "    return i64(intern(s))\n",
@@ -1004,21 +1010,15 @@ TEST(check_hashable_bound_rejected) {
 
 TEST(check_hash_ok) {
     CHECK(check_ok("pub func answer() -> i64:\n"
-                   "    if hash(7) == hash(7):\n"
+                   "    if 7.hash() == 7.hash():\n"
                    "        return 1\n"
                    "    return 0\n"));
 }
 
 TEST(check_hash_rejected) {
-    CHECK(check_has("pub func answer() -> i64:\n"
-                    "    return i64(hash(true, 1))\n",
-                    "lucb.check.call"));
-}
-
-TEST(check_hex_ok) {
-    CHECK(check_ok("pub func answer() -> i64:\n"
-                   "    print(hex(255))\n"
-                   "    return 0\n"));
+    CHECK(check_has("union U:\n    a: i64\n    b: f64\npub func answer() -> i64:\n"
+                    "    var u: U\n    return i64(u.hash())\n",
+                    "lucb.check.type"));
 }
 
 TEST(check_process_shadow) {
@@ -1065,7 +1065,7 @@ TEST(check_enum_method) {
 TEST(check_import_thread) {
     CHECK(check_ok("import thread\n"
                    "func run(context: void*):\n"
-                   "    discard(context)\n"
+                   "    _ = context\n"
                    "pub func answer() -> i64!:\n"
                    "    var n: i64 = 0\n"
                    "    let h = try thread.spawn(run, (void*)(&n))\n"
@@ -1110,7 +1110,7 @@ TEST(check_backed_enum_case_values) {
 TEST(check_init_rules) {
     CHECK(check_ok("struct P:\n    let a: i64\n    let b: i64\n"
                    "    pub func init(n: i64) -> !:\n        if n < 0:\n            error(1, \"neg\")\n"
-                   "        self.a = n\n        self.b = n * 2\n        discard(self.a + self.b)\n"
+                   "        self.a = n\n        self.b = n * 2\n        _ = self.a + self.b\n"
                    "pub func answer() -> i64!:\n    let p = try P(1)\n    return p.b\n"));
     CHECK(check_has("struct P:\n    let a: i64\n    let b: i64\n"
                     "    pub func init(n: i64):\n        self.a = n\n"
@@ -1173,18 +1173,18 @@ TEST(check_union_rules) {
 // §11.4: a handler for a value recovers one or leaves; one for `unit` may fall through
 TEST(check_catch_handler_terminates) {
     CHECK(check_has("func f() -> i64!:\n    return 1\n"
-                    "pub func answer() -> i64:\n    let v = f() catch e:\n        discard(e)\n    return v\n",
+                    "pub func answer() -> i64:\n    let v = f() catch e:\n        _ = e\n    return v\n",
                     "lucb.check.type"));
     CHECK(check_ok("func f() -> i64!:\n    return 1\n"
                    "pub func answer() -> i64:\n    let v = f() catch e:\n        recover 2\n    return v\n"));
     CHECK(check_ok("func g() -> !:\n    return\n"
-                   "pub func answer() -> i64:\n    g() catch e:\n        discard(e)\n    return 1\n"));
+                   "pub func answer() -> i64:\n    g() catch e:\n        _ = e\n    return 1\n"));
 }
 
 // §11.6: a module-level `assert` is decided at compile time
 TEST(check_module_assert_decided) {
-    CHECK(check_ok("assert(sizeof(i64) == 8, \"a word\")\npub func answer() -> i64:\n    return 0\n"));
-    CHECK(check_has("assert(sizeof(i64) == 4, \"a word\")\npub func answer() -> i64:\n    return 0\n",
+    CHECK(check_ok("assert(memory.size_of(i64) == 8, \"a word\")\npub func answer() -> i64:\n    return 0\n"));
+    CHECK(check_has("assert(memory.size_of(i64) == 4, \"a word\")\npub func answer() -> i64:\n    return 0\n",
                     "lucb.check.assert"));
     CHECK(check_has("assert(not (1 < 2 and true))\npub func answer() -> i64:\n    return 0\n",
                     "lucb.check.assert"));
@@ -1193,7 +1193,7 @@ TEST(check_module_assert_decided) {
 // §11.3, §6.6: a message formatted on a local buffer does not outlive the function, even through a `let`
 TEST(check_error_message_from_local_through_let) {
     CHECK(check_has("let code = ErrorCode.package(1)\n"
-                    "func fail(n: i64) -> !:\n    var buffer: u8[64]\n    let text = try format(buffer, f\"bad {n}\")\n    error(code, text)\n"
+                    "func fail(n: i64) -> !:\n    var buffer: u8[64]\n    let text = try strings.format(buffer, f\"bad {n}\")\n    error(code, text)\n"
                     "pub func answer() -> i64:\n    return 0\n",
                     "lucb.check.escape"));
 }
@@ -1215,8 +1215,8 @@ TEST(check_unary_under_optional_context) {
 
 // §12.2: `alloc (T)[n]` parenthesises a type; `alloc(size, alignment)` takes expressions
 TEST(check_alloc_paren_type) {
-    CHECK(check_ok("pub func answer() -> i64!:\n    let p = try alloc (i64*)[4]\n    free(p)\n"
-                   "    let raw = try alloc(16, 8)\n    free(raw)\n    return 0\n"));
+    CHECK(check_ok("pub func answer() -> i64!:\n    let p = try new (i64*)[4] ---\n    free(p)\n"
+                   "    let raw = try memory.allocate(16, 8)\n    free(raw)\n    return 0\n"));
 }
 
 // §13.1: a generic's method instantiates its own generic with its parameters permuted
@@ -1295,7 +1295,7 @@ TEST(check_atomic_rules) {
                     "lucb.check.type"));
     CHECK(check_has("pub func answer() -> i64:\n    var flag: @bool\n    let before = flag.set(true)\n    return 0\n",
                     "lucb.check.type"));
-    CHECK(check_has("import thread\nfunc work(n: i64):\n    discard(n)\n"
+    CHECK(check_has("import thread\nfunc work(n: i64):\n    _ = n\n"
                     "pub func answer() -> i64!:\n    let h = try thread.spawn(work, none)\n    return 0\n",
                     "lucb.check.type"));
 }
@@ -1305,7 +1305,7 @@ TEST(check_luce_import_and_call_statements) {
     CHECK(check_has("pub func answer() -> i64:\n    return i64(luce.line)\n", "lucb.check.name"));
     CHECK(check_has("pub func answer() -> i64:\n    var n: i64 = 1\n    --n\n    return n\n", "lucb.check.type"));
     CHECK(check_ok("func f() -> i64!:\n    return 1\n"
-                   "pub func answer() -> i64!:\n    discard(try f())\n    (try f())\n    f() catch e:\n        recover 0\n    return 0\n"));
+                   "pub func answer() -> i64!:\n    _ = try f()\n    (try f())\n    f() catch e:\n        recover 0\n    return 0\n"));
 }
 
 TEST(check_vector_operands_share_one_type) {
@@ -1343,7 +1343,7 @@ TEST(check_vector_arithmetic_is_not_a_constant) {
 }
 
 TEST(a_generic_argument_may_be_a_c_type) {
-    CHECK(check_ok("import c\nstruct Box[T]:\n    var item: T\n    static func of(item: T) -> Box[T]:\n        return Box[T](item = item)\npub func answer() -> i64:\n    let b = Box[c.str].of(\"x\")\n    discard(b.item)\n    return 40\n"));
+    CHECK(check_ok("import c\nstruct Box[T]:\n    var item: T\n    func of(item: T) -> Box[T]:\n        return Box[T](item = item)\npub func answer() -> i64:\n    let b = Box[c.str].of(\"x\")\n    _ = b.item\n    return 40\n"));
 }
 
 TEST(every_literal_in_an_untyped_expression_must_fit) {

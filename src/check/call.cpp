@@ -5,7 +5,7 @@
 //   DESCRIPTION:
 //       Argument binding for every call form: positional and named arguments, defaults
 //       including the call-site `luce.location`, generic inference through `generic.cpp`,
-//       method receivers and `mutating`, static constructors, function values, capture-free
+//       method receivers, type functions (§9.5), function values, capture-free
 //       lambdas, and extern calls with the C-representable and variadic rules of base.md §9,
 //       §13, §17. Member access resolves fields, methods, enum cases, and the standard
 //       modules.
@@ -45,20 +45,11 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
         return check_print(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+    if (is_intrinsic(callee, "format")) {
         return check_format(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+    if (is_intrinsic(callee, "hash")) {
         return check_hash(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
-        return check_hex(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
-        return check_bin(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
-        return check_pad(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "location") {
         fail_n(n, "lucb.check.name", "write `luce.location`");
@@ -70,19 +61,19 @@ auto Checker::check_call(Node* n, Type* expected) -> Type* {
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "error") {
         return check_error(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "sizeof") {
+    if (is_intrinsic(callee, "sizeof")) {
         return check_sizeof(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "alignof") {
+    if (is_intrinsic(callee, "alignof")) {
         return check_alignof(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+    if (is_intrinsic(callee, "offsetof")) {
         return check_offsetof(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "assert") {
         return check_assert(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+    if (is_intrinsic(callee, "discard")) {
         return check_discard(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
@@ -1222,31 +1213,19 @@ auto Checker::check_method_call(Node* n) -> Type* {
         return t_error();
     }
     if ((method->flags & FlagStatic) != 0) {
-        bool on_type = false;
-        if (obj != nullptr && obj->kind == NodeKind::Name) {
-            Binding* b = lookup(obj->text);
-            on_type = b != nullptr && b->decl != nullptr &&
-                      (b->decl->kind == NodeKind::Struct || b->decl->kind == NodeKind::Enum);
-        } else if (obj != nullptr && obj->kind == NodeKind::Member && obj->resolved != nullptr &&
-                   (obj->resolved->kind == NodeKind::Struct ||
-                    obj->resolved->kind == NodeKind::Enum)) {
-            on_type = true;
-        } else if (obj != nullptr && obj->kind == NodeKind::Call && obj->type != nullptr) {
-            on_type = true;
+        // a type function (§9.5); luce-base refuses one called through a value, and the seed
+        // only builds what luce-base has checked, so the value is not looked at
+        mem->resolved = method;
+        n->resolved = method;
+        if (is_generic_decl(method) || n->type != nullptr) {
+            return check_generic_call(n, method, nullptr);
         }
-        if (on_type) {
-            mem->resolved = method;
-            n->resolved = method;
-            if (is_generic_decl(method) || n->type != nullptr) {
-                return check_generic_call(n, method, nullptr);
-            }
-            return check_func_call(n, method, nullptr);
-        }
-        fail_n(n, "lucb.check.call", "a static method is called on the type");
+        return check_func_call(n, method, nullptr);
     }
-    bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const) ||
-                  (recv != nullptr && recv->kind == TypeKind::Interface);
-    if ((method->flags & FlagMutating) != 0 && !mut_ok) {
+    // a standard module's own type keeps its stated receivers (`sync.Mutex.lock`); a program's
+    // methods are luce-base's to check (§9.5)
+    bool mut_ok = is_mut_place(obj) || (is_ptr(ot) && !ot->is_const);
+    if ((method->flags & FlagMutating) != 0 && (method->flags & FlagBuiltin) != 0 && !mut_ok) {
         fail_n(n, "lucb.check.mut", "a mutating method needs a `var` receiver");
     }
     mem->resolved = method;

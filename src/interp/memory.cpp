@@ -3,7 +3,7 @@
 //   interp/memory - Allocation in the oracle
 //
 //   DESCRIPTION:
-//       `new`, `alloc`, and `free` over the heap and `FixedBuffer` allocators, and a user
+//       `new`, `new T[n] ---`, `memory.allocate`, and `free` over the heap and `FixedBuffer` allocators, and a user
 //       `Allocator` reached through its interface view. Storage is a deque of typed values so
 //       pointers into it stay valid; exhaustion is the recoverable error of base.md §11.7.
 //

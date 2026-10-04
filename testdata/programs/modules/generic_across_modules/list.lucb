@@ -18,13 +18,13 @@ pub struct List[T]:
     var count: usize
     var allocator: Allocator
 
-    pub static func create(capacity: usize) -> List[T]!:
+    pub func create(capacity: usize) -> List[T]!:
         let room = capacity if capacity > 0 else 4
-        return List[T](items = try alloc T[room], count = 0, allocator = memory.allocator)
+        return List[T](items = try new T[room] ---, count = 0, allocator = memory.allocator)
 
-    pub mutating func push(item: T) -> !:
+    pub func push(item: T) -> !:
         if self.count == self.items.length:
-            let grown = try alloc T[self.items.length * 2] in self.allocator
+            let grown = try new T[self.items.length * 2] --- in self.allocator
             memory.copy(grown, self.items, self.count)
             free(self.items) in self.allocator
             self.items = grown
@@ -34,14 +34,14 @@ pub struct List[T]:
     pub func get(index: usize) -> T:
         return self.items[index]
 
-    pub mutating func set(index: usize, item: T):
+    pub func set(index: usize, item: T):
         self.items[index] = item
 
     ## The live elements as a span; invalid after the next push.
     pub func span() -> T[]:
         return self.items[..<self.count]
 
-    pub mutating func destroy():
+    pub func destroy():
         free(self.items) in self.allocator
 
 test "a list grows and keeps order":

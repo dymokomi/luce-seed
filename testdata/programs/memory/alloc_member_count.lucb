@@ -1,7 +1,7 @@
 struct S:
     var n: usize
-    mutating func grow() -> u32[]!:
-        let fresh = try alloc u32[self.n * 2]
+    func grow() -> u32[]!:
+        let fresh = try new u32[self.n * 2] ---
         return fresh
 pub func answer() -> i64!:
     var s = S(n = 20)

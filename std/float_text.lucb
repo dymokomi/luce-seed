@@ -1,0 +1,21 @@
+#==============================================================================================
+#
+#   float_text - A float's shortest display, for `numerals`
+#
+#   DESCRIPTION:
+#       luce-base's `float_text` writes a float's shortest decimal with Ryu; the seed's
+#       runtime already writes that display for formatted strings (lb_float_text), so this
+#       module answers luce-base's two functions through it.
+#
+#==============================================================================================
+
+extern func lb_float_text(text: u8*, value: f64, single: i32) -> usize
+
+## The display of `value` (§14.4) written into `text`, which holds at least 40 bytes; the
+## bytes written.
+pub func display_f64(value: f64, text: u8[]) -> usize:
+    return lb_float_text(text.data, value, 0)
+
+## The display of the `f32` `value`, its own shortest digits; the bytes written.
+pub func display_f32(value: f32, text: u8[]) -> usize:
+    return lb_float_text(text.data, (f64)value, 1)

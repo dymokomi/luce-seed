@@ -1,3 +1,5 @@
+import memory
+
 struct Link:
     var next: Link*?
 
@@ -7,7 +9,7 @@ struct Task:
     var link: Link
 
 func task_of(link: Link*) -> Task*:
-    return (Task*)((u8*)link - offsetof(Task, link))
+    return (Task*)((u8*)link - memory.offset_of(Task, link))
 
 func push(head: Link*?*, task: Task*):
     task.link.next = *head

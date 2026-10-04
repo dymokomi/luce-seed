@@ -1,9 +1,11 @@
 # release: true
+import strings
+
 ## A formatted text passed as `fmt` is read by the callee after the expression that made
 ## it (§9.6): its bytes live as long as the caller's function, under -O2 as under -O0.
 func log(level: i64, message: fmt):
     var buffer: u8[64]
-    let line = format(buffer, f"{level}: {message}") catch failure:
+    let line = strings.format(buffer, f"{level}: {message}") catch failure:
         return
     print(line)
     forward(message)

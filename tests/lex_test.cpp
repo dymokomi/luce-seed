@@ -101,17 +101,24 @@ TEST(lex_missing_final_newline_is_inserted) {
 }
 
 TEST(lex_keywords_are_not_names) {
-    Lexed lexed("let var pub mutating self none true false\n");
+    Lexed lexed("let var pub self none true false\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"let", "var", "pub", "mutating", "self", "none", "true", "false",
-                           "newline", "eof"}));
+    CHECK(kinds_eq(lexed, {"let", "var", "pub", "self", "none", "true", "false", "newline", "eof"}));
 }
 
 TEST(lex_base_only_keywords) {
-    Lexed lexed("with alloc free const asm union volatile static errdefer local goto\n");
+    Lexed lexed("with free const asm union volatile errdefer\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"with", "alloc", "free", "const", "asm", "union", "volatile", "static",
-                           "errdefer", "local", "goto", "newline", "eof"}));
+    CHECK(kinds_eq(lexed, {"with", "free", "const", "asm", "union", "volatile", "errdefer", "newline",
+                           "eof"}));
+}
+
+// The words that left the language (§3.6): `local` and `export` mean something in one place
+// each, and `alloc`, `goto`, `mutating` and `static` nothing at all.
+TEST(lex_former_keywords_are_names) {
+    Lexed lexed("alloc goto mutating static local export\n");
+    CHECK(lexed.diagnostics.empty());
+    CHECK(kinds_eq(lexed, {"name", "name", "name", "name", "name", "name", "newline", "eof"}));
 }
 
 TEST(lex_full_luce_words_stay_keywords) {

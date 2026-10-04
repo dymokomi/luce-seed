@@ -3,10 +3,10 @@
 //   emit/text - Formatted output, text conversion, and hashing
 //
 //   DESCRIPTION:
-//       `print`, `Writer.write`, and `format` consume a formatted string piece by piece into
-//       a caller buffer or a `Writer` view without materialising a string (base.md §4.4,
-//       §14.4); `str(bytes)` validates UTF-8 and yields `str!` (§5.5); `hash`, `hex`, `bin`,
-//       and `pad` are the compiler-supplied Display forms (§7.4).
+//       `print`, `Writer.write`, and `strings.format` consume a formatted string piece by
+//       piece into a caller buffer or a `Writer` view without materialising a string
+//       (base.md §4.4, §14.4); `str(bytes)` validates UTF-8 and yields `str!` (§5.5);
+//       `value.hash()` is the compiler-supplied hash (§7.4).
 //
 //==============================================================================================
 

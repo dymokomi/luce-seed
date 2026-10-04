@@ -18,7 +18,7 @@ pub struct Lexer:
     var depth: usize
     var pending_dedents: usize
 
-    pub static func over(text: str) -> Lexer:
+    pub func over(text: str) -> Lexer:
         var lexer = Lexer(source = text.bytes, offset = 0, line = 1, at_line_start = true, depth = 0, pending_dedents = 0)
         lexer.levels[0] = 0
         return lexer
@@ -38,7 +38,7 @@ pub struct Lexer:
         return token.Token(kind = kind, start = start, end = self.offset, line = self.line)
 
     ## Measure the indentation of the current line and queue indent/dedent tokens.
-    mutating func layout() -> token.Token?!:
+    func layout() -> token.Token?!:
         var column: u32 = 0
         while self.peek() == ' ':
             self.offset += 1
@@ -63,7 +63,7 @@ pub struct Lexer:
             return self.make(token.Kind.dedent, self.offset)
         return none
 
-    pub mutating func next() -> token.Token!:
+    pub func next() -> token.Token!:
         if self.pending_dedents > 0:
             self.pending_dedents -= 1
             return self.make(token.Kind.dedent, self.offset)

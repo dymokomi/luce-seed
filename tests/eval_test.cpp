@@ -117,7 +117,7 @@ TEST(eval_struct_method) {
     EvalResult r = run("struct Point:\n"
                        "    var x: i64\n"
                        "    var y: i64\n"
-                       "    mutating func bump(by: i64):\n"
+                       "    func bump(by: i64):\n"
                        "        self.x += by\n"
                        "pub func answer() -> i64:\n"
                        "    var p = Point(x = 1, y = 2)\n"
@@ -276,13 +276,13 @@ TEST(eval_widen) {
 }
 
 TEST(eval_sizeof_i64) {
-    EvalResult r = run("pub func answer() -> i64:\n    return i64(sizeof(i64))\n");
+    EvalResult r = run("pub func answer() -> i64:\n    return i64(memory.size_of(i64))\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 8);
 }
 
 TEST(eval_sizeof_usize) {
-    EvalResult r = run("pub func answer() -> i64:\n    return i64(sizeof(usize))\n");
+    EvalResult r = run("pub func answer() -> i64:\n    return i64(memory.size_of(usize))\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, static_cast<int64_t>(sizeof(void*)));
 }
@@ -578,7 +578,7 @@ TEST(eval_offsetof_packed) {
                        "    var a: u8\n"
                        "    var b: u32\n"
                        "pub func answer() -> i64:\n"
-                       "    return i64(offsetof(H, b))\n");
+                       "    return i64(memory.offset_of(H, b))\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 1);
 }
@@ -594,10 +594,10 @@ TEST(eval_enum_checked_conv_traps) {
 
 TEST(eval_interface_view) {
     EvalResult r = run("interface Counter:\n"
-                       "    mutating func bump() -> i64\n"
+                       "    func bump() -> i64\n"
                        "struct Box: Counter:\n"
                        "    var n: i64\n"
-                       "    mutating func bump() -> i64:\n"
+                       "    func bump() -> i64:\n"
                        "        self.n += 1\n"
                        "        return self.n\n"
                        "pub func answer() -> i64:\n"
@@ -760,7 +760,7 @@ TEST(eval_discard) {
                        "    print(n)\n"
                        "    return n + 1\n"
                        "pub func answer() -> i64:\n"
-                       "    discard(bump(3))\n"
+                       "    _ = bump(3)\n"
                        "    return 1\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 1);
@@ -817,13 +817,14 @@ TEST(eval_luce_location) {
 
 TEST(eval_method_value) {
     EvalResult r = run("struct Point:\n"
-                       "    pub let x: i64\n"
-                       "    pub let y: i64\n"
+                       "    pub var x: i64\n"
+                       "    pub var y: i64\n"
                        "    func sum() -> i64:\n"
-                       "        return self.x + self.y\n"
+                       "        self.x += self.y\n"
+                       "        return self.x\n"
                        "pub func answer() -> i64:\n"
-                       "    let p = Point(x = 2, y = 3)\n"
-                       "    let f: func(const Point*) -> i64 = Point.sum\n"
+                       "    var p = Point(x = 2, y = 3)\n"
+                       "    let f: func(Point*) -> i64 = Point.sum\n"
                        "    return f(&p)\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 5);
@@ -850,7 +851,7 @@ TEST(eval_memory_read_write) {
 
 TEST(eval_memory_grow) {
     EvalResult r = run("import memory\n" "pub func answer() -> i64!:\n"
-                       "    let b = try alloc u8[2]\n"
+                       "    let b = try new u8[2] ---\n"
                        "    b[0] = 9\n"
                        "    let g = try memory.grow(b, 8)\n"
                        "    return i64(g[0]) + i64(g.length)\n");
@@ -906,20 +907,13 @@ TEST(eval_process_run) {
 
 TEST(eval_hash_int) {
     EvalResult r = run("pub func answer() -> i64:\n"
-                       "    if hash(7) == hash(7) and hash(7) != hash(8):\n"
+                       "    if 7.hash() == 7.hash() and 7.hash() != 8.hash():\n"
                        "        return 1\n"
                        "    return 0\n");
     CHECK(r.ok);
     CHECK_EQ(r.answer, 1);
 }
 
-TEST(eval_hex) {
-    EvalResult r = run("pub func answer() -> i64:\n"
-                       "    print(hex(255))\n"
-                       "    return 0\n");
-    CHECK(r.ok);
-    CHECK(r.output.find("ff") != std::string::npos);
-}
 
 // §10.4: a narrow member's write leaves the union's other bytes as they were
 TEST(eval_union_keeps_other_bytes) {
@@ -966,10 +960,10 @@ TEST(eval_handler_steers_array_loop) {
 TEST(eval_free_releases_through_the_allocator) {
     EvalResult r = run("import memory\n"
                        "struct Counting: memory.Allocator:\n    var bytes: usize\n"
-                       "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                       "    pub func allocate(size: usize, alignment: usize) -> u8[]?:\n"
                        "        self.bytes += size\n        return memory.heap.allocate(size, alignment)\n"
-                       "    pub mutating func resize(block: u8[], size: usize) -> bool:\n        return false\n"
-                       "    pub mutating func release(block: u8[]):\n        self.bytes -= block.length\n        memory.heap.release(block)\n"
+                       "    pub func resize(block: u8[], size: usize) -> bool:\n        return false\n"
+                       "    pub func release(block: u8[]):\n        self.bytes -= block.length\n        memory.heap.release(block)\n"
                        "pub func answer() -> i64!:\n    var c = Counting(bytes = 0)\n"
                        "    let items = try new i64[4] in c\n    let one = try new i64 in c\n    let after = c.bytes\n"
                        "    free(items) in c\n    free(one) in c\n    return (i64)after * 1000 + (i64)c.bytes\n");

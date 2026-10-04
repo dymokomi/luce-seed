@@ -4,9 +4,9 @@ from io import Writer
 func step(out: Writer, n: i64) -> !:
     try out.write(f"{n}")
 func work(out: Writer, fail: bool) -> !:
-    defer discard(step(out, 1) catch f: recover ())
-    errdefer discard(step(out, 9) catch f: recover ())
-    defer discard(step(out, 2) catch f: recover ())
+    defer _ = step(out, 1) catch f: recover ()
+    errdefer _ = step(out, 9) catch f: recover ()
+    defer _ = step(out, 2) catch f: recover ()
     try step(out, 3)
     if fail:
         error(1, "boom")

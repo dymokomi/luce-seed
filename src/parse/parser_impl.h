@@ -102,7 +102,7 @@ inline bool is_assign_op(TokenKind k) {
 }
 
 inline bool is_keyword_kind(TokenKind k) {
-    return k >= TokenKind::KwAlloc && k <= TokenKind::KwWith;
+    return k >= TokenKind::KwAnd && k <= TokenKind::KwWith;
 }
 
 inline bool is_core_type(string_view name) {
@@ -141,7 +141,7 @@ inline bool expr_starts(TokenKind k) {
            k == TokenKind::FormatStart || k == TokenKind::KwSelf || k == TokenKind::KwTrue ||
            k == TokenKind::KwFalse || k == TokenKind::KwNone || k == TokenKind::LParen ||
            k == TokenKind::LBracket || k == TokenKind::KwMatch || k == TokenKind::KwNew ||
-           k == TokenKind::KwAlloc || k == TokenKind::KwTry || k == TokenKind::KwNot ||
+           k == TokenKind::KwTry || k == TokenKind::KwNot ||
            k == TokenKind::Plus || k == TokenKind::Minus || k == TokenKind::MinusPercent ||
            k == TokenKind::Tilde || k == TokenKind::Star || k == TokenKind::Amp ||
            k == TokenKind::Dot || k == TokenKind::Underscore;
@@ -208,6 +208,18 @@ struct Parser {
 
     bool at_name(const char* s) const {
         return cur().kind == TokenKind::Name && cur().text == s;
+    }
+
+    // `size_of(`, `align_of(` or `offset_of(` `ahead` tokens on: memory's intrinsics (§6.4)
+    bool at_type_builtin(int ahead) const {
+        Token t = peek(ahead);
+        return t.kind == TokenKind::Name && (t.text == "size_of" || t.text == "align_of" || t.text == "offset_of") &&
+               peek(ahead + 1).kind == TokenKind::LParen;
+    }
+
+    // `local var`: `local` is a word only before a module's `var` (§6.3)
+    bool at_local() const {
+        return at_name("local") && (peek(1).kind == TokenKind::KwVar || peek(1).kind == TokenKind::Name);
     }
 
     bool at_ident() const {
@@ -323,6 +335,8 @@ struct Parser {
     Node* parse_statement();
     Node* parse_simple_stmt();
     Node* parse_free();
+    bool is_drop(Node* left) const;
+    Node* parse_drop(Token start);
     Node* parse_binding();
     Node* parse_condition();
     Node* parse_if();
@@ -352,8 +366,8 @@ struct Parser {
     Node* parse_lambda();
     Node* parse_group_or_tuple();
     Node* parse_array_lit();
-    bool paren_type_ahead() const;
-    Node* parse_new_or_alloc(bool is_alloc);
+    Node* parse_new();
+    Node* parse_standard_call(Node* value, Token start);
     Node* parse_type();
     Node* parse_primary_type();
 };

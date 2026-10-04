@@ -30,9 +30,9 @@ not land in this tree).
 | 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
-| 8.6 | `goto` reserved | done | `parse_goto_is_reserved` |
+| 3.6 | `alloc`, `goto`, `mutating`, `static` are names; `local` and `export` words in one place each | done | `lex_former_keywords_are_names`, `parse_former_keywords_are_names` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
-| 9–10 | Func/struct/enum/union/interface syntax | done | `parse_test`; field defaults `agree_field_default`; aliases, `func` values, default args, `discard` |
+| 9–10 | Func/struct/enum/union/interface syntax | done | `parse_test`; field defaults `agree_field_default`; aliases, `func` values, default args, `_ = value` |
 | 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
 | 16 | Imports, packages, `test` | done | `pkg_test`, `testdata/m9`, `lucb test` |
 | 17 | `extern func` | done | `parse_extern_func`, `agree_extern_abs`, `agree_extern_strlen`, `agree_extern_as_name` |
@@ -45,22 +45,22 @@ not land in this tree).
 | 5.6 | Function types `func(A, B) -> R` | done | `agree_func_value`, `agree_alias_func`, `agree_program_fnptr_table`, `check_func_type_ok`, `check_func_no_zero` |
 | 5.7 | Tuples `(i64, str)` | done | `agree_tuple`, `eval_tuple`, `check_tuple_ok` |
 | 5.10 | Type aliases | done | `agree_type_alias`, `eval_type_alias`, `check_type_alias_ok`, `check_alias_recursive` |
-| 5.11 | `sizeof`, `offsetof`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_sizeof_ptr`, `agree_offsetof_packed` |
+| 5.11 | `memory.size_of`, `memory.offset_of`, `packed` / `align(N)` | done | `agree_sizeof_i64`, `agree_sizeof_ptr`, `agree_offsetof_packed` |
 | 6.6 | Address-of and escape | partial | `check_escape_local`, `agree_escape_global`; stores into escaped params later |
 | 6.1 | `let`/`var`, zero values | done | `eval_zero_var`, `agree_zero_struct`, `check_never_null_zero`; never-null pointers still require an initialiser |
 | 6.2 | `---` uninitialised `var` | done | `agree_uninit` |
 | 6.3 | Module `var` / `local var` | done | `agree_global`, `agree_thread_local` |
 | 6.5 | Assignment, `+=` | partial | `eval_while`, struct methods |
-| 6.6 | Mutability of `var` / mutating methods | partial | `check_mutating_needs_var`, `check_assign_let` |
+| 6.6 | Mutability of `var`; which methods change their receiver is luce-base's to infer and check | partial | `check_receivers_are_luce_bases_to_check`, `check_assign_let` |
 | 7.2 | Checked `+ - *`, wrapping `%`, saturating `|`, `+?` | done | `agree_u8_wrap`, `agree_u8_overflow_traps`, `agree_u8_saturating`, `agree_overflow_optional` |
 | 7.3 | Bits, shifts, `and`/`or`/`not` | done | `agree_bits`, `agree_shift`, `eval_bool_and_or` |
 | 7.5 | Widening, `T(x)`, `(T)x` | done | `agree_widen`, `agree_c_cast_truncates`, `parse_cast_vs_call` |
 | 7.8 | Match expressions | done | `agree_match_expr`, `eval_match_expr` |
-| 7.9 | `discard` | done | `agree_discard`, `eval_discard`, `check_discard_ok`, `check_discard_fallible` |
+| 7.9 | `_ = value` | done | `agree_discard`, `eval_discard`, `check_discard_ok`, `check_discard_fallible` |
 | 9.2 | Default parameters | done | `agree_default_args`, `agree_named_default`, `eval_default_args` |
 | 9.3 | Multiple results / tuples | done | `agree_tuple` |
 | 9.4 | Function values | done | `agree_func_value`, `agree_method_value`, `agree_func_to_fallible`, `agree_program_fnptr_table`, `check_func_must_be_called` |
-| 9.5 | Methods, implicit `self`, `mutating` | partial | `eval_struct_method`, `agree_program_enum_methods`, `check_enum_method`, `check_explicit_self_rejected` |
+| 9.5 | Methods, implicit `self`, inferred type functions | partial | `eval_struct_method`, `agree_program_enum_methods`, `check_enum_method`, `check_explicit_self_rejected`, `check_type_functions_are_inferred` |
 | 9.6 | Capture-free lambdas | done | `agree_lambda`, `eval_lambda`, `check_lambda_ok`, `check_lambda_capture_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |
@@ -79,7 +79,7 @@ not land in this tree).
 | 16.4 | `luce.toml` | partial | `[package] name`; extra source roots out of seed |
 | 16.5 | `test` / `lucb test` / `assert` | done | `eval_tests_pass_and_fail` |
 | 5.2 | `c.str` | done | type, `main(arguments: c.str[])`, `c` module, `agree_extern_strlen`, `agree_c_int` |
-| 12.2 | `new` / `alloc` / `free` / `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
+| 12.2 | `new`, `new T[n] ---`, `memory.allocate`, `free`, `in` | done | `agree_new_i64`, `agree_new_span`, `agree_new_count_var`, `agree_new_enum_case`, `agree_alloc_span`, `check_alloc_needs_count` |
 | 12.3 | current allocator, `with`, `memory.allocator` / `heap` | done | `agree_fixed_buffer`, `agree_memory_heap` |
 | 12.4 | `Allocator`, `FixedBuffer`, `CAllocator` | partial | `Allocator` is the spec interface; user conformance works (`agree_user_arena`, `testdata/programs/arena.lucb`). No stdlib `PageAllocator` or `Arena` (out of seed: write them in Base). |
 | 12.2 | `memory.exhausted` | done | `agree_fixed_exhausted`, `eval_fixed_exhausted` |
@@ -89,7 +89,7 @@ not land in this tree).
 | 14.1 | Interface declaration, conformance | done | `agree_interface_view`, `check_interface_missing_method` |
 | 14.3 | Two-word interface views | done | `agree_interface_view`, `agree_writer_view` |
 | 14.4 | `Writer`, `Display`, `print(f"...")` | partial | `agree_print_formatted`, `agree_writer_view`, `agree_writer_fmt`, `agree_hex_bin_pad`; user `Display` out of seed |
-| 5.5 / 9.1 | `fmt`, `format`, `luce.location` | done | `agree_format`, `agree_location` |
+| 5.5 / 9.1 | `fmt`, `strings.format`, `luce.location` | done | `agree_format`, `agree_location` |
 | 16.6 | `io.stdout` / `io.stderr` as `Writer` | done | `agree_io_stderr` |
 | 16.6 | `files.read` / `files.write` / `files.list` | done | `agree_files_roundtrip`, `agree_files_list_missing`, `testdata/programs/list.lucb` |
 | 16.6 | `process.run` | done | `agree_process_run`, `testdata/programs/spawn.lucb`; answers `(i32, str, str)!` |

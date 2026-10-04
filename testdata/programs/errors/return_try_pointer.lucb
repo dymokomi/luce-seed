@@ -5,7 +5,7 @@ struct P:
         error(syntax, what)
     func word(text: str) -> bool:
         return false
-    mutating func parse() -> i64*!:
+    func parse() -> i64*!:
         if self.word("true"):
             return try new i64
         return try self.fail("unexpected input")

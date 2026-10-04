@@ -11,25 +11,25 @@ struct Stack[T]:
     var count: usize
     var allocator: Allocator
 
-    static func create() -> Stack[T]!:
-        return Stack[T](data = try alloc T[4], count = 0, allocator = memory.allocator)
+    func create() -> Stack[T]!:
+        return Stack[T](data = try new T[4] ---, count = 0, allocator = memory.allocator)
 
-    mutating func push(value: T) -> !:
+    func push(value: T) -> !:
         if self.count == self.data.length:
-            let grown = try alloc T[self.data.length * 2]
+            let grown = try new T[self.data.length * 2] ---
             memory.copy(grown, self.data, self.count)
             free(self.data)
             self.data = grown
         self.data[self.count] = value
         self.count += 1
 
-    mutating func pop() -> T?:
+    func pop() -> T?:
         if self.count == 0:
             return none
         self.count -= 1
         return self.data[self.count]
 
-    mutating func destroy():
+    func destroy():
         free(self.data)
 
 ## A payload enum walked recursively.

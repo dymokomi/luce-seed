@@ -20,7 +20,7 @@ func x_y() -> i64:
 struct X:
     var n: i64
 
-    static func y() -> i64:
+    func y() -> i64:
         return 4
 
 pub func answer() -> i64:

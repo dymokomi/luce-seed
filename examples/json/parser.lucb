@@ -3,6 +3,7 @@
 ## the byte offset in their message through a caller-supplied scratch buffer.
 
 import value
+import strings
 
 pub let syntax: ErrorCode = ErrorCode.package(1)
 
@@ -11,7 +12,7 @@ pub struct Parser:
     var offset: usize
     var scratch: u8[]
 
-    pub static func over(text: str, scratch: u8[]) -> Parser:
+    pub func over(text: str, scratch: u8[]) -> Parser:
         return Parser(input = text.bytes, offset = 0, scratch = scratch)
 
     func peek() -> u8:
@@ -19,20 +20,20 @@ pub struct Parser:
             return 0
         return self.input[self.offset]
 
-    mutating func skip_space():
+    func skip_space():
         while self.peek() == ' ' or self.peek() == '\n' or self.peek() == '\t' or self.peek() == '\r':
             self.offset += 1
 
     func fail(what: str) -> value.Value*!:
-        let message = try format(self.scratch, f"{what} at byte {self.offset}")
+        let message = try strings.format(self.scratch, f"{what} at byte {self.offset}")
         error(syntax, message)
 
-    mutating func expect(c: u8, what: str) -> !:
+    func expect(c: u8, what: str) -> !:
         if self.peek() != c:
-            discard(try self.fail(what))
+            _ = try self.fail(what)
         self.offset += 1
 
-    mutating func word(text: str) -> bool:
+    func word(text: str) -> bool:
         if self.offset + text.length > self.input.length:
             return false
         if (str)self.input[self.offset..<self.offset + text.length] != text:
@@ -40,31 +41,31 @@ pub struct Parser:
         self.offset += text.length
         return true
 
-    mutating func string() -> str!:
+    func string() -> str!:
         try self.expect('"', "expected a string")
         let start = self.offset
         while self.peek() != '"':
             if self.peek() == 0:
-                discard(try self.fail("unterminated string"))
+                _ = try self.fail("unterminated string")
             self.offset += 1
         let s = (str)self.input[start..<self.offset]
         self.offset += 1
         return s
 
-    mutating func number() -> i64!:
+    func number() -> i64!:
         var negative = false
         if self.peek() == '-':
             negative = true
             self.offset += 1
         if self.peek() < '0' or self.peek() > '9':
-            discard(try self.fail("expected a digit"))
+            _ = try self.fail("expected a digit")
         var n: i64 = 0
         while self.peek() >= '0' and self.peek() <= '9':
             n = n * 10 + i64(self.peek() - '0')
             self.offset += 1
         return 0 - n if negative else n
 
-    mutating func members(closing: u8, keyed: bool) -> (value.Member*?, usize)!:
+    func members(closing: u8, keyed: bool) -> (value.Member*?, usize)!:
         var first: value.Member*? = none
         var last: value.Member*? = none
         var count: usize = 0
@@ -94,7 +95,7 @@ pub struct Parser:
             try self.expect(closing, "expected `,` or a closing bracket")
             return (first, count)
 
-    pub mutating func parse() -> value.Value*!:
+    pub func parse() -> value.Value*!:
         self.skip_space()
         let c = self.peek()
         if c == '{':

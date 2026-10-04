@@ -3,11 +3,11 @@ import thread
 struct SpinLock:
     var locked: @bool
 
-    mutating func acquire():
+    func acquire():
         while self.locked.swap(true, .acquire):
             thread.pause()
 
-    mutating func release():
+    func release():
         self.locked.store(false, .release)
 
 struct Shared:

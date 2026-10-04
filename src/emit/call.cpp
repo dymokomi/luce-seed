@@ -266,7 +266,7 @@ auto Emitter::emit_call(Node* n) -> string {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         return "(uint32_t)(" + (arg != nullptr ? emit_expr(arg) : string("0")) + ")";
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+    if (is_intrinsic(callee, "format")) {
         return emit_format_call(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
@@ -461,7 +461,7 @@ auto Emitter::emit_call(Node* n) -> string {
             }
         }
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+    if (is_intrinsic(callee, "discard")) {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         return "((void)(" + emit_expr(arg) + "))";
     }
@@ -480,32 +480,8 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         return "((void)((" + emit_expr(cond) + ") ? 0 : (lb_trap(" + msg + "), 0)))";
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+    if (is_intrinsic(callee, "hash")) {
         return emit_hash(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
-        Node* arg = n->body != nullptr ? n->body->left : nullptr;
-        Type* t = arg != nullptr ? arg->ty : nullptr;
-        string e = emit_expr(arg);
-        if (is_ptr(t)) {
-            return "lb_show_hex((uint64_t)(uintptr_t)(" + e + "))";
-        }
-        return "lb_show_hex((uint64_t)(" + e + "))";
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
-        Node* arg = n->body != nullptr ? n->body->left : nullptr;
-        return "lb_show_bin((uint64_t)(" + emit_expr(arg) + "))";
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
-        Node* arg = n->body != nullptr ? n->body->left : nullptr;
-        Node* w = n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
-        int id = tmp();
-        string buf = "_lb_pbuf" + std::to_string(id);
-        string bn = "_lb_pb" + std::to_string(id);
-        string s = "({ char " + buf + "[256]; lb_fmtbuf " + bn + " = { " + buf + ", 256, 0 }; ";
-        s += "(void)" + emit_display_buf(bn, arg) + "; ";
-        s += "lb_show_pad(lb_fmtbuf_finish(&" + bn + "), (size_t)(" + emit_expr(w) + ")); })";
-        return s;
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "print") {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
@@ -540,8 +516,7 @@ auto Emitter::emit_call(Node* n) -> string {
         Node* msg = n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
         return wrap_err(emit_expr(code), emit_expr(msg));
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name &&
-        (callee->text == "sizeof" || callee->text == "alignof")) {
+    if (is_intrinsic(callee, "sizeof") || is_intrinsic(callee, "alignof")) {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         Type* t = arg != nullptr ? arg->ty : nullptr;
         string ty = c_type(t);
@@ -550,7 +525,7 @@ auto Emitter::emit_call(Node* n) -> string {
         }
         return "((size_t)_Alignof(" + ty + "))";
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+    if (is_intrinsic(callee, "offsetof")) {
         Node* tyarg = n->body != nullptr ? n->body->left : nullptr;
         Node* field =
             n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
@@ -937,7 +912,9 @@ auto Emitter::emit_call(Node* n) -> string {
             string call = name + "(&" + tn + (args.empty() ? "" : ", " + args) + ")";
             return "({ " + c_type(obj->ty) + " " + tn + " = " + emit_expr(obj) + "; " + prefix + call + "; })";
         }
-        string recv = is_ptr(obj != nullptr ? obj->ty : nullptr) ? emit_expr(obj) : emit_addr(obj);
+        // every method takes its receiver as `T*` in the seed (§9.5 is luce-base's to check),
+        // so a `let` or a `const T*` receiver is passed through `void*`
+        string recv = "(void*)" + (is_ptr(obj != nullptr ? obj->ty : nullptr) ? emit_expr(obj) : emit_addr(obj));
         if (args.empty()) {
             return sequenced(prefix, name + "(" + recv + ")");
         }
@@ -998,7 +975,7 @@ auto Emitter::emit_ctor(Node* n, Node* st) -> string {
             effects = effects || may_have_effect(f->left);
         }
     }
-    // Global initializers are checked constants, including `sizeof` calls.
+    // Global initializers are checked constants, including `memory.size_of` calls.
     effects = effects && current_fn != nullptr;
     string prefix;
     for (FieldValue& v : values) {

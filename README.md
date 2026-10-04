@@ -80,6 +80,8 @@ The path module and the string search/transform operations match luce-base's
 standard implementations. `files.exists` performs a non-opening, symlink-following
 lookup in both the interpreter and compiled runtime. These supply the compiler's
 package resolver without introducing a second implementation of its path logic.
+`numerals`, which reads and lays out format specifications, is luce-base's own
+module verbatim; its `float_text` is the runtime's float display.
 
 ## Status
 

@@ -3,7 +3,7 @@
 struct Inner:
     var count: i64
 
-    mutating func bump():
+    func bump():
         self.count += 1
 
 struct Outer:

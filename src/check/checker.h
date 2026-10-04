@@ -239,13 +239,9 @@ struct Checker {
     bool comparable_type(Type* t);
     bool is_hashable(Type* t);
     Type* check_hash(Node* n);
-    Type* check_hex(Node* n);
-    Type* check_bin(Node* n);
-    Type* check_pad(Node* n);
     Type* check_memory_rw(Node* n, string_view name);
     Type* check_memory_copy(Node* n, string_view name);
     bool struct_implements(Node* st, Type* iface);
-    bool iface_has_mutating(Type* iface);
     bool satisfies_bounds(Type* t, Node* g, Node* at);
     void unify_into(Type* pat, Type* got, Node* generic, vector<Type*>& inf, Node* at);
     bool finish_inferred(Node* generic, vector<Type*>& inf, Node* at);
@@ -375,6 +371,11 @@ struct Checker {
     bool sig_matches(Node* impl, Node* req, Type* iface);
     Type* requirement_type(Type* t, Type* iface);
     void check_implements(Node* st);
+    void infer_receivers(Node* mod);
+    bool is_method_value(const Node* n);
+    bool receiver_constness_differs(Type* got, Type* expected);
+    void keep_requirement_methods(Node* mod);
+    bool implements_requirement(Node* type_decl, string_view name);
     void check_interface(Node* iface);
     void collect_type_decl(Node* d, TypeKind kind);
     void collect_module(Node* mod);

@@ -1,5 +1,6 @@
 import c
 import luce_std.files
+import strings
 
 pub let missing_field: ErrorCode = ErrorCode.package(4)
 
@@ -37,7 +38,7 @@ func parse(text: str, scratch: u8[]) -> Config!:
     let name = field(text, "name") else error(missing_field, "name")
     let threads = field(text, "threads") else error(missing_field, "threads")
     let count = number(threads) catch failure:
-        error(failure.code, try format(scratch, f"threads: {failure.message}"))
+        error(failure.code, try strings.format(scratch, f"threads: {failure.message}"))
     return Config(name = name, threads = count)
 
 func load(path: c.str, scratch: u8[]) -> Config!:

@@ -10,15 +10,15 @@ pub struct Map[K: Hashable & Equatable, V]:
     var used: bool[]
     var count: usize
     var allocator: Allocator
-    pub static func create(capacity: usize) -> Map[K, V]!:
-        return Map(keys = try alloc K[capacity], values = try alloc V[capacity],
+    pub func create(capacity: usize) -> Map[K, V]!:
+        return Map(keys = try new K[capacity] ---, values = try new V[capacity] ---,
                    used = try new bool[capacity], count = 0, allocator = memory.allocator)
     func slot(key: K) -> usize:
-        var index = (usize)(hash(key) % self.keys.length)
+        var index = (usize)(key.hash() % self.keys.length)
         while self.used[index] and not (self.keys[index] == key):
             index = (index + 1) % self.keys.length
         return index
-    pub mutating func insert(key: K, value: V) -> !:
+    pub func insert(key: K, value: V) -> !:
         if self.count == self.used.length:
             error(memory.exhausted, "map is full")
         let index = self.slot(key)
@@ -31,7 +31,7 @@ pub struct Map[K: Hashable & Equatable, V]:
         let index = self.slot(key)
         if not self.used[index]: return none
         return self.values[index]
-    pub mutating func destroy():
+    pub func destroy():
         free(self.keys) in self.allocator
         free(self.values) in self.allocator
         free(self.used) in self.allocator

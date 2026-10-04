@@ -1,3 +1,5 @@
+import strings
+
 ## The arithmetic families the backends must agree on: division, shifts, saturation, `?`.
 func one(flag: bool) -> i64:
     return 1 if flag else 0
@@ -44,10 +46,10 @@ pub func answer() -> i64:
     total += one((i32)big == 2147483647) + one((u8)big == 255) + one((u8)(-5.0) == 0)
     total += (i64)u8(200) + (i64)i16(-3)
     var bytes: u8[64] = ---
-    let text = format(bytes, f"{a} {u} {f} {true} {1.5e10} {hex(255)} {bin(5)} {pad("ab", 5)}") catch:
+    let text = strings.format(bytes, f"{a} {u} {f} {true} {1.5e10}") catch:
         return -1
     total += (i64)text.length
     total += one("abc" < "abd") + one("b" > "abc") + one("" < "a")
-    total += one(hash("abc") == hash("abc")) + one(hash(7) != hash(8))
+    total += one("abc".hash() == "abc".hash()) + one(7.hash() != 8.hash())
     return total
-# answer: 231
+# answer: 218

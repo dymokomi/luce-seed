@@ -21,5 +21,5 @@ pub func main(arguments: str[]) -> i32!:
         let broken = bad.parse() catch failure:
             try out.write(f"error: {failure.message}\n")
             return 0
-        discard(broken)
+        _ = broken
     return 0

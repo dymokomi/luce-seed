@@ -1,4 +1,6 @@
 # answer: 42
+import memory
+
 ## `(func(...) -> R)?` is a nullable function with the null niche (§5.6): `none`, a function
 ## assigned to it, `if let` to call it, and `else` for a fallback.
 func twice(a: i64) -> i64:
@@ -19,4 +21,4 @@ pub func answer() -> i64:
     total += fallback(1)
     chosen = none
     let other = chosen else thrice
-    return total + other(0) - 0 + i64(sizeof(chosen)) - 8
+    return total + other(0) - 0 + i64(memory.size_of(chosen)) - 8

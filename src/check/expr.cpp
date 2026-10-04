@@ -181,6 +181,14 @@ auto Checker::check_expr(Node* n, Type* expected) -> Type* {
                    tv->kind != TypeKind::UntypedInt) {
             ta = coerce(n->right, ta, tv);
             n->right->ty = ta;
+        } else if (tv != nullptr && ta != nullptr && tv->kind == TypeKind::U8 && ta->kind == TypeKind::Char &&
+                   n->right->kind == NodeKind::Literal) {
+            ta = coerce(n->right, ta, tv); // an ASCII character literal is that byte (§4.4)
+            n->right->ty = ta;
+        } else if (tv != nullptr && ta != nullptr && ta->kind == TypeKind::U8 && tv->kind == TypeKind::Char &&
+                   n->left->kind == NodeKind::Literal) {
+            tv = coerce(n->left, tv, ta);
+            n->left->ty = tv;
         }
         if (!type_eq(tv, ta)) {
             fail_n(n, "lucb.check.type", "conditional branches must have the same type");
@@ -1106,7 +1114,7 @@ auto Checker::check_catch(Node* n, Type* expected) -> Type* {
     in_catch = saved;
     catch_type = saved_ct;
     // a handler for a value recovers one or leaves; one for `unit` may fall through (§11.4)
-    if (!type_eq(payload, t_unit()) && !terminates_handler(n->body)) {
+    if (!type_eq(payload, t_unit()) && (n->flags & FlagDropped) == 0 && !terminates_handler(n->body)) {
         fail_n(n, "lucb.check.type",
                "a `catch` handler must `recover` a value or leave with `return`, `error`, `trap`, `break`, or `continue`");
     }

@@ -139,9 +139,6 @@ struct Interp {
     Value eval_str_conv(const Value& x, Type* src, Type* result_ty, bool checked);
     uint64_t hash_value(const Value& v, Type* t);
     Value eval_hash(Node* n);
-    Value eval_hex(Node* n);
-    Value eval_bin(Node* n);
-    Value eval_pad(Node* n);
     Node* find_func(string_view name);
     void load_globals();
     Value as_u8_span(const Value& v);

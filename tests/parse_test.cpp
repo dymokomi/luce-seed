@@ -97,7 +97,7 @@ TEST(parse_struct_and_method) {
              "    var x: i64\n"
              "    var y: i64\n"
              "\n"
-             "    mutating func bump(by: i64):\n"
+             "    func bump(by: i64):\n"
              "        self.x += by\n"
              "\n"
              "pub func origin() -> i64:\n"
@@ -106,7 +106,6 @@ TEST(parse_struct_and_method) {
              "    return p.x\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("(struct \"Point\"") != std::string::npos);
-    CHECK(p.dump().find("mutating") != std::string::npos);
     CHECK(p.dump().find("(member") != std::string::npos);
 }
 
@@ -277,7 +276,7 @@ TEST(parse_handle) {
     Parsed p("pub handle File:\n"
              "    destroy close\n"
              "pub func close(file: File):\n"
-             "    discard(file)\n");
+             "    _ = file\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("(extern_type pub \"File\"") != std::string::npos);
     CHECK(p.dump().find("\"close\"") != std::string::npos);
@@ -317,7 +316,7 @@ TEST(parse_tuple_expr) {
 }
 
 TEST(parse_discard) {
-    Parsed p("func f():\n    discard(1)\n");
+    Parsed p("func f():\n    _ = 1\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("\"discard\"") != std::string::npos);
 }
@@ -421,7 +420,7 @@ TEST(parse_test_declaration) {
 
 TEST(parse_defer_free) {
     Parsed p("pub func answer() -> i64!:\n"
-             "    let bytes = try alloc u8[4]\n"
+             "    let bytes = try new u8[4] ---\n"
              "    defer free(bytes)\n"
              "    return 0\n");
     CHECK(p.diagnostics.empty());
@@ -431,7 +430,7 @@ TEST(parse_defer_free) {
 
 TEST(parse_interface) {
     Parsed p("interface Writer:\n"
-             "    mutating func write(bytes: const u8[]) -> usize!\n"
+             "    func write(bytes: const u8[]) -> usize!\n"
              "\n"
              "func f():\n"
              "    return\n");
@@ -460,9 +459,12 @@ TEST(parse_keyword_is_not_a_field_name) {
     CHECK(p.has("lucb.parse.expect"));
 }
 
-TEST(parse_goto_is_reserved) {
-    Parsed p("func f():\n    goto done\n");
-    CHECK(p.has("lucb.parse.reserved"));
+TEST(parse_former_keywords_are_names) {
+    Parsed p("func f(static: i64, goto: i64) -> i64:\n    let alloc = static + goto\n    _ = alloc\n    return alloc\n"
+             "local var mutating: i64\n"
+             "export func exported() -> i64:\n    return 1\n");
+    CHECK(p.diagnostics.empty());
+    CHECK(p.dump().find("discard") != std::string::npos);
 }
 
 TEST(parse_try_as_member) {
@@ -505,7 +507,7 @@ TEST(parse_keyword_case) {
 }
 
 TEST(parse_sizeof_ptr) {
-    Parsed p("func f() -> usize:\n    return sizeof(Node*)\n");
+    Parsed p("func f() -> usize:\n    return memory.size_of(Node*)\n");
     CHECK(p.diagnostics.empty());
 }
 
@@ -599,7 +601,7 @@ TEST(parse_else_return) {
 
 TEST(parse_inline_catch_recover) {
     Parsed p("func f() -> i64:\n"
-             "    discard(g() catch failure: recover 0)\n"
+             "    _ = g() catch failure: recover 0\n"
              "    return 1\n");
     CHECK(p.diagnostics.empty());
     CHECK(p.dump().find("(recover") != std::string::npos);

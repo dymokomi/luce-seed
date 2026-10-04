@@ -22,7 +22,6 @@ struct KeywordEntry {
 
 // Sorted by spelling for bsearch.
 constexpr KeywordEntry k_keywords[] = {
-    {"alloc", TokenKind::KwAlloc},
     {"and", TokenKind::KwAnd},
     {"as", TokenKind::KwAs},
     {"asm", TokenKind::KwAsm},
@@ -36,22 +35,18 @@ constexpr KeywordEntry k_keywords[] = {
     {"else", TokenKind::KwElse},
     {"enum", TokenKind::KwEnum},
     {"errdefer", TokenKind::KwErrdefer},
-    {"export", TokenKind::KwExport},
     {"extern", TokenKind::KwExtern},
     {"false", TokenKind::KwFalse},
     {"for", TokenKind::KwFor},
     {"free", TokenKind::KwFree},
     {"from", TokenKind::KwFrom},
     {"func", TokenKind::KwFunc},
-    {"goto", TokenKind::KwGoto},
     {"if", TokenKind::KwIf},
     {"import", TokenKind::KwImport},
     {"in", TokenKind::KwIn},
     {"interface", TokenKind::KwInterface},
     {"let", TokenKind::KwLet},
-    {"local", TokenKind::KwLocal},
     {"match", TokenKind::KwMatch},
-    {"mutating", TokenKind::KwMutating},
     {"new", TokenKind::KwNew},
     {"none", TokenKind::KwNone},
     {"not", TokenKind::KwNot},
@@ -61,7 +56,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
     {"spawn", TokenKind::KwSpawn},
-    {"static", TokenKind::KwStatic},
     {"struct", TokenKind::KwStruct},
     {"test", TokenKind::KwTest},
     {"true", TokenKind::KwTrue},
@@ -95,7 +89,7 @@ TokenKind keyword_kind(std::string_view word) {
 }
 
 bool is_keyword(TokenKind kind) {
-    return kind >= TokenKind::KwAlloc && kind <= TokenKind::KwWith;
+    return kind >= TokenKind::KwAnd && kind <= TokenKind::KwWith;
 }
 
 const char* token_kind_name(TokenKind kind) {
@@ -132,8 +126,6 @@ const char* token_kind_name(TokenKind kind) {
         return "doc";
     case TokenKind::Underscore:
         return "_";
-    case TokenKind::KwAlloc:
-        return "alloc";
     case TokenKind::KwAnd:
         return "and";
     case TokenKind::KwAs:
@@ -160,8 +152,6 @@ const char* token_kind_name(TokenKind kind) {
         return "enum";
     case TokenKind::KwErrdefer:
         return "errdefer";
-    case TokenKind::KwExport:
-        return "export";
     case TokenKind::KwExtern:
         return "extern";
     case TokenKind::KwFalse:
@@ -174,8 +164,6 @@ const char* token_kind_name(TokenKind kind) {
         return "from";
     case TokenKind::KwFunc:
         return "func";
-    case TokenKind::KwGoto:
-        return "goto";
     case TokenKind::KwIf:
         return "if";
     case TokenKind::KwImport:
@@ -188,8 +176,6 @@ const char* token_kind_name(TokenKind kind) {
         return "let";
     case TokenKind::KwMatch:
         return "match";
-    case TokenKind::KwMutating:
-        return "mutating";
     case TokenKind::KwNew:
         return "new";
     case TokenKind::KwNone:
@@ -208,14 +194,10 @@ const char* token_kind_name(TokenKind kind) {
         return "self";
     case TokenKind::KwSpawn:
         return "spawn";
-    case TokenKind::KwStatic:
-        return "static";
     case TokenKind::KwStruct:
         return "struct";
     case TokenKind::KwTest:
         return "test";
-    case TokenKind::KwLocal:
-        return "local";
     case TokenKind::KwTrue:
         return "true";
     case TokenKind::KwTry:

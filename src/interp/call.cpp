@@ -17,6 +17,7 @@
 #include <cmath>
 #include "interp/punning.h"
 
+#include "support/decimal.h"
 #include "support/literal.h"
 #include <cerrno>
 #include <cstdio>
@@ -151,22 +152,13 @@ auto Interp::eval_call(Node* n) -> Value {
     if (n->flags & FlagVectorSplat) {
         return eval_splat(n);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hash") {
+    if (is_intrinsic(callee, "hash")) {
         return eval_hash(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "hex") {
-        return eval_hex(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "bin") {
-        return eval_bin(n);
-    }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "pad") {
-        return eval_pad(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "CAllocator") {
         return heap_alloc_value();
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "discard") {
+    if (is_intrinsic(callee, "discard")) {
         if (n->body != nullptr) {
             eval(n->body->left);
         }
@@ -215,7 +207,7 @@ auto Interp::eval_call(Node* n) -> Value {
         }
         return v_unit();
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "format") {
+    if (is_intrinsic(callee, "format")) {
         return eval_format(n);
     }
     if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "trap") {
@@ -241,15 +233,14 @@ auto Interp::eval_call(Node* n) -> Value {
         returning = true;
         return v_unit();
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name &&
-        (callee->text == "sizeof" || callee->text == "alignof")) {
+    if (is_intrinsic(callee, "sizeof") || is_intrinsic(callee, "alignof")) {
         Node* arg = n->body != nullptr ? n->body->left : nullptr;
         Type* t = arg != nullptr ? arg->ty : nullptr;
         uint64_t v = callee->text == "sizeof" ? static_cast<uint64_t>(type_size(t))
                                               : static_cast<uint64_t>(type_align(t));
         return v_int(n->ty, v);
     }
-    if (callee != nullptr && callee->kind == NodeKind::Name && callee->text == "offsetof") {
+    if (is_intrinsic(callee, "offsetof")) {
         Node* tyarg = n->body != nullptr ? n->body->left : nullptr;
         Node* field =
             n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
@@ -1314,6 +1305,15 @@ auto Interp::eval_extern(Node* n, Node* fn) -> Value {
                 return v_float(rt, b.f(args[0].f, args[1].f));
             }
         }
+    }
+    if (name == "lb_float_text" && args.size() == 3 && args[0].ptr != nullptr) {
+        // the runtime's float display (std/float_text.lucb): the bytes into the caller's span
+        string shown = float_display(args[1].f, as_u(args[2], args[2].type) != 0 ? 32 : 64);
+        Type* byte = args[0].type != nullptr ? args[0].type->elem : nullptr;
+        for (size_t i = 0; i < shown.size(); i++) {
+            args[0].ptr[i] = v_int(byte, static_cast<uint8_t>(shown[i]));
+        }
+        return v_int(rt, shown.size());
     }
     if (name == "printf") {
         string fmt = args.empty() ? string() : cstr_text(args[0]);

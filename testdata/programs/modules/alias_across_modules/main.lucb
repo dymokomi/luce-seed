@@ -5,7 +5,7 @@ import boxes
 struct Sink:
     var xs: boxes.Ints
 
-    mutating func add(v: i64) -> !:
+    func add(v: i64) -> !:
         try self.xs.push(v)
 
 pub func answer() -> i64!:

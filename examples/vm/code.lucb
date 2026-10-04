@@ -32,16 +32,16 @@ pub struct Machine:
     var frame_count: usize
     pub var steps: u64
 
-    pub static func create() -> Machine:
+    pub func create() -> Machine:
         return Machine(top = 0, frame_count = 0, steps = 0)
 
-    mutating func push(value: i64) -> !:
+    func push(value: i64) -> !:
         if self.top >= 256:
             error(overflow, "value stack overflow")
         self.stack[self.top] = value
         self.top += 1
 
-    mutating func pop() -> i64!:
+    func pop() -> i64!:
         if self.top == 0:
             error(underflow, "value stack underflow")
         self.top -= 1
@@ -52,7 +52,7 @@ pub struct Machine:
             return 0
         return self.frames[self.frame_count - 1].base
 
-    pub mutating func run(program: const Op[]) -> i64!:
+    pub func run(program: const Op[]) -> i64!:
         var pc: u32 = 0
         while true:
             if (usize)pc >= program.length:

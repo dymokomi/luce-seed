@@ -90,7 +90,7 @@ auto Checker::check_new(Node* n) -> Type* {
             fail_n(n, "lucb.check.type", "`new T[count]` needs a count");
         }
         if (!is_zeroable(elem)) {
-            fail_n(n, "lucb.check.type", "`new T[count]` zeroes its elements, so `T` must be zeroable; use `alloc`");
+            fail_n(n, "lucb.check.type", "`new T[count]` zeroes its elements, so `T` must be zeroable; `new T[count] ---` leaves them unwritten");
         }
         return intern_fail(intern_sp(elem, false));
     }
@@ -118,7 +118,7 @@ auto Checker::check_alloc(Node* n) -> Type* {
     if (n->type == nullptr) {
         int nargs = count_args(n->body);
         if (nargs != 2) {
-            fail_n(n, "lucb.check.call", "`alloc(size, alignment)` takes two arguments");
+            fail_n(n, "lucb.check.call", "`memory.allocate(size, alignment)` takes two arguments");
         } else {
             check_expr(n->body->left, ty_usize);
             if (n->body->next != nullptr) {
@@ -132,14 +132,14 @@ auto Checker::check_alloc(Node* n) -> Type* {
         if (n->type->right != nullptr) {
             Type* ct = check_expr(n->type->right, ty_usize);
             if (!is_int(ct) && ct->kind != TypeKind::UntypedInt) {
-                fail_n(n->type->right, "lucb.check.type", "`alloc T[count]` needs a `usize` count");
+                fail_n(n->type->right, "lucb.check.type", "`new T[count] ---` needs a `usize` count");
             }
         } else {
-            fail_n(n, "lucb.check.type", "`alloc T[count]` needs a count");
+            fail_n(n, "lucb.check.type", "`new T[count] ---` needs a count");
         }
         return intern_fail(intern_sp(elem, false));
     }
-    fail_n(n, "lucb.check.type", "`alloc` needs `T[count]` or `(size, alignment)`");
+    fail_n(n, "lucb.check.type", "`new T[count] ---` needs a count");
     return intern_fail(t_error());
 }
 

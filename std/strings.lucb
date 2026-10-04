@@ -196,5 +196,5 @@ pub func release(text: str):
 ## same fallible outcome as an allocation refusal. Callers initialize every byte.
 func terminated_buffer(length: usize) -> u8[]!:
     let size = length +? 1 else error(memory.exhausted, "the text is too large")
-    return try alloc u8[size]
+    return try new u8[size] ---
 

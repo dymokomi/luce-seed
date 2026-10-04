@@ -223,18 +223,6 @@ auto Checker::struct_implements(Node* st, Type* iface) -> bool {
     return false;
 }
 
-auto Checker::iface_has_mutating(Type* iface) -> bool {
-    if (iface == nullptr || iface->decl == nullptr) {
-        return false;
-    }
-    for (Node* m = iface->decl->body; m != nullptr; m = m->next) {
-        if (m->kind == NodeKind::Func && (m->flags & FlagMutating) != 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 auto Checker::satisfies_bounds(Type* t, Node* g, Node* at) -> bool {
     uint32_t bounds = g != nullptr && g->ty != nullptr ? g->ty->bounds : 0;
     if (bounds == 0) {

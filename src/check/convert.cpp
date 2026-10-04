@@ -129,9 +129,6 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
                 fail_n(n, "lucb.check.type", "an interface view is formed from a pointer: write `&value`");
                 return expected;
             }
-            if (iface_has_mutating(expected) && got->is_const) {
-                fail_n(n, "lucb.check.mut", "a mutating interface view needs a `var` receiver");
-            }
             return expected;
         }
         if (got->kind == TypeKind::Interface && got->decl == expected->decl) {
@@ -172,6 +169,12 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
         (type_eq(got->elem, expected) || can_widen(got->elem, expected))) {
         return expected;
     }
+    if (is_method_value(n) && is_func(expected) && receiver_constness_differs(got, expected)) {
+        // `Type.method` where its receiver is `const Type*`: every method takes a `Type*` in
+        // the seed (§9.5), and luce-base has decided which do not change it
+        n->ty = expected;
+        return expected;
+    }
     if (is_func(got) && is_func(expected) && func_converts(got, expected)) {
         if (n != nullptr && n->resolved != nullptr &&
             (n->resolved->kind == NodeKind::Func || n->resolved->kind == NodeKind::ExternFunc) &&
@@ -200,6 +203,26 @@ auto Checker::coerce(Node* n, Type* got, Type* expected) -> Type* {
     fail_n(n, "lucb.check.type",
            "expected `" + type_name(expected) + "`, got `" + type_name(got) + "`");
     return t_error();
+}
+
+// `Type.method` naming a method with a receiver, as a function value.
+auto Checker::is_method_value(const Node* n) -> bool {
+    return n != nullptr && n->kind == NodeKind::Member && n->resolved != nullptr && n->resolved->kind == NodeKind::Func &&
+           (n->resolved->flags & FlagMutating) != 0;
+}
+
+// Function types alike but for `const` on the first parameter's pointee: a receiver's.
+auto Checker::receiver_constness_differs(Type* got, Type* expected) -> bool {
+    if (!is_func(got) || got->ntargs == 0 || got->ntargs != expected->ntargs || !is_ptr(got->args[0]) ||
+        !is_ptr(expected->args[0]) || !type_eq(got->args[0]->elem, expected->args[0]->elem)) {
+        return false;
+    }
+    for (int i = 1; i < got->ntargs; i++) {
+        if (!type_eq(got->args[i], expected->args[i])) {
+            return false;
+        }
+    }
+    return type_eq(got->elem != nullptr ? got->elem : t_unit(), expected->elem != nullptr ? expected->elem : t_unit());
 }
 
 auto Checker::same_pointee(const Type* a, const Type* b) -> bool {

@@ -8,10 +8,11 @@ pub struct Arena: Allocator:
     var block: u8[]
     var used: usize
 
-    pub static func over(parent: Allocator, capacity: usize) -> Arena!:
-        return Arena(parent = parent, block = try alloc(capacity, 16) in parent, used = 0)
+    pub func over(parent: Allocator, capacity: usize) -> Arena!:
+        with parent:
+            return Arena(parent = parent, block = try memory.allocate(capacity, 16), used = 0)
 
-    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:
+    pub func allocate(size: usize, alignment: usize) -> u8[]?:
         let base = (usize)self.block.data
         let start = ((base + self.used + alignment - 1) & ~(alignment - 1)) - base
         let end = start +? size else return none
@@ -19,16 +20,16 @@ pub struct Arena: Allocator:
         self.used = end
         return self.block[start..<end]
 
-    pub mutating func resize(block: u8[], size: usize) -> bool:
+    pub func resize(block: u8[], size: usize) -> bool:
         return size <= block.length
 
-    pub mutating func release(block: u8[]):
+    pub func release(block: u8[]):
         return                                   # an arena releases everything at once
 
-    pub mutating func reset():
+    pub func reset():
         self.used = 0
 
-    pub mutating func destroy():
+    pub func destroy():
         free(self.block) in self.parent
 
 func words(text: const u8[]) -> usize:

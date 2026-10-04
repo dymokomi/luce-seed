@@ -16,7 +16,7 @@ pub struct Lexer:
     var source: const u8[]
     var offset: usize
 
-    pub static func over(text: str) -> Lexer:
+    pub func over(text: str) -> Lexer:
         return Lexer(source = text.bytes, offset = 0)
 
     func is_digit(c: u8) -> bool:
@@ -25,7 +25,7 @@ pub struct Lexer:
     func is_letter(c: u8) -> bool:
         return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95
 
-    pub mutating func next() -> Token!:
+    pub func next() -> Token!:
         while self.offset < self.source.length and self.source[self.offset] == 32:
             self.offset += 1
         let start = self.offset

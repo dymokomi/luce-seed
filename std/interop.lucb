@@ -10,4 +10,4 @@ pub struct Owned[T]:
 
     ## End the receiver's obligation.
     pub func release():
-        discard(0)
+        _ = self

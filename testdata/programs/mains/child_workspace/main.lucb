@@ -4,6 +4,7 @@ import c
 import luce_std.files
 import luce_std.process
 import os
+import strings
 
 pub func main(arguments: str[]) -> i32!:
     if arguments.length > 1:
@@ -18,7 +19,7 @@ pub func main(arguments: str[]) -> i32!:
     defer resolved.release()
     let absolute = resolved.value
     var inner_name: u8[4096]
-    let inner = try format(inner_name, f"{absolute}/inner")
+    let inner = try strings.format(inner_name, f"{absolute}/inner")
     try files.create_directory((c.str)inner, 493u32)
     assert(files.exists((c.str)inner))
     let executable = try files.canonical((c.str)arguments[0])
@@ -34,7 +35,7 @@ pub func main(arguments: str[]) -> i32!:
     defer ran.release()
     assert(ran.value.exit_code == 0 and ran.value.output == "child\n" and ran.value.error_output.length == 0)
     var name: u8[4096]
-    let moved = try format(name, f"{absolute}-moved")
+    let moved = try strings.format(name, f"{absolute}-moved")
     try files.rename((c.str)absolute, (c.str)moved, true)
     try files.remove_tree((c.str)moved)
     print("ok bootstrap child workspace")

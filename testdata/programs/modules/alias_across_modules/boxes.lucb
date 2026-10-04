@@ -4,7 +4,7 @@ pub struct Box[T]:
     pub var items: T[]
     pub var count: usize
 
-    pub mutating func push(item: T) -> !:
+    pub func push(item: T) -> !:
         if self.count >= self.items.length:
             return error(full, "full")
         self.items[self.count] = item

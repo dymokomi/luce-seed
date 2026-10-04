@@ -175,7 +175,8 @@ auto Interp::call_func(Node* fn, Value* self, Node* args) -> Value {
     current_fn = fn;
     exec(fn->body);
     current_fn = saved_fn;
-    // Only a `mutating` method may change its receiver (base.md §9.5).
+    // A method may change its receiver (base.md §9.5): which do is luce-base's to infer, and
+    // every one in the seed takes it as a `T*`.
     if (self != nullptr && (fn->flags & FlagMutating) != 0 && !frames.empty()) {
         Slot* ss = nullptr;
         Frame& top = frames.back();

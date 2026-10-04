@@ -9,7 +9,7 @@ struct Holder:
 pub func answer() -> i64:
     let iface = 12
     let output = io.stdout()
-    discard(output)
+    _ = output
     assert(iface == 12)
     var buf: u8[4]
     var span: u8[] = buf

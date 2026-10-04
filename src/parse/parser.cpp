@@ -191,8 +191,8 @@ auto Parser::is_array_suffix_ahead() const -> bool {
     }
     if (k == TokenKind::Name) {
         string_view t = peek(1).text;
-        if (t == "sizeof" || t == "alignof") {
-            return true;
+        if (at_type_builtin(1) || (t == "memory" && peek(2).kind == TokenKind::Dot && at_type_builtin(3))) {
+            return true; // `T[memory.size_of(U)]`
         }
         if (is_type_path_ident(t)) {
             return false;

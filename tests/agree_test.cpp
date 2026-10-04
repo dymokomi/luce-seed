@@ -133,11 +133,11 @@ TEST(agree_closed_range_at_the_maximum) {
 }
 
 TEST(agree_symbol_pieces_stay_distinct) {
-    CHECK(agrees("struct A:\n    var n: i64\n    func b_c() -> i64:\n        return 1 + self.n\nstruct A_b:\n    var n: i64\n    func c() -> i64:\n        return 2 + self.n\nfunc x_y() -> i64:\n    return 3\nstruct X:\n    var n: i64\n    static func y() -> i64:\n        return 4\npub func answer() -> i64:\n    let a = A(n = 0)\n    let ab = A_b(n = 0)\n    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194\n"));
+    CHECK(agrees("struct A:\n    var n: i64\n    func b_c() -> i64:\n        return 1 + self.n\nstruct A_b:\n    var n: i64\n    func c() -> i64:\n        return 2 + self.n\nfunc x_y() -> i64:\n    return 3\nstruct X:\n    var n: i64\n    func y() -> i64:\n        return 4\npub func answer() -> i64:\n    let a = A(n = 0)\n    let ab = A_b(n = 0)\n    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194\n"));
 }
 
 TEST(agree_zero_hashes_and_float_divide_assign) {
-    CHECK(agrees("pub func answer() -> i64:\n    let zero: f64 = 0.0\n    let negative_zero = zero * -1.0\n    var x: f64 = 9.0\n    x /= 2.0\n    var n: i64 = 0\n    if hash(zero) == hash(negative_zero):\n        n += 20\n    if x == 4.5:\n        n += 20\n    return n\n"));
+    CHECK(agrees("pub func answer() -> i64:\n    let zero: f64 = 0.0\n    let negative_zero = zero * -1.0\n    var x: f64 = 9.0\n    x /= 2.0\n    var n: i64 = 0\n    if zero.hash() == negative_zero.hash():\n        n += 20\n    if x == 4.5:\n        n += 20\n    return n\n"));
 }
 
 TEST(agree_float_bits) {
@@ -203,7 +203,7 @@ TEST(agree_untyped_shift_takes_no_type_from_its_count) {
 }
 
 TEST(agree_generic_method_calls_one_below) {
-    CHECK(agrees("struct Box[T]:\n    var item: T\n    var count: u32\n\n    pub mutating func put(value: T, n: u32):\n        self.store(value, n + 1)\n\n    mutating func store(value: T, n: u32):\n        self.item = value\n        self.count = n\n"
+    CHECK(agrees("struct Box[T]:\n    var item: T\n    var count: u32\n\n    pub func put(value: T, n: u32):\n        self.store(value, n + 1)\n\n    func store(value: T, n: u32):\n        self.item = value\n        self.count = n\n"
                  "pub func answer() -> i64:\n    var b = Box[i64](item = 0, count = 0)\n    b.put(5, 1)\n    return b.item + (i64)b.count\n"));
 }
 
@@ -239,7 +239,7 @@ TEST(agree_struct_method) {
     CHECK(agrees("struct Point:\n"
                  "    var x: i64\n"
                  "    var y: i64\n"
-                 "    mutating func bump(by: i64):\n"
+                 "    func bump(by: i64):\n"
                  "        self.x += by\n"
                  "pub func answer() -> i64:\n"
                  "    var p = Point(x = 1, y = 2)\n"
@@ -308,11 +308,11 @@ TEST(agree_widen) {
 }
 
 TEST(agree_sizeof_i64) {
-    CHECK(agrees("pub func answer() -> i64:\n    return i64(sizeof(i64))\n"));
+    CHECK(agrees("pub func answer() -> i64:\n    return i64(memory.size_of(i64))\n"));
 }
 
 TEST(agree_sizeof_usize) {
-    CHECK(agrees("pub func answer() -> i64:\n    return i64(sizeof(usize))\n"));
+    CHECK(agrees("pub func answer() -> i64:\n    return i64(memory.size_of(usize))\n"));
 }
 
 TEST(agree_shift) {
@@ -560,7 +560,7 @@ TEST(agree_offsetof_packed) {
                  "    var a: u8\n"
                  "    var b: u32\n"
                  "pub func answer() -> i64:\n"
-                 "    return i64(offsetof(H, b))\n"));
+                 "    return i64(memory.offset_of(H, b))\n"));
 }
 
 TEST(agree_enum_checked_conv_traps) {
@@ -582,16 +582,16 @@ TEST(agree_thread_local) {
 TEST(agree_display_protocol) {
     CHECK(agrees("from luce import Display\nfrom io import Writer\n"
                  "struct Point: Display:\n    var x: i64\n    var y: i64\n"
-                 "    func display(sink: Writer) -> !:\n        discard(try sink.write(f\"({self.x}, {self.y})\"))\n"
+                 "    func display(sink: Writer) -> !:\n        _ = try sink.write(f\"({self.x}, {self.y})\")\n"
                  "pub func answer() -> i64!:\n    let p = Point(x = 3, y = 4)\n    var buffer: u8[64]\n"
-                 "    let text = try format(buffer, f\"p = {p}!\")\n    print(f\"{p} and {p}\")\n"
+                 "    let text = try strings.format(buffer, f\"p = {p}!\")\n    print(f\"{p} and {p}\")\n"
                  "    if text != \"p = (3, 4)!\":\n        return 1\n    return (i64)text.length + 29\n"));
 }
 
 TEST(agree_writer_view) {
     CHECK(agrees("struct Sink: Writer:\n"
                  "    var n: usize\n"
-                 "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                 "    func write(bytes: const u8[]) -> usize!:\n"
                  "        self.n += bytes.length\n"
                  "        return bytes.length\n"
                  "pub func answer() -> i64!:\n"
@@ -604,7 +604,7 @@ TEST(agree_writer_view) {
 TEST(agree_writer_fmt) {
     CHECK(agrees("struct Sink: Writer:\n"
                  "    var n: usize\n"
-                 "    mutating func write(bytes: const u8[]) -> usize!:\n"
+                 "    func write(bytes: const u8[]) -> usize!:\n"
                  "        self.n += bytes.length\n"
                  "        return bytes.length\n"
                  "pub func answer() -> i64!:\n"
@@ -616,10 +616,10 @@ TEST(agree_writer_fmt) {
 
 TEST(agree_interface_view) {
     CHECK(agrees("interface Counter:\n"
-                 "    mutating func bump() -> i64\n"
+                 "    func bump() -> i64\n"
                  "struct Box: Counter:\n"
                  "    var n: i64\n"
-                 "    mutating func bump() -> i64:\n"
+                 "    func bump() -> i64:\n"
                  "        self.n += 1\n"
                  "        return self.n\n"
                  "pub func answer() -> i64:\n"
@@ -630,14 +630,14 @@ TEST(agree_interface_view) {
 
 TEST(agree_interface_call_through_a_pointer) {
     CHECK(agrees("interface Counter:\n"
-                 "    mutating func bump() -> i64\n"
+                 "    func bump() -> i64\n"
                  "struct Box: Counter:\n"
                  "    var n: i64\n"
-                 "    mutating func bump() -> i64:\n"
+                 "    func bump() -> i64:\n"
                  "        self.n += 1\n"
                  "        return self.n\n"
                  "func twice(c: Counter*) -> i64:\n"
-                 "    discard(c.bump())\n"
+                 "    _ = c.bump()\n"
                  "    return c.bump()\n"
                  "pub func answer() -> i64:\n"
                  "    var b = Box(n = 40)\n"
@@ -740,7 +740,7 @@ TEST(agree_print_formatted) {
 TEST(agree_format) {
     CHECK(agrees("pub func answer() -> i64!:\n"
                  "    var buf: u8[32]\n"
-                 "    let s = try format(buf, f\"{7}\")\n"
+                 "    let s = try strings.format(buf, f\"{7}\")\n"
                  "    return i64(s.length)\n"));
 }
 
@@ -865,7 +865,7 @@ TEST(agree_new_struct) {
 
 TEST(agree_alloc_span) {
     CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    var items = try alloc i64[2]\n"
+                 "    var items = try new i64[2] ---\n"
                  "    items[0] = 5\n"
                  "    items[1] = 6\n"
                  "    let n = items[0] + items[1]\n"
@@ -875,7 +875,7 @@ TEST(agree_alloc_span) {
 
 TEST(agree_alloc_raw) {
     CHECK(agrees("pub func answer() -> i64!:\n"
-                 "    var raw = try alloc(16, 8)\n"
+                 "    var raw = try memory.allocate(16, 8)\n"
                  "    let n = i64(raw.length)\n"
                  "    free(raw)\n"
                  "    return n\n"));
@@ -1179,10 +1179,10 @@ TEST(agree_user_arena) {
                  "    var parent: Allocator\n"
                  "    var block: u8[]\n"
                  "    var used: usize\n"
-                 "    pub static func over(parent: Allocator, capacity: usize) -> Arena!:\n"
-                 "        return Arena(parent = parent, block = try alloc(capacity, 8) in parent, "
-                 "used = 0)\n"
-                 "    pub mutating func allocate(size: usize, alignment: usize) -> u8[]?:\n"
+                 "    pub func over(parent: Allocator, capacity: usize) -> Arena!:\n"
+                 "        with parent:\n"
+                 "            return Arena(parent = parent, block = try memory.allocate(capacity, 8), used = 0)\n"
+                 "    pub func allocate(size: usize, alignment: usize) -> u8[]?:\n"
                  "        var align = alignment\n"
                  "        if align < 1:\n"
                  "            align = 1\n"
@@ -1197,11 +1197,11 @@ TEST(agree_user_arena) {
                  "        let end = start + size\n"
                  "        self.used = end\n"
                  "        return self.block[start..<end]\n"
-                 "    pub mutating func resize(block: u8[], size: usize) -> bool:\n"
+                 "    pub func resize(block: u8[], size: usize) -> bool:\n"
                  "        return size <= block.length\n"
-                 "    pub mutating func release(block: u8[]):\n"
-                 "        discard(block.length)\n"
-                 "    pub mutating func destroy():\n"
+                 "    pub func release(block: u8[]):\n"
+                 "        _ = block.length\n"
+                 "    pub func destroy():\n"
                  "        free(self.block) in self.parent\n"
                  "pub func answer() -> i64!:\n"
                  "    var arena = try Arena.over(memory.allocator, 64)\n"
@@ -1243,7 +1243,7 @@ TEST(agree_memory_read_write) {
 
 TEST(agree_memory_grow) {
     CHECK(agrees("import memory\n" "pub func answer() -> i64!:\n"
-                 "    let b = try alloc u8[2]\n"
+                 "    let b = try new u8[2] ---\n"
                  "    b[0] = 9\n"
                  "    let g = try memory.grow(b, 8)\n"
                  "    return i64(g[0]) + i64(g.length)\n"));
@@ -1254,7 +1254,7 @@ TEST(agree_memory_grow_fixed) {
                  "    var buf: u8[16]\n"
                  "    var fb = FixedBuffer.over(buf)\n"
                  "    with fb:\n"
-                 "        let b = try alloc u8[4]\n"
+                 "        let b = try new u8[4] ---\n"
                  "        let g = try memory.grow(b, 8)\n"
                  "        return i64(g.length)\n"));
 }
@@ -1322,18 +1322,11 @@ TEST(agree_hashable_intern) {
 
 TEST(agree_hash_int) {
     CHECK(agrees("pub func answer() -> i64:\n"
-                 "    if hash(7) == hash(7) and hash(7) != hash(8):\n"
+                 "    if 7.hash() == 7.hash() and 7.hash() != 8.hash():\n"
                  "        return 1\n"
                  "    return 0\n"));
 }
 
-TEST(agree_hex_bin_pad) {
-    CHECK(agrees("pub func answer() -> i64:\n"
-                 "    print(hex(255))\n"
-                 "    print(bin(5))\n"
-                 "    print(pad(7, 3))\n"
-                 "    return 0\n"));
-}
 
 TEST(agree_slice_from_zero) {
     CHECK(agrees("pub func answer() -> i64:\n"
@@ -1385,7 +1378,7 @@ TEST(agree_sizeof_ptr) {
     CHECK(agrees("struct Node:\n"
                  "    var n: i64\n"
                  "pub func answer() -> i64:\n"
-                 "    let s = sizeof(Node*)\n"
+                 "    let s = memory.size_of(Node*)\n"
                  "    if s == 0:\n"
                  "        return 0\n"
                  "    return 1\n"));
@@ -1432,7 +1425,7 @@ TEST(agree_discard) {
                  "    print(n)\n"
                  "    return n + 1\n"
                  "pub func answer() -> i64:\n"
-                 "    discard(bump(3))\n"
+                 "    _ = bump(3)\n"
                  "    return 1\n"));
 }
 
@@ -1499,13 +1492,14 @@ TEST(agree_errdefer) {
 
 TEST(agree_method_value) {
     CHECK(agrees("struct Point:\n"
-                 "    pub let x: i64\n"
-                 "    pub let y: i64\n"
+                 "    pub var x: i64\n"
+                 "    pub var y: i64\n"
                  "    func sum() -> i64:\n"
-                 "        return self.x + self.y\n"
+                 "        self.x += self.y\n"
+                 "        return self.x\n"
                  "pub func answer() -> i64:\n"
-                 "    let p = Point(x = 2, y = 3)\n"
-                 "    let f: func(const Point*) -> i64 = Point.sum\n"
+                 "    var p = Point(x = 2, y = 3)\n"
+                 "    let f: func(Point*) -> i64 = Point.sum\n"
                  "    return f(&p)\n"));
 }
 
@@ -1685,9 +1679,9 @@ func recovering() -> i32!:
     let result = fail() catch outer:
         defer record(3)
         errdefer record(9)
-        discard(fail() catch inner:
+        _ = fail() catch inner:
             defer record(1)
-            recover 0)
+            recover 0
         assert(log == 1)
         if true:
             defer record(2)
@@ -1713,6 +1707,7 @@ TEST(agree_expression_propagation_and_nested_cleanup) {
 ## Each failing subexpression is checked in source order; handlers own only the
 ## operand they protect. Surrounding errdefers run only when their scope fails.
 import memory
+import strings
 
 let bad = ErrorCode.package(811)
 var trace: i64 = 0
@@ -1766,7 +1761,7 @@ func allocator_failure() -> i64!:
         return try add(step(1, 2), step(2, 2))
 
 func borrowed_failure(buffer: u8[]) -> i64!:
-    error(bad, try format(buffer, f"failure {step(7, 0)}"))
+    error(bad, try strings.format(buffer, f"failure {step(7, 0)}"))
 
 func locally_handled() -> i64:
     return add(step(1, 2), step(2, 2)) catch failure:
@@ -1787,13 +1782,13 @@ pub func answer() -> i64!:
     assert((try expression(0)) == 9)
     assert(trace == 12365)
     trace = 0
-    discard(expression(1) catch failure: recover -1)
+    _ = expression(1) catch failure: recover -1
     assert(trace == 145)
     trace = 0
-    discard(expression(2) catch failure: recover -1)
+    _ = expression(2) catch failure: recover -1
     assert(trace == 1245)
     trace = 0
-    discard(expression(6) catch failure: recover -1)
+    _ = expression(6) catch failure: recover -1
     assert(trace == 123645)
     trace = 0
     assert(locally_handled() == 7)

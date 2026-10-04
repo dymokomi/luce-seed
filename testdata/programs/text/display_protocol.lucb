@@ -3,18 +3,19 @@
 ## through `print`, `format`, and a nested formatted string inside its own `display`.
 from luce import Display
 from io import Writer
+import strings
 
 struct Point: Display:
     var x: i64
     var y: i64
 
     func display(sink: Writer) -> !:
-        discard(try sink.write(f"({self.x}, {self.y})"))
+        _ = try sink.write(f"({self.x}, {self.y})")
 
 pub func answer() -> i64!:
     let p = Point(x = 3, y = 4)
     var buffer: u8[64]
-    let text = try format(buffer, f"p = {p}!")
+    let text = try strings.format(buffer, f"p = {p}!")
     print(f"{p}")
     if text != "p = (3, 4)!":
         return 1

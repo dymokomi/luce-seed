@@ -439,6 +439,10 @@ auto Emitter::emit_expr_inner(Node* n) -> string {
                 owner->kind != NodeKind::Enum && owner->kind != NodeKind::Union) {
                 owner = nullptr;
             }
+            if (owner != nullptr && (n->resolved->flags & FlagMutating) != 0) {
+                // a method's receiver is a `T*` here; the value's type may say `const T*` (§9.5)
+                return "((" + c_type(n->ty) + ")" + func_ident(n->resolved, owner) + ")";
+            }
             return func_ident(n->resolved, owner);
         }
         return emit_member(n);

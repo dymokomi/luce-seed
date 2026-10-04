@@ -1,0 +1,28 @@
+## The standard `numerals` module, which luce-base's checker reads format specifications
+## with (§5.5), lays numbers and text out the same in both executions.
+import numerals
+
+struct Out:
+    var bytes: u8[128]
+    var used: usize
+
+func put(context: void*, bytes: const u8[]) -> bool:
+    let out = (Out*)context
+    for b in bytes:
+        out.bytes[out.used] = b
+        out.used += 1
+    return true
+
+pub func main(arguments: str[]) -> i32:
+    var out = Out(used = 0)
+    let sink = numerals.Sink(context = (void*)&out, write = put)
+    _ = numerals.lay_integer(sink, false, 255, ">#8x")
+    _ = numerals.lay_integer(sink, true, 7, "+05")
+    _ = numerals.lay_float(sink, 1234.5, false, ",.2f")
+    _ = numerals.lay_float(sink, 2.675, false, ".2f")
+    _ = numerals.lay_float(sink, 0.1, true, "")
+    _ = numerals.lay_text(sink, "ab", "*^6")
+    print((str)out.bytes[..<out.used])
+    let read = numerals.read(".x")
+    print(f"{read.problem.length > 0} {numerals.misfit(numerals.read(".2").spec, numerals.Category.integer).length > 0}")
+    return 0

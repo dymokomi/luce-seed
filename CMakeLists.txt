@@ -47,6 +47,8 @@ add_custom_command(
         std/paths.lucb
         std/os.lucb
         std/strings.lucb
+        std/float_text.lucb
+        std/numerals.lucb
         std/interop.lucb
         std/files.lucb
         std/process.lucb

@@ -5,10 +5,10 @@ struct Bag:
     var items: list.List[i64]
     var tag: i64
 
-    static func create() -> Bag!:
+    func create() -> Bag!:
         return Bag(items = try list.List[i64].create(4), tag = 1)
 
-    mutating func add(x: i64) -> !:
+    func add(x: i64) -> !:
         try self.items.push(x)
 
     func total() -> i64:

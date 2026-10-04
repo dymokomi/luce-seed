@@ -1,0 +1,726 @@
+#==============================================================================================
+#
+#   numerals - Numbers and text laid out by a format specification
+#
+#   DESCRIPTION:
+#       What a formatted string's `{value:spec}` field does (base.md §5.5), as Python's
+#       `format` does it: the specification read as CPython's
+#       parse_internal_render_format_spec reads it, a number laid out as calc_number_widths
+#       and fill_number lay it out, and a float's digits made exactly and rounded half to
+#       even, as David Gay's dtoa rounds them. The text goes to a `Sink` piece by piece, so
+#       nothing is allocated and nothing bounds a field but the sink. The compiler reads a
+#       field's specification with `read` and `misfit` and refuses one that does not fit;
+#       the program lays the field out with `lay_integer`, `lay_float` or `lay_text`. The port of Luce's
+#       numerals (luce src/support/numerals.lucb), whose layout it keeps. It comes after
+#       `float_text` and before `core`, and needs nothing else.
+#
+#==============================================================================================
+
+import float_text
+
+# mark: Specifications =========================================================================
+
+## A specification read: `[[fill]align][sign][z][#][0][width][grouping][.precision][type]`
+## (§5.5). A part not written is `0`, `-1` or empty, so a default can still be told apart.
+pub struct Spec:
+    ## The fill scalar, as written; empty when none was.
+    pub var fill: str
+    ## `<`, `>`, `^` or `=`; 0 when none was written.
+    pub var align: u8
+    ## `+`, `-` or a space; 0 when none was written.
+    pub var sign: u8
+    ## `z`: a negative zero, after rounding, shows as zero.
+    pub var no_negative_zero: bool
+    ## `#`: the alternate form, a base's prefix or a point always kept.
+    pub var alternate: bool
+    ## `0` before the width: zeros fill a number after its sign.
+    pub var zero: bool
+    ## The least width in scalars; -1 when none was written.
+    pub var width: i64
+    ## `,` or `_` between groups of digits; 0 when none was written.
+    pub var grouping: u8
+    ## The digits after the point, or the scalars a text keeps; -1 when none was written.
+    pub var precision: i64
+    ## The type letter; 0 when none was written.
+    pub var kind: u8
+
+## A specification read from its text, and what is wrong with it: empty when nothing is.
+pub struct Reading:
+    ## The specification, meaningful when `problem` is empty.
+    pub var spec: Spec
+    ## Why the text is not a specification; empty when it is one.
+    pub var problem: str
+
+## What a field shows: an integer, a float, or text (a `str`, a `char`, a `bool`).
+pub enum Category:
+    integer
+    floating
+    text
+
+func is_align(byte: u8) -> bool:
+    return byte == '<' or byte == '>' or byte == '^' or byte == '='
+
+## The byte length of the UTF-8 scalar starting with `lead`.
+func scalar_bytes(lead: u8) -> usize:
+    if lead < 0x80:
+        return 1
+    if lead < 0xE0:
+        return 2
+    if lead < 0xF0:
+        return 3
+    return 4
+
+## The scalars of UTF-8 `text`.
+pub func scalar_count(text: const u8[]) -> i64:
+    var n: i64 = 0
+    for b in text:
+        if (b & 0xC0) != 0x80:
+            n += 1
+    return n
+
+## Digits read from `at` as a width or a precision; how many there were, -1 when too many.
+func read_count(b: const u8[], at: usize*, value: i64*) -> i64:
+    var n: i64 = 0
+    var total: i64 = 0
+    while *at < b.length and b[*at] >= '0' and b[*at] <= '9':
+        total = total * 10 + (i64)(b[*at] - '0')
+        if total > 1000000000:
+            return -1
+        n += 1
+        *at += 1
+    *value = total
+    return n
+
+## Read `text` as CPython's parse_internal_render_format_spec reads a specification.
+pub func read(text: str) -> Reading:
+    var spec = Spec(fill = "", align = 0, sign = 0, no_negative_zero = false, alternate = false, zero = false, width = -1, grouping = 0, precision = -1, kind = 0)
+    let b = text.bytes
+    var at: usize = 0
+    var first: usize = 0
+    if b.length > 0:
+        first = scalar_bytes(b[0])
+    if b.length > first and is_align(b[first]):
+        spec.fill = (str)b[..<first]
+        spec.align = b[first]
+        at = first + 1
+    elif b.length > 0 and is_align(b[0]):
+        spec.align = b[0]
+        at = 1
+    if at < b.length and (b[at] == '+' or b[at] == '-' or b[at] == ' '):
+        spec.sign = b[at]
+        at += 1
+    if at < b.length and b[at] == 'z':
+        spec.no_negative_zero = true
+        at += 1
+    if at < b.length and b[at] == '#':
+        spec.alternate = true
+        at += 1
+    if spec.fill.length == 0 and at < b.length and b[at] == '0':
+        spec.zero = true
+        at += 1
+    var width: i64 = 0
+    let digits = read_count(b, &at, &width)
+    if digits < 0:
+        return Reading(spec = spec, problem = "its width is too large")
+    if digits > 0:
+        spec.width = width
+    if at < b.length and (b[at] == ',' or b[at] == '_'):
+        spec.grouping = b[at]
+        at += 1
+        if at < b.length and (b[at] == ',' or b[at] == '_'):
+            return Reading(spec = spec, problem = "it groups digits with both `,` and `_`")
+    if at < b.length and b[at] == '.':
+        at += 1
+        var precision: i64 = 0
+        let n = read_count(b, &at, &precision)
+        if n < 0:
+            return Reading(spec = spec, problem = "its precision is too large")
+        if n == 0:
+            return Reading(spec = spec, problem = "a `.` is followed by the precision's digits")
+        spec.precision = precision
+    if b.length - at > 1:
+        return Reading(spec = spec, problem = "it is not `[[fill]align][sign][z][#][0][width][grouping][.precision][type]`")
+    if at < b.length:
+        spec.kind = b[at]
+    return Reading(spec = spec, problem = "")
+
+## What is wrong with `spec` for a value of `category`: empty when it fits (§5.5).
+pub func misfit(spec: Spec, category: Category) -> str:
+    let k = spec.kind
+    match category:
+        .integer:
+            if k == 'e' or k == 'E' or k == 'f' or k == 'F' or k == 'g' or k == 'G' or k == '%':
+                return "its type letter formats a float; convert the integer with `f64(...)` first"
+            if k != 0 and k != 'd' and k != 'b' and k != 'o' and k != 'x' and k != 'X' and k != 'c':
+                return "an integer is formatted with `d`, `b`, `o`, `x`, `X` or `c`"
+            if spec.precision >= 0:
+                return "an integer takes no precision"
+            if spec.no_negative_zero:
+                return "`z` belongs to a float"
+            if k == 'c' and spec.sign != 0:
+                return "`c` takes no sign"
+            if k == 'c' and spec.alternate:
+                return "`c` takes no `#`"
+            if spec.grouping == ',' and k != 0 and k != 'd':
+                return "`,` groups decimal digits; `_` groups `b`, `o`, `x` and `X`"
+            if spec.grouping == '_' and k == 'c':
+                return "`c` takes no grouping"
+        .floating:
+            if k != 0 and k != 'e' and k != 'E' and k != 'f' and k != 'F' and k != 'g' and k != 'G' and k != '%':
+                return "a float is formatted with `e`, `E`, `f`, `F`, `g`, `G` or `%`"
+        .text:
+            if k != 0 and k != 's':
+                return "text is formatted with `s` or no type"
+            if spec.sign != 0:
+                return "a sign belongs to a number"
+            if spec.no_negative_zero:
+                return "`z` belongs to a float"
+            if spec.alternate:
+                return "`#` belongs to a number"
+            if spec.align == '=':
+                return "`=` aligns a number after its sign"
+            if spec.grouping != 0:
+                return "grouping belongs to a number"
+    return ""
+
+## The fill and alignment a field uses: the written ones, else the defaults, a number to
+## the right and text to the left, and `0` before the width filling with zeros after the
+## sign (CPython's backwards-compatible special case).
+func settle(spec: Spec, numeric: bool) -> Spec:
+    var out = spec
+    if spec.zero:
+        out.fill = "0"
+        if spec.align == 0 and numeric:
+            out.align = '='
+    if out.fill.length == 0:
+        out.fill = " "
+    if out.align == 0:
+        out.align = '>' if numeric else '<'
+    return out
+
+## The settled specification of `specification`, which the compiler has read and fitted.
+func settled(specification: str, numeric: bool) -> Spec:
+    let reading = read(specification)
+    if reading.problem.length > 0:
+        trap("a formatted field's specification is not one; the compiler refuses it")
+    return settle(reading.spec, numeric)
+
+# mark: Output =================================================================================
+
+## Where laid-out text goes: `write` appends `bytes` to `context`, answering false when
+## they did not all fit, which ends the layout.
+pub struct Sink:
+    ## What the text is written into, handed to `write`.
+    pub var context: void*
+    ## Append the bytes; false when they did not all fit.
+    pub var write: func(void*, const u8[]) -> bool
+
+func put(sink: Sink, bytes: const u8[]) -> bool:
+    let write = sink.write
+    return bytes.length == 0 or write(sink.context, bytes)
+
+func put_byte(sink: Sink, byte: u8) -> bool:
+    let one: u8[1] = [byte]
+    return put(sink, one)
+
+## `text` `n` times.
+func repeat(sink: Sink, text: str, n: i64) -> bool:
+    var i: i64 = 0
+    while i < n:
+        if not put(sink, text.bytes):
+            return false
+        i += 1
+    return true
+
+## `text` with its lower-case letters in upper case when `upper`.
+func put_cased(sink: Sink, text: const u8[], upper: bool) -> bool:
+    if not upper:
+        return put(sink, text)
+    for c in text:
+        if not put_byte(sink, c - 32 if c >= 'a' and c <= 'z' else c):
+            return false
+    return true
+
+## Padding before and after `n` scalars to `width`, by the alignment (CPython's calc_padding).
+func padding(n: i64, width: i64, align: u8) -> (i64, i64):
+    let total = width if width > n else n
+    var left: i64 = 0
+    if align == '>':
+        left = total - n
+    elif align == '^':
+        left = (total - n) // 2
+    return (left, total - n - left)
+
+func smaller(a: i64, b: i64) -> i64:
+    return a if a < b else b
+
+func larger(a: i64, b: i64) -> i64:
+    return a if a > b else b
+
+# mark: Digits =================================================================================
+
+## Digits, a virtual `0` outside `[0, count)`: an integer's in its base, or the exact
+## decimal digits of a float's magnitude, `0.d1d2d3... × 10^point`, at most 767 significant
+## digits for any finite f64 and no trailing zero.
+struct Decimal:
+    var digits: u8[800]
+    var count: usize
+    var point: i64
+
+    ## The digit at virtual index `i`.
+    func at(i: i64) -> u8:
+        return self.digits[(usize)i] if i >= 0 and i < (i64)self.count else '0'
+
+## The digits of `magnitude` in `base` (2, 8, 10 or 16), lower case.
+func integer_digits(magnitude: u64, base: u64) -> Decimal:
+    var d: Decimal = ---
+    var reversed: u8[64] = ---
+    var n: usize = 0
+    var v = magnitude
+    while true:
+        let digit = (u8)(v % base)
+        reversed[n] = '0' + digit if digit < 10 else 'a' + digit - 10
+        n += 1
+        v = v // base
+        if v == 0:
+            break
+    d.count = n
+    d.point = (i64)n
+    var i: usize = 0
+    while i < n:
+        d.digits[i] = reversed[n - 1 - i]
+        i += 1
+    return d
+
+## The digits of |value|, finite: the significand times a power of two, made decimal in
+## limbs of 10^9 exactly (multiplying by 2^k, or by 5^k for a negative exponent).
+func exact(value: f64) -> Decimal:
+    var d: Decimal = ---
+    d.count = 0
+    d.point = 0
+    let bits = value.bits()
+    let exponent_bits = (i64)((bits >> 52) & 0x7FF)
+    var significand = bits & 0xFFFFFFFFFFFFF
+    var exponent: i64 = -1074
+    if exponent_bits != 0:
+        significand = significand | 0x10000000000000
+        exponent = exponent_bits - 1075
+    if significand == 0:
+        d.digits[0] = '0'
+        d.count = 1
+        d.point = 1
+        return d
+    var limbs: u64[100] = ---
+    limbs[0] = significand % 1000000000
+    limbs[1] = significand // 1000000000
+    var used: usize = 2 if limbs[1] != 0 else 1
+    if exponent >= 0:
+        var left = exponent
+        while left > 0:
+            let shift = left if left < 30 else 30
+            used = multiply(limbs, used, (u64)1 << (u64)shift)
+            left -= shift
+    else:
+        var left = -exponent
+        while left > 0:
+            let step = left if left < 13 else 13
+            var factor: u64 = 1
+            for _ in 0..<step:
+                factor *= 5
+            used = multiply(limbs, used, factor)
+            left -= step
+    # the top limb without leading zeros, every other one as nine digits
+    var top: u8[9] = ---
+    var n: usize = 0
+    var high = limbs[used - 1]
+    while high > 0:
+        top[n] = '0' + (u8)(high % 10)
+        high = high // 10
+        n += 1
+    while n > 0:
+        n -= 1
+        d.digits[d.count] = top[n]
+        d.count += 1
+    var i = used - 1
+    while i > 0:
+        i -= 1
+        var limb = limbs[i]
+        var k: usize = 9
+        while k > 0:
+            k -= 1
+            d.digits[d.count + k] = '0' + (u8)(limb % 10)
+            limb = limb // 10
+        d.count += 9
+    d.point = (i64)d.count + (exponent if exponent < 0 else 0)
+    trim_zeros(&d)
+    return d
+
+## `limbs[..<used] *= factor`, factor at most 2^30; the limbs now used.
+func multiply(limbs: u64[], used: usize, factor: u64) -> usize:
+    var carry: u64 = 0
+    var i: usize = 0
+    while i < used:
+        let product = limbs[i] * factor + carry
+        limbs[i] = product % 1000000000
+        carry = product // 1000000000
+        i += 1
+    var n = used
+    while carry > 0:
+        limbs[n] = carry % 1000000000
+        carry = carry // 1000000000
+        n += 1
+    return n
+
+func trim_zeros(d: Decimal*):
+    while d.count > 1 and d.digits[d.count - 1] == '0':
+        d.count -= 1
+
+## Keep the first `keep` digits, rounding half to even on the exact value; `keep` may be 0
+## or less, which leaves zero (`count` 0) or one digit carried up.
+func round_to(d: Decimal*, keep: i64):
+    if keep >= (i64)d.count:
+        return
+    var up = false
+    if keep >= 0:
+        let next = d.digits[(usize)keep]
+        var beyond = false
+        var i = (usize)keep + 1
+        while i < d.count:
+            if d.digits[i] != '0':
+                beyond = true
+            i += 1
+        let odd = keep > 0 and ((d.digits[(usize)keep - 1] - '0') % 2) == 1
+        up = next > '5' or (next == '5' and (beyond or odd))
+    if keep <= 0:
+        d.count = 0
+        if up:
+            d.digits[0] = '1'
+            d.count = 1
+            d.point += 1
+        return
+    d.count = (usize)keep
+    if up:
+        var i = d.count
+        var carried = true
+        while carried and i > 0:
+            i -= 1
+            if d.digits[i] == '9':
+                d.digits[i] = '0'
+            else:
+                d.digits[i] += 1
+                carried = false
+        if carried:
+            # every kept digit was 9: one digit, a 1, a place higher
+            d.digits[0] = '1'
+            d.count = 1
+            d.point += 1
+    trim_zeros(d)
+    if d.count == 1 and d.digits[0] == '0':
+        d.count = 0
+
+## dtoa's mode 2 (`n` significant digits) or mode 3 (`n` digits after the point, any sign)
+## of a finite |value|: rounded half to even, no trailing zero, zero as `0` at point 1, and
+## nothing left at point `-n` when mode 3 rounds it all away.
+func digits_of(value: f64, mode: u8, n: i64) -> Decimal:
+    var d = exact(value)
+    if d.count == 1 and d.digits[0] == '0':
+        return d
+    if mode == 2:
+        round_to(&d, n if n > 1 else 1)
+    else:
+        round_to(&d, d.point + n)
+        if d.count == 0:
+            d.point = -n
+    return d
+
+# mark: Numbers ================================================================================
+
+## A number to lay out: its sign, a base's prefix, the digits `[first, last)` of `digits`
+## with the point before index `point` (shown when `dot`), and what follows them, an
+## exponent, `%`, or the scalar a `c` field names.
+struct Number:
+    var negative: bool
+    var prefix: str
+    var digits: Decimal
+    var first: i64
+    var point: i64
+    var last: i64
+    var dot: bool
+    var rest: u8[8]
+    var rest_length: usize
+
+## The digits a group of `interval` with zeros reaching `least` scalars make, CPython's
+## _PyUnicode_InsertThousandsGrouping: `n` digits, at least as many as reach `least` with a
+## separator between each group; no groups when `interval` is 0.
+func padded_digits(n: i64, least: i64, interval: i64) -> i64:
+    var count = n if n > 0 else 1
+    if interval == 0:
+        return larger(count, least)
+    while count + (count - 1) // interval < least:
+        count += 1
+    return count
+
+## A number laid out as CPython's calc_number_widths and fill_number lay it out:
+## `[padding] sign prefix [padding] grouped-digits [point] rest [padding]`. `spec` is settled.
+func lay_number(sink: Sink, n: Number*, spec: Spec, upper: bool) -> bool:
+    var sign: u8 = 0
+    if spec.sign == '+':
+        sign = '-' if n.negative else '+'
+    elif spec.sign == ' ':
+        sign = '-' if n.negative else ' '
+    elif n.negative:
+        sign = '-'
+    let rest = n.rest[..<n.rest_length]
+    let fraction = n.last - n.point if n.last > n.point else 0
+    let fixed = (1 if sign != 0 else 0) + (i64)n.prefix.length + (1 if n.dot else 0) + fraction + scalar_count(rest)
+    let least = spec.width - fixed if spec.fill == "0" and spec.align == '=' else 0
+    let interval: i64 = 0 if spec.grouping == 0 else (4 if spec.kind == 'b' or spec.kind == 'o' or spec.kind == 'x' or spec.kind == 'X' else 3)
+    let whole = n.point - n.first
+    # a `c` field has no digits, only the scalar it names
+    let count = padded_digits(whole, least, interval) if whole > 0 or n.rest_length == 0 or n.dot else 0
+    let body = count + ((count - 1) // interval if interval > 0 and count > 0 else 0)
+    let spare = spec.width - (fixed + body)
+    var before: i64 = 0
+    var between: i64 = 0
+    var after: i64 = 0
+    if spare > 0:
+        if spec.align == '<':
+            after = spare
+        elif spec.align == '^':
+            before = spare // 2
+            after = spare - before
+        elif spec.align == '=':
+            between = spare
+        else:
+            before = spare
+    if not repeat(sink, spec.fill, before):
+        return false
+    if sign != 0 and not put_byte(sink, sign):
+        return false
+    if not put_cased(sink, n.prefix.bytes, upper) or not repeat(sink, spec.fill, between):
+        return false
+    # the whole part's digits, the leftmost `count - whole` of them padding zeros
+    var k: i64 = 0
+    while k < count:
+        if interval > 0 and k > 0 and (count - k) % interval == 0 and not put_byte(sink, spec.grouping):
+            return false
+        let digit = n.digits.at(n.point - count + k) if k >= count - whole else '0'
+        if not put_byte(sink, digit - 32 if upper and digit >= 'a' and digit <= 'z' else digit):
+            return false
+        k += 1
+    if n.dot and not put_byte(sink, '.'):
+        return false
+    var i = n.point
+    while i < n.last:
+        if not put_byte(sink, n.digits.at(i)):
+            return false
+        i += 1
+    return put_cased(sink, rest, upper) and repeat(sink, spec.fill, after)
+
+## A number with no digits yet: positive, no prefix, nothing after.
+func number(digits: Decimal) -> Number:
+    return Number(negative = false, prefix = "", digits = digits, first = 0, point = digits.point, last = digits.point, dot = false, rest = [0, 0, 0, 0, 0, 0, 0, 0], rest_length = 0)
+
+## `bytes` after the digits of `n`.
+func add_rest(n: Number*, bytes: const u8[]):
+    for b in bytes:
+        if n.rest_length < 8:
+            n.rest[n.rest_length] = b
+            n.rest_length += 1
+
+## An integer field `{value:spec}`, its sign apart from its magnitude, laid out by
+## `specification`. A `c` field of a number that names no Unicode scalar traps.
+pub func lay_integer(sink: Sink, negative: bool, magnitude: u64, specification: str) -> bool:
+    let spec = settled(specification, true)
+    if spec.kind == 'c':
+        if negative or magnitude > 0x10FFFF or (magnitude >= 0xD800 and magnitude <= 0xDFFF):
+            trap("a `c` field's number names no Unicode scalar")
+        var n = number(integer_digits(0, 10))
+        n.first = n.point
+        var buffer: u8[4]
+        add_rest(&n, encode_scalar((u32)magnitude, buffer))
+        return lay_number(sink, &n, spec, false)
+    var base: u64 = 10
+    var prefix = ""
+    if spec.kind == 'b':
+        base = 2
+        prefix = "0b"
+    elif spec.kind == 'o':
+        base = 8
+        prefix = "0o"
+    elif spec.kind == 'x' or spec.kind == 'X':
+        base = 16
+        prefix = "0x"
+    var n = number(integer_digits(magnitude, base))
+    n.negative = negative
+    if spec.alternate:
+        n.prefix = prefix
+    return lay_number(sink, &n, spec, spec.kind == 'X')
+
+## The UTF-8 of scalar `value` in `buffer`, which holds four bytes.
+func encode_scalar(value: u32, buffer: u8[]) -> const u8[]:
+    if value < 0x80:
+        buffer[0] = (u8)value
+        return buffer[..<1]
+    if value < 0x800:
+        buffer[0] = (u8)(0xC0 | (value >> 6))
+        buffer[1] = (u8)(0x80 | (value & 0x3F))
+        return buffer[..<2]
+    if value < 0x10000:
+        buffer[0] = (u8)(0xE0 | (value >> 12))
+        buffer[1] = (u8)(0x80 | ((value >> 6) & 0x3F))
+        buffer[2] = (u8)(0x80 | (value & 0x3F))
+        return buffer[..<3]
+    buffer[0] = (u8)(0xF0 | (value >> 18))
+    buffer[1] = (u8)(0x80 | ((value >> 12) & 0x3F))
+    buffer[2] = (u8)(0x80 | ((value >> 6) & 0x3F))
+    buffer[3] = (u8)(0x80 | (value & 0x3F))
+    return buffer[..<4]
+
+# mark: Floats =================================================================================
+
+## A float field `{value:spec}` laid out by `specification`; `single` when the
+## value is an `f32` (or an `f16`), whose display is its own shortest digits. With neither a
+## type nor a precision a field shows the value's display, where Python shows its repr.
+pub func lay_float(sink: Sink, value: f64, single: bool, specification: str) -> bool:
+    let spec = settled(specification, true)
+    var x = value
+    var kind = spec.kind
+    var percent = false
+    if kind == '%':
+        x = x * 100.0
+        kind = 'f'
+        percent = true
+    var n = number(integer_digits(0, 10))
+    if kind == 0 and spec.precision < 0:
+        displayed(&n, x, single, spec.no_negative_zero)
+    else:
+        short(&n, x, kind, spec.precision if spec.precision >= 0 else 6, spec.alternate, spec.no_negative_zero)
+    if percent:
+        add_rest(&n, "%".bytes)
+    return lay_number(sink, &n, spec, kind == 'E' or kind == 'F' or kind == 'G')
+
+## The display of `value` (§14.4) as a number to lay out: its digits up to the point, the
+## point, and the rest (more digits, an exponent) as they are.
+func displayed(n: Number*, value: f64, single: bool, no_negative_zero: bool):
+    var shown: u8[40] = ---
+    let length = float_text.display_f32((f32)value, shown) if single else float_text.display_f64(value, shown)
+    var at: usize = 0
+    if shown[0] == '-':
+        n.negative = not (no_negative_zero and value == 0.0)
+        at = 1
+    var d: Decimal = ---
+    d.count = 0
+    while at < length and shown[at] >= '0' and shown[at] <= '9':
+        d.digits[d.count] = shown[at]
+        d.count += 1
+        at += 1
+    d.point = (i64)d.count
+    if at < length and shown[at] == '.':
+        at += 1
+        while at < length and shown[at] >= '0' and shown[at] <= '9':
+            d.digits[d.count] = shown[at]
+            d.count += 1
+            at += 1
+        n.dot = true
+    n.digits = d
+    n.first = 0
+    n.point = d.point
+    n.last = (i64)d.count
+    # `inf`, `nan` and an exponent follow the digits as they are
+    add_rest(n, shown[at..<length])
+
+## `e`, `f`, `g` (and the upper ones) of `value` with `precision`, as CPython's
+## PyOS_double_to_string and format_float_short write them: `-` for a negative value,
+## `inf` and `nan` for the specials.
+func short(n: Number*, value: f64, kind: u8, precision: i64, alternate: bool, no_negative_zero: bool):
+    let upper = kind == 'E' or kind == 'F' or kind == 'G'
+    var code = kind + 32 if upper else kind
+    var add_dot = false
+    var p = precision
+    if code == 0:
+        # a precision without a type: `g`, a point always kept (CPython's 'r' with one)
+        code = 'g'
+        add_dot = true
+    var negative = value < 0.0 or (value == 0.0 and (value.bits() >> 63) != 0)
+    if value != value or infinite(value):
+        n.negative = negative and value == value
+        n.first = n.point
+        add_rest(n, "nan".bytes if value != value else "inf".bytes)
+        return
+    var mode: u8 = 2
+    if code == 'e':
+        p += 1
+    elif code == 'f':
+        mode = 3
+    elif p == 0:
+        p = 1
+    let d = digits_of(value, mode, p)
+    if no_negative_zero and (d.count == 0 or (d.count == 1 and d.digits[0] == '0')):
+        negative = false
+    var point = d.point
+    var end = (i64)d.count
+    var use_exponent = false
+    if code == 'e':
+        use_exponent = true
+        end = p
+    elif code == 'f':
+        end = point + p
+    else:
+        if point <= -4 or point > (p - 1 if add_dot else p):
+            use_exponent = true
+        if alternate:
+            end = p
+    var exponent: i64 = 0
+    if use_exponent:
+        exponent = point - 1
+        point = 1
+    let start = point - 1 if point <= 0 else 0
+    if not use_exponent and add_dot:
+        end = end if end > point else point + 1
+    else:
+        end = end if end > point else point
+    n.negative = negative
+    n.digits = d
+    n.first = start
+    n.point = point
+    n.last = end
+    n.dot = point < end or alternate
+    if use_exponent:
+        add_rest(n, "e".bytes)
+        add_rest(n, "-".bytes if exponent < 0 else "+".bytes)
+        let magnitude = (u64)(-exponent if exponent < 0 else exponent)
+        let e = integer_digits(magnitude, 10)
+        if magnitude < 10:
+            add_rest(n, "0".bytes)
+        add_rest(n, e.digits[..<e.count])
+
+## Whether `x` is an infinity (a NaN is told apart by `x != x`).
+func infinite(x: f64) -> bool:
+    return x == x and ((x.bits() >> 52) & 0x7FF) == 0x7FF
+
+# mark: Text ===================================================================================
+
+## A text field `{value:spec}`, `shown` being its display, laid out by `specification`: precision keeps that many scalars, and the width pads it (CPython's
+## format_string_internal).
+pub func lay_text(sink: Sink, shown: str, specification: str) -> bool:
+    let spec = settled(specification, false)
+    var view = shown.bytes
+    var n = scalar_count(view)
+    if spec.precision >= 0 and n > spec.precision:
+        view = scalar_prefix(view, spec.precision)
+        n = spec.precision
+    let (before, after) = padding(n, spec.width, spec.align)
+    return repeat(sink, spec.fill, before) and put(sink, view) and repeat(sink, spec.fill, after)
+
+## The first `n` scalars of `bytes`, viewing them.
+func scalar_prefix(bytes: const u8[], n: i64) -> const u8[]:
+    var seen: i64 = 0
+    var i: usize = 0
+    while i < bytes.length:
+        if (bytes[i] & 0xC0) != 0x80:
+            if seen == n:
+                return bytes[..<i]
+            seen += 1
+        i += 1
+    return bytes

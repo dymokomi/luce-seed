@@ -4,7 +4,7 @@ from io import Writer
 struct Emitter:
     var out: Writer
     var depth: i64
-    mutating func line(text: str) -> !:
+    func line(text: str) -> !:
         var i: i64 = 0
         while i < self.depth:
             try self.out.write("  ")

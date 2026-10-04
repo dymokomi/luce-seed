@@ -7,7 +7,7 @@ func fail_with(what: str) -> never!:
 
 func unit_path(x: i64?) -> !:
     let v = x else return try fail_with("unit")
-    discard(v)
+    _ = v
 
 func typed_path(x: i64?) -> i64!:
     let v = x else return try fail_with("typed")

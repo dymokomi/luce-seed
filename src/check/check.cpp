@@ -122,8 +122,7 @@ auto Checker::is_constant_expr(Node* n) -> bool {
     }
     case NodeKind::Call: {
         Node* callee = n->left;
-        if (callee != nullptr && callee->kind == NodeKind::Name &&
-            (callee->text == "sizeof" || callee->text == "alignof" || callee->text == "offsetof")) {
+        if (is_intrinsic(callee, "sizeof") || is_intrinsic(callee, "alignof") || is_intrinsic(callee, "offsetof")) {
             return true;
         }
         // a struct construction (through its own `init` too: a default argument is made at
@@ -387,11 +386,12 @@ auto Checker::set_from_local(string_view name, bool from_local) -> void {
 }
 
 // The names of the language itself (base.md §3.5): the core functions and the core type
-// names. No declaration of any kind may take one. The reserved words are tokens and never
-// reach a declaration; the standard modules' names bind only where they are imported.
+// names. No declaration that binds a name in a scope may take one; a field, a method or an
+// enum case is reached through its value or type, so it may. The reserved words are tokens
+// and never reach a declaration; the standard modules' names bind only where they are
+// imported.
 static const char* const k_core_names[] = {
-    "assert", "discard", "error", "trap", "hash", "print", "format", "sizeof", "alignof",
-    "offsetof", "hex", "bin", "pad",
+    "assert", "error", "trap", "print",
     "bool", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize",
     "f16", "f32", "f64", "char", "str", "unit", "never", "void", "fmt",
     "Error", "ErrorCode",
@@ -436,8 +436,7 @@ auto Checker::const_u64(Node* n, uint64_t* out) -> bool {
         *out = 0 - a;
         return true;
     }
-    if (n->kind == NodeKind::Call && n->left != nullptr && n->left->kind == NodeKind::Name &&
-        (n->left->text == "sizeof" || n->left->text == "alignof")) {
+    if (n->kind == NodeKind::Call && (is_intrinsic(n->left, "sizeof") || is_intrinsic(n->left, "alignof"))) {
         if (n->body == nullptr || n->body->left == nullptr) {
             return false;
         }
@@ -651,12 +650,6 @@ auto Checker::check_params(Node* fn) -> void {
 }
 
 auto Checker::check_func(Node* fn, Node* owner) -> void {
-    if (owner == nullptr && (fn->flags & FlagStatic) != 0) {
-        fail_n(fn, "lucb.check.type", "`static` marks a method; a top-level function has no owner");
-    }
-    if (owner == nullptr && (fn->flags & FlagMutating) != 0) {
-        fail_n(fn, "lucb.check.type", "`mutating` marks a method; a top-level function has no `self`");
-    }
     bool generic = is_generic_decl(fn);
     bool saved_generic = checking_generic_template;
     if (generic) {
@@ -736,7 +729,6 @@ auto Checker::check_struct(Node* st) -> void {
     }
     for (Node* m = st->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::Func) {
-            check_declared_name(m, m->text);
             for (Node* o = st->body; o != m; o = o->next) {
                 if (o->kind == NodeKind::Func && o->text == m->text) {
                     fail_n(m, "lucb.check.shadow", "duplicate method");
@@ -842,10 +834,6 @@ auto Checker::check_implements(Node* st) -> void {
                 fail_n(st, "lucb.check.type", "`" + string(iface->decl->text) + "` is derived from the fields; it is not implemented by hand (§14.4)");
                 break;
             }
-            if ((req->flags & FlagMutating) != (impl->flags & FlagMutating)) {
-                fail_n(impl, "lucb.check.mut", "`" + string(req->text) + "` must " +
-                       ((req->flags & FlagMutating) != 0 ? "be `mutating`" : "not be `mutating`") + ", as the interface declares");
-            }
             if (!sig_matches(impl, req, iface)) {
                 fail_n(impl, "lucb.check.type",
                        "`" + string(impl->text) + "` does not match `" + string(iface->decl->text) +
@@ -853,6 +841,71 @@ auto Checker::check_implements(Node* st) -> void {
             }
         }
     }
+}
+
+// Whether the tree under `n` names `self`.
+static auto mentions_self(const Node* n) -> bool {
+    for (; n != nullptr; n = n->next) {
+        if (n->kind == NodeKind::Self || mentions_self(n->left) || mentions_self(n->right) ||
+            mentions_self(n->body) || mentions_self(n->type)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// What a function inside a type is, which Base infers rather than declares (§9.5): one whose
+// body never names `self` is a type function, unless it is `init` or implements a requirement
+// (`keep_requirement_methods`). luce-base decides which methods change their receiver; the
+// seed builds a compiler luce-base has already checked, so every method here may: its
+// receiver is a `T*`. Decided before the module's types are collected, since an alias may
+// instantiate a generic type there.
+auto Checker::infer_receivers(Node* mod) -> void {
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind != NodeKind::Struct && d->kind != NodeKind::Enum && d->kind != NodeKind::Union) {
+            continue;
+        }
+        for (Node* m = d->body; m != nullptr; m = m->next) {
+            if (m->kind != NodeKind::Func) {
+                continue;
+            }
+            m->flags |= (m->text == "init" || mentions_self(m->body)) ? FlagMutating : FlagStatic;
+        }
+    }
+}
+
+// A function that implements a requirement of an interface its type conforms to is a method,
+// whether or not it names `self` (§9.5); the interfaces resolve once the module is collected.
+auto Checker::keep_requirement_methods(Node* mod) -> void {
+    for (Node* d = mod->body; d != nullptr; d = d->next) {
+        if (d->kind != NodeKind::Struct && d->kind != NodeKind::Enum) {
+            continue;
+        }
+        for (Node* m = d->body; m != nullptr; m = m->next) {
+            if (m->kind == NodeKind::Func && (m->flags & FlagStatic) != 0 && implements_requirement(d, m->text)) {
+                m->flags = (m->flags & ~static_cast<uint64_t>(FlagStatic)) | FlagMutating;
+            }
+        }
+    }
+}
+
+// Whether `name` is a requirement of an interface `type_decl` declares conformance to.
+auto Checker::implements_requirement(Node* type_decl, string_view name) -> bool {
+    for (Node* t = type_decl->right; t != nullptr; t = t->next) {
+        if (t->kind != NodeKind::Type || (t->flags & (FlagStar | FlagSpan | FlagArray)) != 0) {
+            continue;
+        }
+        Type* iface = resolve_type(t);
+        if (iface == nullptr || iface->kind != TypeKind::Interface || iface->decl == nullptr) {
+            continue;
+        }
+        for (Node* req = iface->decl->body; req != nullptr; req = req->next) {
+            if (req->kind == NodeKind::Func && req->text == name) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // A requirement's type as the conformance sees it: the interface's parameters replaced by
@@ -1232,7 +1285,6 @@ auto Checker::check_enum(Node* en) -> void {
     bool saw_value = false;
     for (Node* m = en->body; m != nullptr; m = m->next) {
         if (m->kind == NodeKind::EnumCase) {
-            check_declared_name(m, m->text);
             if (m->body != nullptr) {
                 saw_payload = true;
             }
@@ -1591,12 +1643,14 @@ auto Checker::check_module(Node* mod) -> void {
     push_scope();
     bind_memory();
     bind_imports(mod);
+    infer_receivers(mod);
     collect_module(mod);
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->kind == NodeKind::Interface) {
             check_interface(d);
         }
     }
+    keep_requirement_methods(mod);
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->kind == NodeKind::Struct) {
             check_struct(d);
