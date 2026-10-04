@@ -11,9 +11,12 @@ file(READ "${STD_DIR}/math.lucb" STD_MATH)
 file(READ "${STD_DIR}/paths.lucb" STD_PATHS)
 file(READ "${STD_DIR}/os.lucb" STD_OS)
 file(READ "${STD_DIR}/strings.lucb" STD_STRINGS)
+file(READ "${STD_DIR}/interop.lucb" STD_INTEROP)
+file(READ "${STD_DIR}/files.lucb" STD_FILES)
+file(READ "${STD_DIR}/process.lucb" STD_PROCESS)
 
 set(DELIM "LUCB_EMBED")
-foreach(chunk IN ITEMS RT_H RT_C RT_START STD_MATH STD_PATHS STD_OS STD_STRINGS)
+foreach(chunk IN ITEMS RT_H RT_C RT_START STD_MATH STD_PATHS STD_OS STD_STRINGS STD_INTEROP STD_FILES STD_PROCESS)
     string(FIND "${${chunk}}" ")${DELIM}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR "runtime source contains the embed delimiter")
@@ -35,6 +38,9 @@ const char k_std_math[] = R\"${DELIM}(${STD_MATH})${DELIM}\";
 const char k_std_paths[] = R\"${DELIM}(${STD_PATHS})${DELIM}\";
 const char k_std_os[] = R\"${DELIM}(${STD_OS})${DELIM}\";
 const char k_std_strings[] = R\"${DELIM}(${STD_STRINGS})${DELIM}\";
+const char k_std_interop[] = R\"${DELIM}(${STD_INTEROP})${DELIM}\";
+const char k_std_files[] = R\"${DELIM}(${STD_FILES})${DELIM}\";
+const char k_std_process[] = R\"${DELIM}(${STD_PROCESS})${DELIM}\";
 
 } // namespace
 
@@ -54,6 +60,15 @@ const char* lucb_std_source(const char* name) {
     }
     if (std::string_view(name) == \"strings\") {
         return k_std_strings;
+    }
+    if (std::string_view(name) == \"interop\") {
+        return k_std_interop;
+    }
+    if (std::string_view(name) == \"files\") {
+        return k_std_files;
+    }
+    if (std::string_view(name) == \"process\") {
+        return k_std_process;
     }
     return nullptr;
 }

@@ -1,0 +1,23 @@
+## luce-std's `process` in the shape of its 0.3 surface, over the seed's host operation
+## (`host_process`): `run` answers what the program left behind as an `interop.Owned` value.
+
+import c
+import host_process
+import interop
+
+## What a program `run` waited for left behind.
+pub struct Completed:
+    ## The program's exit status, 0 to 255.
+    pub let exit_code: i32
+    ## What it wrote to its standard output.
+    pub let output: str
+    ## What it wrote to its standard error.
+    pub let error_output: str
+
+## Run `program` with `arguments` and wait for it.
+pub func run(program: c.str, arguments: const c.str[], directory: c.str = "", environment: const c.str[]? = none) -> interop.Owned[Completed]!:
+    # the child inherits the directory and environment unless they are given; the seed's
+    # interpreter runs only that form, so the settings are passed on only when present
+    let inherited = environment == none and *(const u8*)directory == 0
+    let (code, output, error_output) = try host_process.run(program, arguments) if inherited else try host_process.run(program, arguments, directory, environment)
+    return interop.Owned[Completed](Completed(exit_code = code, output = output, error_output = error_output))

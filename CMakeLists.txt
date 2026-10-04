@@ -47,6 +47,9 @@ add_custom_command(
         std/paths.lucb
         std/os.lucb
         std/strings.lucb
+        std/interop.lucb
+        std/files.lucb
+        std/process.lucb
         cmake/embed_runtime.cmake
     COMMENT "Embed lucb runtime sources"
 )

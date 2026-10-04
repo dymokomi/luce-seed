@@ -2,8 +2,9 @@ import luce_std.files
 import io
 
 pub func main(arguments: str[]) -> i32!:
-    let bytes = try files.read("/etc/hosts")
-    defer free(bytes)
+    let read = try files.read("/etc/hosts")
+    defer read.release()
+    let bytes = read.value
     var lines: usize = 0
     var start: usize = 0
     var i: usize = 0

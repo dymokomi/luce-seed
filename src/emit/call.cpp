@@ -616,7 +616,7 @@ auto Emitter::emit_call(Node* n) -> string {
         Type* lt = callee->left != nullptr ? callee->left->ty : nullptr;
         if (lt != nullptr && lt->kind == TypeKind::Module && n->resolved != nullptr &&
             n->resolved->kind == NodeKind::Func) {
-            if (lt->name == "files" && (callee->text == "canonical" ||
+            if (lt->name == "host_files" && (callee->text == "canonical" ||
                 callee->text == "create_temporary_directory" || callee->text == "create_directory" ||
                 callee->text == "remove_tree" || callee->text == "rename")) {
                 const bool text_result = callee->text == "canonical" || callee->text == "create_temporary_directory";
@@ -631,7 +631,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 string status = "_lb_fe" + std::to_string(tmp());
                 string message = "files." + string(callee->text) + " failed";
                 string helper = callee->text == "create_temporary_directory" ? "temporary_directory" : string(callee->text);
-                string call = "lb_files_" + helper + "(" + (text_result ? "lb_get_alloc(), " : "");
+                string call = "lb_host_files_" + helper + "(" + (text_result ? "lb_get_alloc(), " : "");
                 for (size_t index = 0; index < arguments.size(); ++index) {
                     if (index) call += ", ";
                     call += arguments[index];
@@ -657,11 +657,11 @@ auto Emitter::emit_call(Node* n) -> string {
             if (lt->name == "c" && callee->text == "stderr") {
                 return "((void*)stderr)";
             }
-            if (lt->name == "files" && callee->text == "exists") {
+            if (lt->name == "host_files" && callee->text == "exists") {
                 Node* path = n->body != nullptr ? n->body->left : nullptr;
-                return "lb_files_exists(" + (path != nullptr ? emit_expr(path) : "NULL") + ")";
+                return "lb_host_files_exists(" + (path != nullptr ? emit_expr(path) : "NULL") + ")";
             }
-            if (lt->name == "files" && callee->text == "read") {
+            if (lt->name == "host_files" && callee->text == "read") {
                 Node* parg = n->body != nullptr ? n->body->left : nullptr;
                 string p = parg != nullptr ? emit_expr(parg) : "NULL";
                 string pathc =
@@ -774,7 +774,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 return "({ " + ty + " " + vn + " = " + val + "; memcpy(" + addr + ", &" + vn +
                        ", sizeof(" + vn + ")); (void)0; })";
             }
-            if (lt->name == "files" && callee->text == "list") {
+            if (lt->name == "host_files" && callee->text == "list") {
                 Node* parg = n->body != nullptr ? n->body->left : nullptr;
                 string p = parg != nullptr ? emit_expr(parg) : "NULL";
                 string pathc =
@@ -785,7 +785,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 int id = tmp();
                 return "({ const char* _lb_lp = " + pathc +
                        "; lb_span _lb_ln; int _lb_le = "
-                       "lb_files_list(lb_get_alloc(), _lb_lp, &_lb_ln); " +
+                       "lb_host_files_list(lb_get_alloc(), _lb_lp, &_lb_ln); " +
                        rty + " _lb_lr" + std::to_string(id) + "; if (_lb_le != 0) { _lb_lr" +
                        std::to_string(id) + ".failed = true; _lb_lr" + std::to_string(id) +
                        ".error = (lb_error){ .code = _lb_le == 2 ? 2 : 1, .message = _lb_le == 2 "
@@ -794,7 +794,7 @@ auto Emitter::emit_call(Node* n) -> string {
                        std::to_string(id) + ".failed = false; _lb_lr" + std::to_string(id) +
                        ".value = _lb_ln; } _lb_lr" + std::to_string(id) + "; })";
             }
-            if (lt->name == "process" && callee->text == "run") {
+            if (lt->name == "host_process" && callee->text == "run") {
                 Node* prog = n->body != nullptr ? n->body->left : nullptr;
                 Node* args =
                     n->body != nullptr && n->body->next != nullptr ? n->body->next->left : nullptr;
@@ -824,7 +824,7 @@ auto Emitter::emit_call(Node* n) -> string {
                 string rn = "_lb_pr" + std::to_string(id);
                 return "({ const char* _lb_pp = " + pathc + "; " + aty + " " + an + " = " + a +
                        "; const char* _lb_pd = " + cwd + "; " + setup + "int32_t _lb_st = 0; lb_str _lb_so = {NULL, 0}; lb_str _lb_se = {NULL, "
-                       "0}; int _lb_rc = lb_process_run(_lb_pp, (const char* const*)" +
+                       "0}; int _lb_rc = lb_host_process_run(_lb_pp, (const char* const*)" +
                        an + ".data, " + an +
                        ".length, _lb_pd, " + envdata + ", " + envsize + ", lb_get_alloc(), &_lb_st, &_lb_so, "
                        "&_lb_se); " +
@@ -834,7 +834,7 @@ auto Emitter::emit_call(Node* n) -> string {
                        rn + ".failed = false; " + rn + ".value = ((" + tty +
                        "){ .a0 = _lb_st, .a1 = _lb_so, .a2 = _lb_se }); } " + rn + "; })";
             }
-            if (lt->name == "files" && callee->text == "write") {
+            if (lt->name == "host_files" && callee->text == "write") {
                 Node* parg = n->body != nullptr ? n->body->left : nullptr;
                 string p = parg != nullptr ? emit_expr(parg) : "NULL";
                 string pathc =

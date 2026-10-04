@@ -1,8 +1,9 @@
 ## Lexical filesystem paths. Both slash styles separate components on Windows;
 ## on POSIX a backslash is an ordinary filename byte. No operation touches the disk.
 
-import strings
+import interop
 import platform
+import strings
 
 pub func separator(byte: u8) -> bool:
     return byte == '/' or (platform.windows and byte == 92)
@@ -102,19 +103,45 @@ pub func stem(path: str) -> str:
     return (str)name.bytes[..<name.length - ext.length]
 
 ## Join with a separator only when needed; an absolute right path wins. This is
-## lexical joining, without normalization or filesystem access. The result is a
-## NUL-terminated current-allocator allocation, released with strings.release.
-pub func join(left: str, right: str) -> str!:
+## lexical joining, without normalization or filesystem access. The result is owned, as
+## luce-std's is: a caller reads `.value` and calls `release()`.
+pub func join(left: str, right: str) -> interop.Owned[str]!:
+    let joined = try join_text(left, right)
+    return interop.Owned[str](joined)
+
+func join_text(left: str, right: str) -> str!:
+    let (first, delimiter, second) = join_pieces(left, right)
+    let pieces: str[3] = [first, delimiter, second]
+    return try strings.join(pieces, "")
+
+## Join into `buffer` without allocating, returning a view of it, or "" when it does not
+## fit with its zero byte; the result may be used as a `c.str`.
+pub func join_into(buffer: u8[], left: str, right: str) -> str:
+    let (first, delimiter, second) = join_pieces(left, right)
+    let length = first.length + delimiter.length + second.length
+    if length >= buffer.length:
+        if buffer.length > 0:
+            buffer[0] = 0
+        return ""
+    let pieces: str[3] = [first, delimiter, second]
+    var at: usize = 0
+    for piece in pieces:
+        for byte in piece.bytes:
+            buffer[at] = byte
+            at += 1
+    buffer[at] = 0
+    return (str)buffer[..<length]
+
+## The join rule: what comes first, the separator between, and what follows.
+func join_pieces(left: str, right: str) -> (str, str, str):
     if is_absolute(right) or drive_prefix(right) or left.length == 0:
-        return try strings.copy(right)
+        return ("", "", right)
     if platform.windows and is_rooted(right):
         let prefix = root(left)
         var end = prefix.length
         while end > 0 and separator(prefix.bytes[end - 1]):
             end -= 1
-        let rooted_pieces: str[2] = [(str)prefix.bytes[..<end], right]
-        return try strings.join(rooted_pieces, "")
+        return ((str)prefix.bytes[..<end], "", right)
     let drive_only = drive_prefix(left) and left.length == 2
     let delimiter = "" if separator(left.bytes[left.length - 1]) or drive_only else "/"
-    let pieces: str[2] = [left, right]
-    return try strings.join(pieces, delimiter)
+    return (left, delimiter, right)

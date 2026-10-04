@@ -492,7 +492,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 }
                 return v_unit();
             }
-            if (lt->name == "files" && callee->text == "exists") {
+            if (lt->name == "host_files" && callee->text == "exists") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 if (trapped || returning) {
                     return v_unit();
@@ -504,13 +504,13 @@ auto Interp::eval_call(Node* n) -> Value {
                 } while (result < 0 && errno == EINTR);
                 return v_bool(result == 0);
             }
-            if (lt->name == "files" && (callee->text == "canonical" ||
+            if (lt->name == "host_files" && (callee->text == "canonical" ||
                 callee->text == "create_temporary_directory" || callee->text == "create_directory" ||
                 callee->text == "remove_tree" || callee->text == "rename")) {
                 fail("filesystem ownership operations require compiled execution");
                 return v_unit();
             }
-            if (lt->name == "files" && callee->text == "list") {
+            if (lt->name == "host_files" && callee->text == "list") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string path = cstr_text(pv);
                 if (path.empty()) {
@@ -556,7 +556,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 span.type = sp;
                 return ok_payload(span, n->ty);
             }
-            if (lt->name == "process" && callee->text == "run") {
+            if (lt->name == "host_process" && callee->text == "run") {
                 // The oracle deliberately models only the inherited-state form.
                 // Bootstrap child settings require native OS execution.
                 Node* options = n->body && n->body->next ? n->body->next->next : nullptr;
@@ -689,7 +689,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 tup.fields.push_back(ev);
                 return ok_payload(tup, n->ty);
             }
-            if (lt->name == "files" && callee->text == "read") {
+            if (lt->name == "host_files" && callee->text == "read") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string path = decode_string(pv.str);
                 FILE* f = fopen(path.c_str(), "rb");
@@ -725,7 +725,7 @@ auto Interp::eval_call(Node* n) -> Value {
                 span.type = sp;
                 return ok_payload(span, n->ty);
             }
-            if (lt->name == "files" && callee->text == "write") {
+            if (lt->name == "host_files" && callee->text == "write") {
                 Value pv = n->body != nullptr ? eval(n->body->left) : v_unit();
                 string path = cstr_text(pv);
                 if (path.empty()) {

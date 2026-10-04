@@ -13,8 +13,8 @@ pub func main(arguments: c.str[]) -> i32!:
         try io.stderr().write("usage: lexer FILE\n")
         return 2
     let bytes = try files.read(arguments[1])
-    defer free(bytes)
-    let source = try str(bytes)
+    defer bytes.release()
+    let source = try str(bytes.value)
     var lx = lexer.Lexer.over(source)
     var counts: u32[10]
     while true:

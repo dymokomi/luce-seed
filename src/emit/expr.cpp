@@ -1165,7 +1165,7 @@ auto Emitter::emit_member(Node* n) -> string {
                 return emit_src_function();
             }
         }
-        if (ot->name == "files" && n->text == "missing") {
+        if (ot->name == "host_files" && n->text == "missing") {
             return "2";
         }
         // `module.constant`: a public top-level binding of another module; in a file-scope

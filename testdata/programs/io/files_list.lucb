@@ -4,10 +4,11 @@ import luce_std.files
 
 pub func answer() -> i64!:
     let names = try files.list("testdata/programs")
+    defer names.release()
     var found = 0
-    for name in names:
+    for name in names.value:
         if name == "hello.lucb":
             found = 1
-    if names.length > 0:
+    if names.value.length > 0:
         found += 1
     return i64(found)

@@ -9,22 +9,30 @@ pub func main(arguments: str[]) -> i32!:
     if arguments.length > 1:
         print("child")
         return 0
-    let directory = try files.create_temporary_directory(".", 448u32)
+    let made = try files.create_temporary_directory(".", 448u32)
+    defer made.release()
+    let directory = made.value
     defer files.remove_tree((c.str)directory) catch failure:
         trap(failure.message)
-    let absolute = try files.canonical((c.str)directory)
+    let resolved = try files.canonical((c.str)directory)
+    defer resolved.release()
+    let absolute = resolved.value
     var inner_name: u8[4096]
     let inner = try format(inner_name, f"{absolute}/inner")
     try files.create_directory((c.str)inner, 493u32)
     assert(files.exists((c.str)inner))
     let executable = try files.canonical((c.str)arguments[0])
+    defer executable.release()
     let running = try os.executable()
-    assert(files.exists((c.str)running) and try files.canonical((c.str)running) == executable)
+    let found = try files.canonical((c.str)running)
+    defer found.release()
+    assert(files.exists((c.str)running) and found.value == executable.value)
     let child: c.str[1] = ["child"]
     let variables: c.str[1] = ["LUCE_CHILD_TEST=value"]
     let environment: const c.str[] = variables
-    let (status, output, errors) = try process.run((c.str)executable, child, (c.str)absolute, environment)
-    assert(status == 0 and output == "child\n" and errors.length == 0)
+    let ran = try process.run((c.str)executable.value, child, (c.str)absolute, environment)
+    defer ran.release()
+    assert(ran.value.exit_code == 0 and ran.value.output == "child\n" and ran.value.error_output.length == 0)
     var name: u8[4096]
     let moved = try format(name, f"{absolute}-moved")
     try files.rename((c.str)absolute, (c.str)moved, true)

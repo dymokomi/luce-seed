@@ -877,8 +877,8 @@ TEST(eval_str_invalid_utf8) {
 }
 
 TEST(eval_files_list) {
-    EvalResult r = run("import files\n" "pub func answer() -> i64!:\n"
-                       "    let names = try files.list(\"testdata/programs/values\")\n"
+    EvalResult r = run("import host_files\n" "pub func answer() -> i64!:\n"
+                       "    let names = try host_files.list(\"testdata/programs/values\")\n"
                        "    var found = 0\n"
                        "    for name in names:\n"
                        "        if name == \"hello.lucb\":\n"
@@ -889,13 +889,13 @@ TEST(eval_files_list) {
 }
 
 TEST(eval_process_run) {
-    EvalResult r = run("import process\n" "import c\npub func answer() -> i64!:\n"
+    EvalResult r = run("import host_process\n" "import c\npub func answer() -> i64!:\n"
 #ifdef _WIN32
                  "    var args: c.str[2] = [\"/c\", \"<nul set /p=out& <nul set /p=err>&2& exit /b 7\"]\n"
-                 "    let (code, out, err) = try process.run(\"cmd.exe\", args)\n"
+                 "    let (code, out, err) = try host_process.run(\"cmd.exe\", args)\n"
 #else
                        "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
-                       "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+                       "    let (code, out, err) = try host_process.run(\"/bin/sh\", args)\n"
 #endif
                        "    if out == \"out\" and err == \"err\":\n"
                        "        return i64(code)\n"

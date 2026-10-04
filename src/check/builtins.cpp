@@ -5,7 +5,9 @@
 //   DESCRIPTION:
 //       base.md §16.6 names the standard modules; `luce-base` will write them in Base. The
 //       seed synthesizes their declarations here instead: `memory` and the `Allocator`
-//       interface with `FixedBuffer`, `io` and `Writer`, `Location`, `files`, `process`,
+//       interface with `FixedBuffer`, `io` and `Writer`, `Location`, the host operations
+//       `host_files` and `host_process` (std/files.lucb and std/process.lucb build luce-std's
+//       surface on them),
 //       `thread`, `sync`, `atomic`, `c`, and the compile-time `luce` facts. Every node made
 //       here carries `FlagBuiltin`, which is how the emitter knows the runtime header already
 //       defines the record.
@@ -371,11 +373,11 @@ auto Checker::bind_memory() -> void {
         file_tail->next = function;
         file_tail = function;
     }
-    Node* files = syn_node(NodeKind::Module, "files");
+    Node* files = syn_node(NodeKind::Module, "host_files");
     files->body = f_read;
-    Type* files_t = make_type(TypeKind::Module, "files");
+    Type* files_t = make_type(TypeKind::Module, "host_files");
     files_t->decl = files;
-    bind_builtin_module("files", files_t, files);
+    bind_builtin_module("host_files", files_t, files);
 
     Node* p_run = syn_node(NodeKind::Func, "run");
     p_run->flags |= FlagFallible;
@@ -397,11 +399,11 @@ auto Checker::bind_memory() -> void {
     p_run->right = pr_prog;
     Type* pr_ret[3] = {ty_i32, ty_str, ty_str};
     p_run->ty = intern_tup(pr_ret, 3);
-    Node* process = syn_node(NodeKind::Module, "process");
+    Node* process = syn_node(NodeKind::Module, "host_process");
     process->body = p_run;
-    Type* process_t = make_type(TypeKind::Module, "process");
+    Type* process_t = make_type(TypeKind::Module, "host_process");
     process_t->decl = process;
-    bind_builtin_module("process", process_t, process);
+    bind_builtin_module("host_process", process_t, process);
 
     Node* c_in = syn_node(NodeKind::Func, "stdin");
     c_in->ty = intern_ptr(ty_void, false, false, false);

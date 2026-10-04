@@ -322,7 +322,7 @@ auto Checker::bind(string_view name, Type* type, bool mut, Node* decl, Node* imp
 }
 
 static bool is_std_module(string_view name) {
-    static const char* names[] = {"memory", "io", "files", "process", "atomic", "thread", "sync",
+    static const char* names[] = {"memory", "io", "host_files", "host_process", "atomic", "thread", "sync",
                                   "strings", "paths", "time", "testing", "net", "c",
                                   "luce", "core", "debug"};
     for (const char* n : names) {

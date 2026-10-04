@@ -946,15 +946,15 @@ TEST(check_str_bytes_needs_try) {
 }
 
 TEST(check_files_list_ok) {
-    CHECK(check_ok("import files\n" "pub func answer() -> i64!:\n"
-                   "    let names = try files.list(\".\")\n"
+    CHECK(check_ok("import host_files\n" "pub func answer() -> i64!:\n"
+                   "    let names = try host_files.list(\".\")\n"
                    "    return i64(names.length)\n"));
 }
 
 TEST(check_process_run_ok) {
-    CHECK(check_ok("import process\n" "import c\npub func answer() -> i64!:\n"
+    CHECK(check_ok("import host_process\n" "import c\npub func answer() -> i64!:\n"
                    "    var args: c.str[1] = [\"\"]\n"
-                   "    let (code, out, err) = try process.run(\"/bin/true\", args[0..<0])\n"
+                   "    let (code, out, err) = try host_process.run(\"/bin/true\", args[0..<0])\n"
                    "    discard(out)\n"
                    "    discard(err)\n"
                    "    return i64(code)\n"));
@@ -1022,10 +1022,10 @@ TEST(check_hex_ok) {
 }
 
 TEST(check_process_shadow) {
-    CHECK(check_has("import process\n" "func process() -> i64:\n"
+    CHECK(check_has("import host_process\n" "func host_process() -> i64:\n"
                     "    return 1\n"
                     "pub func answer() -> i64:\n"
-                    "    return process()\n",
+                    "    return host_process()\n",
                     "lucb.check.shadow"));
 }
 

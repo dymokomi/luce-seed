@@ -760,7 +760,7 @@ static int lb_owned_path(lb_iface allocator, const char* path, lb_str* output) {
     return 0;
 }
 
-int lb_files_canonical(lb_iface allocator, const char* path, lb_str* output) {
+int lb_host_files_canonical(lb_iface allocator, const char* path, lb_str* output) {
 #ifdef _WIN32
     wchar_t* input = lb_windows_text(path);
     if (!input) return 7;
@@ -791,7 +791,7 @@ int lb_files_canonical(lb_iface allocator, const char* path, lb_str* output) {
     return result;
 }
 
-int lb_files_temporary_directory(lb_iface allocator, const char* parent, uint32_t permissions, lb_str* output) {
+int lb_host_files_temporary_directory(lb_iface allocator, const char* parent, uint32_t permissions, lb_str* output) {
     size_t size = strlen(parent);
     if (size > SIZE_MAX - 40) return 7;
     char* name = malloc(size + 40);
@@ -904,7 +904,7 @@ intptr_t lb_rt_executable_path(uint8_t* buffer, size_t capacity) {
 }
 
 // One directory under an existing parent; an existing path of any kind is a failure.
-int lb_files_create_directory(const char* path, uint32_t permissions) {
+int lb_host_files_create_directory(const char* path, uint32_t permissions) {
 #ifdef _WIN32
     (void)permissions;
     wchar_t* wide = lb_windows_text(path);
@@ -917,7 +917,7 @@ int lb_files_create_directory(const char* path, uint32_t permissions) {
 #endif
 }
 
-int lb_files_remove_tree(const char* path) {
+int lb_host_files_remove_tree(const char* path) {
 #ifdef _WIN32
     wchar_t* wide = lb_windows_text(path);
     if (!wide) return 7;
@@ -940,7 +940,7 @@ int lb_files_remove_tree(const char* path) {
         char* child = malloc(size);
         if (!child) { result = 1; break; }
         snprintf(child, size, "%s/%s", path, entry->d_name);
-        result = lb_files_remove_tree(child);
+        result = lb_host_files_remove_tree(child);
         free(child);
         if (result) break;
     }
@@ -950,7 +950,7 @@ int lb_files_remove_tree(const char* path) {
 #endif
 }
 
-int lb_files_rename(const char* source, const char* destination, bool replace) {
+int lb_host_files_rename(const char* source, const char* destination, bool replace) {
 #ifdef _WIN32
     wchar_t* from = lb_windows_text(source);
     wchar_t* to = lb_windows_text(destination);
@@ -969,7 +969,7 @@ int lb_files_rename(const char* source, const char* destination, bool replace) {
 }
 
 // Follow symlinks without opening the target; a FIFO lookup must never block.
-bool lb_files_exists(const char* path) {
+bool lb_host_files_exists(const char* path) {
     if (path == NULL) {
         return false;
     }
@@ -980,7 +980,7 @@ bool lb_files_exists(const char* path) {
     return result == 0;
 }
 
-int lb_files_list(lb_iface a, const char* path, lb_span* out) {
+int lb_host_files_list(lb_iface a, const char* path, lb_span* out) {
     if (out == NULL) {
         return 1;
     }
@@ -1233,7 +1233,7 @@ static int lb_read_more(int fd, char** buf, size_t* used, size_t* cap, int* open
     return 0;
 }
 
-int lb_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
+int lb_host_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
                    const char* const* environment, size_t nenvironment, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err) {
     if (program == NULL || nargs > SIZE_MAX / sizeof(char*) - 2) {
@@ -1363,7 +1363,7 @@ static int lb_win_capture(FILE* file, lb_iface alloc, lb_str* output) {
     return failed;
 }
 
-int lb_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
+int lb_host_process_run(const char* program, const char* const* args, size_t nargs, const char* directory,
                    const char* const* environment, size_t nenvironment, lb_iface alloc,
                    int32_t* status, lb_str* out, lb_str* err) {
     if (program == NULL || nargs > SIZE_MAX / sizeof(char*) - 1) return 1;

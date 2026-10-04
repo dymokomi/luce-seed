@@ -44,6 +44,7 @@ pub func main(arguments: c.str[]) -> i32!:
     var arena = try Arena.over(memory.allocator, 1 << 20)
     defer arena.destroy()
     with arena:
-        let text = try files.read(arguments[1])   # allocated in the arena, freed by destroy
-        print(f"{words(text)}")
+        let text = try files.read(arguments[1])   # the bytes in the arena, freed by destroy
+        defer text.release()
+        print(f"{words(text.value)}")
     return 0

@@ -158,8 +158,8 @@ bool load_bytes(Program& program, const string& path, const string& name, const 
                 DiagnosticBag& diagnostics, vector<string>& stack);
 
 bool is_std_module(string_view name) {
-    return name == "memory" || name == "luce" || name == "io" || name == "files" ||
-           name == "process" || name == "c" || name == "atomic" || name == "thread" ||
+    return name == "memory" || name == "luce" || name == "io" || name == "host_files" ||
+           name == "host_process" || name == "c" || name == "atomic" || name == "thread" ||
            name == "sync";
 }
 

@@ -45,8 +45,8 @@ func load(path: c.str, scratch: u8[]) -> Config!:
         if failure.code == files.missing:
             return try parse("name = default\nthreads = 4", scratch)
         error(failure.code, failure.message)
-    defer free(bytes)
-    return try parse(try str(bytes), scratch)
+    defer bytes.release()
+    return try parse(try str(bytes.value), scratch)
 
 pub func main(arguments: c.str[]) -> i32!:
     var scratch: u8[256]

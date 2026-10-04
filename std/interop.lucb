@@ -1,0 +1,13 @@
+## The one carrier of luce-std 0.3 that the compiler's own source uses: a value together with
+## the obligation to release it. The seed's programs run once and exit, so what they are
+## handed is kept until then; `release` is the call luce-std's callers make, with nothing to
+## give back here.
+
+## A value its receiver releases when done with it.
+pub struct Owned[T]:
+    ## The value.
+    pub let value: T
+
+    ## End the receiver's obligation.
+    pub func release():
+        discard(0)

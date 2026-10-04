@@ -694,7 +694,7 @@ auto Interp::eval_member(Node* n) -> Value {
                 return v;
             }
         }
-        if (lt->name == "files" && n->text == "missing") {
+        if (lt->name == "host_files" && n->text == "missing") {
             return v_int(n->ty != nullptr ? n->ty : nullptr, 2);
         }
         // `module.constant`: another module's public top-level binding.

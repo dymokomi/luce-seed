@@ -1,0 +1,56 @@
+## luce-std's `files` in the shapes of its 0.3 surface, over the seed's host operations
+## (`host_files`): what reads or makes text or bytes answers an `interop.Owned` value.
+
+import c
+import host_files
+import interop
+
+## The forms `read` and `list` answer, named because the seed spells a type argument in an
+## expression only by name.
+pub type Bytes = const u8[]
+pub type Names = const str[]
+
+## The file or directory does not exist.
+pub let missing: ErrorCode = host_files.missing
+
+## The whole of the file at `path`, at most `limit` bytes.
+pub func read(path: c.str, limit: usize = ~(usize)0) -> interop.Owned[Bytes]!:
+    let data = try host_files.read(path)
+    if data.length > limit:
+        error(missing, "the file is larger than the limit")
+    return interop.Owned[Bytes](data)
+
+## Replace the file at `path` with `data`.
+pub func write(path: c.str, data: const u8[]) -> !:
+    try host_files.write(path, data)
+
+## Whether anything exists at `path`.
+pub func exists(path: c.str) -> bool:
+    return host_files.exists(path)
+
+## The names in the directory at `path`.
+pub func list(path: c.str) -> interop.Owned[Names]!:
+    let made = try host_files.list(path)
+    return interop.Owned[Names](made)
+
+## The canonical absolute path of `path`.
+pub func canonical(path: c.str) -> interop.Owned[str]!:
+    let made = try host_files.canonical(path)
+    return interop.Owned[str](made)
+
+## A new, empty directory under `parent`.
+pub func create_temporary_directory(parent: c.str, permissions: u32 = 448) -> interop.Owned[str]!:
+    let made = try host_files.create_temporary_directory(parent, permissions)
+    return interop.Owned[str](made)
+
+## Create the directory `path`.
+pub func create_directory(path: c.str, permissions: u32 = 493) -> !:
+    try host_files.create_directory(path, permissions)
+
+## Remove `path` and everything under it.
+pub func remove_tree(path: c.str) -> !:
+    try host_files.remove_tree(path)
+
+## Move `source` to `destination`.
+pub func rename(source: c.str, destination: c.str, replace: bool = true) -> !:
+    try host_files.rename(source, destination, replace)

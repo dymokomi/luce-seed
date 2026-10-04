@@ -773,9 +773,9 @@ TEST(agree_files_roundtrip) {
     lucb::ScratchDir dir;
     CHECK(dir.ok());
     std::string path = dir.path + "/roundtrip.txt";
-    std::string program = "import files\n" "pub func answer() -> i64!:\n"
-                          "    try files.write(\"" + path + "\", \"hi\".bytes)\n"
-                          "    let b = try files.read(\"" + path + "\")\n"
+    std::string program = "import host_files\n" "pub func answer() -> i64!:\n"
+                          "    try host_files.write(\"" + path + "\", \"hi\".bytes)\n"
+                          "    let b = try host_files.read(\"" + path + "\")\n"
                           "    return i64(b.length)\n";
     CHECK(agrees(program.c_str()));
 }
@@ -1286,20 +1286,20 @@ TEST(agree_str_cstr) {
 }
 
 TEST(agree_files_list_missing) {
-    CHECK(agrees("import files\n" "pub func answer() -> i64!:\n"
-                 "    let names = files.list(\"/no/such/lucb_dir\") catch:\n"
+    CHECK(agrees("import host_files\n" "pub func answer() -> i64!:\n"
+                 "    let names = host_files.list(\"/no/such/lucb_dir\") catch:\n"
                  "        return 1\n"
                  "    return i64(names.length)\n"));
 }
 
 TEST(agree_process_run) {
-    const char* program = "import process\n" "import c\npub func answer() -> i64!:\n"
+    const char* program = "import host_process\n" "import c\npub func answer() -> i64!:\n"
 #ifdef _WIN32
                  "    var args: c.str[2] = [\"/c\", \"<nul set /p=out& <nul set /p=err>&2& exit /b 7\"]\n"
-                 "    let (code, out, err) = try process.run(\"cmd.exe\", args)\n"
+                 "    let (code, out, err) = try host_process.run(\"cmd.exe\", args)\n"
 #else
                  "    var args: c.str[2] = [\"-c\", \"printf out; printf err >&2; exit 7\"]\n"
-                 "    let (code, out, err) = try process.run(\"/bin/sh\", args)\n"
+                 "    let (code, out, err) = try host_process.run(\"/bin/sh\", args)\n"
 #endif
                  "    if out == \"out\" and err == \"err\":\n"
                  "        return i64(code)\n"
