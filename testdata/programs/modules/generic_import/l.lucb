@@ -1,7 +1,7 @@
 pub struct List[T]:
     var items: T[]
     var count: usize
-    pub func create(capacity: usize) -> List[T]!:
+    pub static func create(capacity: usize) -> List[T]!:
         return List[T](items = try new T[capacity] ---, count = 0)
     pub func push(item: T) -> !:
         self.items[self.count] = item

@@ -1,6 +1,6 @@
 struct P:
     var offset: usize
-    func fail(what: str) -> i64!:
+    static func fail(what: str) -> i64!:
         error(1, what)
     func parse() -> i64!:
         return try self.fail("unexpected")

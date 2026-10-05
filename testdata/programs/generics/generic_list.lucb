@@ -6,7 +6,7 @@ pub struct List[T]:
     var length: usize
     var allocator: Allocator
 
-    pub func create(capacity: usize) -> List[T]!:
+    pub static func create(capacity: usize) -> List[T]!:
         return List(items = try new T[capacity] ---, length = 0, allocator = memory.allocator)
 
     pub func push(item: T) -> !:

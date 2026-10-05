@@ -180,7 +180,7 @@ auto Parser::weak_is_attribute() -> bool {
                     t.text == "naked" || t.text == "used")) {
             i += 1;
         } else {
-            return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwVar ||
+            return t.kind == TokenKind::KwFunc || t.kind == TokenKind::KwStatic || t.kind == TokenKind::KwVar ||
                    (t.kind == TokenKind::Name && t.text == "local");
         }
     }
@@ -293,7 +293,7 @@ auto Parser::parse_top() -> Node* {
     if (at(TokenKind::KwType)) {
         return parse_type_alias(flags);
     }
-    if (at(TokenKind::KwFunc) || at_name("inline") || at(TokenKind::KwExtern)) {
+    if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at_name("inline") || at(TokenKind::KwExtern)) {
         if (at(TokenKind::KwExtern)) {
             return parse_extern(flags);
         }
@@ -431,6 +431,10 @@ auto Parser::parse_func(uint32_t flags) -> Node* {
     Token start = cur();
     Node* attrs = nullptr;
     flags |= parse_attributes(&attrs);
+    // `static func` inside a type declares a function of the type, with no receiver (§9.5)
+    if (eat(TokenKind::KwStatic)) {
+        flags |= FlagStatic;
+    }
     expect(TokenKind::KwFunc, "lucb.parse.expect", "expected `func`");
     Node* n = make(NodeKind::Func, start.span);
     n->attrs = attrs;
@@ -650,7 +654,7 @@ auto Parser::parse_type_member(bool is_extern) -> Node* {
         f->span = span_from(start);
         return f;
     }
-    if (at(TokenKind::KwFunc) || at_name("inline")) {
+    if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || at_name("inline")) {
         return parse_func(flags);
     }
     fail("lucb.parse.expect", "expected a field or method");
@@ -694,7 +698,7 @@ auto Parser::parse_enum(uint32_t flags) -> Node* {
         if (eat(TokenKind::KwPub)) {
             mflags |= FlagPub;
         }
-        if (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name) {
+        if (at(TokenKind::KwStatic) || (at(TokenKind::KwFunc) && peek(1).kind == TokenKind::Name)) {
             append(&n->body, parse_func(mflags));
             continue;
         }
@@ -737,7 +741,7 @@ auto Parser::parse_union(uint32_t flags) -> Node* {
         if (at(TokenKind::Dedent)) {
             break;
         }
-        if (at(TokenKind::KwFunc) || (at(TokenKind::KwPub) && peek(1).kind != TokenKind::Name)) {
+        if (at(TokenKind::KwFunc) || at(TokenKind::KwStatic) || (at(TokenKind::KwPub) && peek(1).kind != TokenKind::Name)) {
             uint32_t mflags = 0;
             if (eat(TokenKind::KwPub)) {
                 mflags |= FlagPub;

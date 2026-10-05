@@ -7,7 +7,7 @@ pub struct Builder: Writer:
     var length: usize
     var allocator: Allocator
 
-    pub func create(capacity: usize) -> Builder!:
+    pub static func create(capacity: usize) -> Builder!:
         return Builder(bytes = try new u8[capacity] ---, length = 0, allocator = memory.allocator)
 
     pub func write(data: const u8[]) -> usize!:

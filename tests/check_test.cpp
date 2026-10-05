@@ -95,13 +95,18 @@ TEST(check_foreign_declarations_and_requirements) {
     CHECK(check_has("pub func answer() -> i64:\n    var a: u8[2 - 3]\n    return 40\n", "lucb.check.type"));
 }
 
-// A function inside a type that never names `self` is the type's (§9.5), called through the
-// type; one that implements a requirement stays a method though it does not name `self`.
-TEST(check_type_functions_are_inferred) {
-    CHECK(check_ok("struct P:\n    var x: i64\n    func origin() -> P:\n        return P(x = 2)\n"
+// `static func` declares a function of a type (§9.5), called through the type; any other
+// function in a type is a method, whether or not its body names `self`. `static` belongs to a
+// type's function, never `init`, and never satisfies a requirement.
+TEST(check_type_functions_are_static) {
+    CHECK(check_ok("struct P:\n    var x: i64\n    static func origin() -> P:\n        return P(x = 2)\n"
                    "pub func answer() -> i64:\n    return P.origin().x + 40\n"));
     CHECK(check_ok("interface Named:\n    func name() -> i64\nstruct P: Named:\n    var x: i64\n    func name() -> i64:\n        return 1\n"
                    "pub func answer() -> i64:\n    var p = P(x = 0)\n    let n: Named = &p\n    return n.name() + p.name() + 40\n"));
+    CHECK(check_has("interface Named:\n    func name() -> i64\nstruct P: Named:\n    var x: i64\n    static func name() -> i64:\n        return 1\n"
+                    "pub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_has("static func f() -> i64:\n    return 1\npub func answer() -> i64:\n    return f()\n", "lucb.check.type"));
+    CHECK(check_has("struct P:\n    var x: i64\n    static func init():\n        return\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
 }
 
 TEST(check_type_mismatch) {

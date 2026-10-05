@@ -18,7 +18,7 @@ pub struct Lexer:
     var depth: usize
     var pending_dedents: usize
 
-    pub func over(text: str) -> Lexer:
+    pub static func over(text: str) -> Lexer:
         var lexer = Lexer(source = text.bytes, offset = 0, line = 1, at_line_start = true, depth = 0, pending_dedents = 0)
         lexer.levels[0] = 0
         return lexer
@@ -28,10 +28,10 @@ pub struct Lexer:
             return 0
         return self.source[self.offset]
 
-    func is_letter(c: u8) -> bool:
+    static func is_letter(c: u8) -> bool:
         return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
 
-    func is_digit(c: u8) -> bool:
+    static func is_digit(c: u8) -> bool:
         return c >= '0' and c <= '9'
 
     func make(kind: token.Kind, start: usize) -> token.Token:

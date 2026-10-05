@@ -8,7 +8,7 @@ pub struct Arena: Allocator:
     var block: u8[]
     var used: usize
 
-    pub func over(parent: Allocator, capacity: usize) -> Arena!:
+    pub static func over(parent: Allocator, capacity: usize) -> Arena!:
         with parent:
             return Arena(parent = parent, block = try memory.allocate(capacity, 16), used = 0)
 

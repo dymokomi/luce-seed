@@ -32,7 +32,7 @@ pub struct Machine:
     var frame_count: usize
     pub var steps: u64
 
-    pub func create() -> Machine:
+    pub static func create() -> Machine:
         return Machine(top = 0, frame_count = 0, steps = 0)
 
     func push(value: i64) -> !:

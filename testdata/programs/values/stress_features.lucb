@@ -11,7 +11,7 @@ struct Stack[T]:
     var count: usize
     var allocator: Allocator
 
-    func create() -> Stack[T]!:
+    static func create() -> Stack[T]!:
         return Stack[T](data = try new T[4] ---, count = 0, allocator = memory.allocator)
 
     func push(value: T) -> !:

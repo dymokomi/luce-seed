@@ -114,11 +114,12 @@ TEST(lex_base_only_keywords) {
 }
 
 // The words that left the language (§3.6): `local` and `export` mean something in one place
-// each, and `alloc`, `goto`, `mutating` and `static` nothing at all.
+// each, and `alloc`, `goto` and `mutating` nothing at all; `static` declares a function of a
+// type (§9.5), so it stays reserved.
 TEST(lex_former_keywords_are_names) {
     Lexed lexed("alloc goto mutating static local export\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"name", "name", "name", "name", "name", "name", "newline", "eof"}));
+    CHECK(kinds_eq(lexed, {"name", "name", "name", "static", "name", "name", "newline", "eof"}));
 }
 
 TEST(lex_full_luce_words_stay_keywords) {

@@ -12,7 +12,7 @@ pub struct Parser:
     var offset: usize
     var scratch: u8[]
 
-    pub func over(text: str, scratch: u8[]) -> Parser:
+    pub static func over(text: str, scratch: u8[]) -> Parser:
         return Parser(input = text.bytes, offset = 0, scratch = scratch)
 
     func peek() -> u8:

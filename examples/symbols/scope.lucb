@@ -21,7 +21,7 @@ pub struct Table:
     var marks: usize[16]
     pub var depth: u32
 
-    pub func create(capacity: usize) -> Table!:
+    pub static func create(capacity: usize) -> Table!:
         return Table(symbols = try new Symbol[capacity] ---, count = 0, depth = 0)
 
     pub func enter():

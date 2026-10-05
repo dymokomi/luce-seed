@@ -1,9 +1,9 @@
 pub let syntax: ErrorCode = ErrorCode.package(1)
 struct P:
     var offset: usize
-    func fail(what: str) -> i64*!:
+    static func fail(what: str) -> i64*!:
         error(syntax, what)
-    func word(text: str) -> bool:
+    static func word(text: str) -> bool:
         return false
     func parse() -> i64*!:
         if self.word("true"):

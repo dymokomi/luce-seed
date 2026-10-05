@@ -371,11 +371,9 @@ struct Checker {
     bool sig_matches(Node* impl, Node* req, Type* iface);
     Type* requirement_type(Type* t, Type* iface);
     void check_implements(Node* st);
-    void infer_receivers(Node* mod);
+    void mark_receivers(Node* mod);
     bool is_method_value(const Node* n);
     bool receiver_constness_differs(Type* got, Type* expected);
-    void keep_requirement_methods(Node* mod);
-    bool implements_requirement(Node* type_decl, string_view name);
     void check_interface(Node* iface);
     void collect_type_decl(Node* d, TypeKind kind);
     void collect_module(Node* mod);

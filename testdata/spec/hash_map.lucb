@@ -9,7 +9,7 @@ pub struct Map[K: Hashable & Equatable, V]:
     var count: usize
     var allocator: Allocator
 
-    pub func create(capacity: usize) -> Map[K, V]!:
+    pub static func create(capacity: usize) -> Map[K, V]!:
         return Map(keys = try new K[capacity] ---, values = try new V[capacity] ---,
                    used = try new bool[capacity], count = 0, allocator = memory.allocator)
 

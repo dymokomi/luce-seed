@@ -678,6 +678,12 @@ auto Checker::check_func(Node* fn, Node* owner) -> void {
     return_type = result;
     fallible_fn = (fn->flags & FlagFallible) != 0;
     push_scope();
+    if (owner == nullptr && (fn->flags & FlagStatic) != 0) {
+        fail_n(fn, "lucb.check.type", "`static` declares a function of a type; a top-level function has no type (§9.5)");
+    }
+    if ((fn->flags & FlagStatic) != 0 && fn->text == "init") {
+        fail_n(fn, "lucb.check.type", "`init` initialises a value; it is never `static` (§10.1)");
+    }
     if (owner != nullptr && (fn->flags & FlagStatic) == 0) {
         if (fn->text == "init") {
             fn->flags |= FlagMutating;
@@ -843,69 +849,22 @@ auto Checker::check_implements(Node* st) -> void {
     }
 }
 
-// Whether the tree under `n` names `self`.
-static auto mentions_self(const Node* n) -> bool {
-    for (; n != nullptr; n = n->next) {
-        if (n->kind == NodeKind::Self || mentions_self(n->left) || mentions_self(n->right) ||
-            mentions_self(n->body) || mentions_self(n->type)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// What a function inside a type is, which Base infers rather than declares (§9.5): one whose
-// body never names `self` is a type function, unless it is `init` or implements a requirement
-// (`keep_requirement_methods`). luce-base decides which methods change their receiver; the
-// seed builds a compiler luce-base has already checked, so every method here may: its
-// receiver is a `T*`. Decided before the module's types are collected, since an alias may
-// instantiate a generic type there.
-auto Checker::infer_receivers(Node* mod) -> void {
+// What a function inside a type is (§9.5): `static func` declares a function of the type,
+// with no receiver; any other is a method. luce-base decides which methods change their
+// receiver; the seed builds a compiler luce-base has already checked, so every method here
+// may: its receiver is a `T*`. Decided before the module's types are collected, since an
+// alias may instantiate a generic type there.
+auto Checker::mark_receivers(Node* mod) -> void {
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->kind != NodeKind::Struct && d->kind != NodeKind::Enum && d->kind != NodeKind::Union) {
             continue;
         }
         for (Node* m = d->body; m != nullptr; m = m->next) {
-            if (m->kind != NodeKind::Func) {
-                continue;
-            }
-            m->flags |= (m->text == "init" || mentions_self(m->body)) ? FlagMutating : FlagStatic;
-        }
-    }
-}
-
-// A function that implements a requirement of an interface its type conforms to is a method,
-// whether or not it names `self` (§9.5); the interfaces resolve once the module is collected.
-auto Checker::keep_requirement_methods(Node* mod) -> void {
-    for (Node* d = mod->body; d != nullptr; d = d->next) {
-        if (d->kind != NodeKind::Struct && d->kind != NodeKind::Enum) {
-            continue;
-        }
-        for (Node* m = d->body; m != nullptr; m = m->next) {
-            if (m->kind == NodeKind::Func && (m->flags & FlagStatic) != 0 && implements_requirement(d, m->text)) {
-                m->flags = (m->flags & ~static_cast<uint64_t>(FlagStatic)) | FlagMutating;
+            if (m->kind == NodeKind::Func && (m->flags & FlagStatic) == 0) {
+                m->flags |= FlagMutating;
             }
         }
     }
-}
-
-// Whether `name` is a requirement of an interface `type_decl` declares conformance to.
-auto Checker::implements_requirement(Node* type_decl, string_view name) -> bool {
-    for (Node* t = type_decl->right; t != nullptr; t = t->next) {
-        if (t->kind != NodeKind::Type || (t->flags & (FlagStar | FlagSpan | FlagArray)) != 0) {
-            continue;
-        }
-        Type* iface = resolve_type(t);
-        if (iface == nullptr || iface->kind != TypeKind::Interface || iface->decl == nullptr) {
-            continue;
-        }
-        for (Node* req = iface->decl->body; req != nullptr; req = req->next) {
-            if (req->kind == NodeKind::Func && req->text == name) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 // A requirement's type as the conformance sees it: the interface's parameters replaced by
@@ -1643,14 +1602,13 @@ auto Checker::check_module(Node* mod) -> void {
     push_scope();
     bind_memory();
     bind_imports(mod);
-    infer_receivers(mod);
+    mark_receivers(mod);
     collect_module(mod);
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->kind == NodeKind::Interface) {
             check_interface(d);
         }
     }
-    keep_requirement_methods(mod);
     for (Node* d = mod->body; d != nullptr; d = d->next) {
         if (d->kind == NodeKind::Struct) {
             check_struct(d);

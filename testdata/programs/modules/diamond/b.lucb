@@ -3,7 +3,7 @@ pub func make_top() -> a.Node*!:
     return try new a.Node(v = 40)
 pub struct P:
     var n: i64
-    pub func create() -> P:
+    pub static func create() -> P:
         return P(n = 39)
     pub func make() -> a.Node*!:
         self.n += 1

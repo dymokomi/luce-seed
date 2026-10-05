@@ -56,6 +56,7 @@ constexpr KeywordEntry k_keywords[] = {
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
     {"spawn", TokenKind::KwSpawn},
+    {"static", TokenKind::KwStatic},
     {"struct", TokenKind::KwStruct},
     {"test", TokenKind::KwTest},
     {"true", TokenKind::KwTrue},
@@ -194,6 +195,8 @@ const char* token_kind_name(TokenKind kind) {
         return "self";
     case TokenKind::KwSpawn:
         return "spawn";
+    case TokenKind::KwStatic:
+        return "static";
     case TokenKind::KwStruct:
         return "struct";
     case TokenKind::KwTest:

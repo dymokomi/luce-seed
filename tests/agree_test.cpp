@@ -133,7 +133,7 @@ TEST(agree_closed_range_at_the_maximum) {
 }
 
 TEST(agree_symbol_pieces_stay_distinct) {
-    CHECK(agrees("struct A:\n    var n: i64\n    func b_c() -> i64:\n        return 1 + self.n\nstruct A_b:\n    var n: i64\n    func c() -> i64:\n        return 2 + self.n\nfunc x_y() -> i64:\n    return 3\nstruct X:\n    var n: i64\n    func y() -> i64:\n        return 4\npub func answer() -> i64:\n    let a = A(n = 0)\n    let ab = A_b(n = 0)\n    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194\n"));
+    CHECK(agrees("struct A:\n    var n: i64\n    func b_c() -> i64:\n        return 1 + self.n\nstruct A_b:\n    var n: i64\n    func c() -> i64:\n        return 2 + self.n\nfunc x_y() -> i64:\n    return 3\nstruct X:\n    var n: i64\n    static func y() -> i64:\n        return 4\npub func answer() -> i64:\n    let a = A(n = 0)\n    let ab = A_b(n = 0)\n    return a.b_c() * 1000 + ab.c() * 100 + x_y() * 10 + X.y() - 1194\n"));
 }
 
 TEST(agree_zero_hashes_and_float_divide_assign) {
@@ -1179,7 +1179,7 @@ TEST(agree_user_arena) {
                  "    var parent: Allocator\n"
                  "    var block: u8[]\n"
                  "    var used: usize\n"
-                 "    pub func over(parent: Allocator, capacity: usize) -> Arena!:\n"
+                 "    pub static func over(parent: Allocator, capacity: usize) -> Arena!:\n"
                  "        with parent:\n"
                  "            return Arena(parent = parent, block = try memory.allocate(capacity, 8), used = 0)\n"
                  "    pub func allocate(size: usize, alignment: usize) -> u8[]?:\n"

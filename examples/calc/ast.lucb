@@ -12,7 +12,7 @@ pub struct Parser:
     var current: lexer.Token
     var allocator: Allocator
 
-    pub func over(text: str) -> Parser!:
+    pub static func over(text: str) -> Parser!:
         var lx = lexer.Lexer.over(text)
         let first = try lx.next()
         return Parser(lexer = lx, current = first, allocator = memory.allocator)

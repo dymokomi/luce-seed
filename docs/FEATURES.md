@@ -30,7 +30,7 @@ not land in this tree).
 | 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
-| 3.6 | `alloc`, `goto`, `mutating`, `static` are names; `local` and `export` words in one place each | done | `lex_former_keywords_are_names`, `parse_former_keywords_are_names` |
+| 3.6 | `alloc`, `goto`, `mutating` are names; `static` is reserved; `local` and `export` words in one place each | done | `lex_former_keywords_are_names`, `parse_former_keywords_are_names` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |
 | 9–10 | Func/struct/enum/union/interface syntax | done | `parse_test`; field defaults `agree_field_default`; aliases, `func` values, default args, `_ = value` |
 | 13–14 | Generics/interfaces as syntax | done | `parse_generic_func`, `parse_interface`; interface semantics in M12 |
@@ -60,7 +60,7 @@ not land in this tree).
 | 9.2 | Default parameters | done | `agree_default_args`, `agree_named_default`, `eval_default_args` |
 | 9.3 | Multiple results / tuples | done | `agree_tuple` |
 | 9.4 | Function values | done | `agree_func_value`, `agree_method_value`, `agree_func_to_fallible`, `agree_program_fnptr_table`, `check_func_must_be_called` |
-| 9.5 | Methods, implicit `self`, inferred type functions | partial | `eval_struct_method`, `agree_program_enum_methods`, `check_enum_method`, `check_explicit_self_rejected`, `check_type_functions_are_inferred` |
+| 9.5 | Methods, implicit `self`, `static` type functions | partial | `eval_struct_method`, `agree_program_enum_methods`, `check_enum_method`, `check_explicit_self_rejected`, `check_type_functions_are_static` |
 | 9.6 | Capture-free lambdas | done | `agree_lambda`, `eval_lambda`, `check_lambda_ok`, `check_lambda_capture_rejected` |
 | 11.5 | Traps | partial | overflow, division by zero, `trap()` |
 | 19.1 | Compile to native via C | partial | `agree_test`; host `cc` |

@@ -7,7 +7,7 @@ struct Cursor:
         let v = self.items[self.pos]
         self.pos += 1
         return v
-    func twice(v: i64) -> i64:
+    static func twice(v: i64) -> i64:
         return v * 2
     func next_twice() -> i64:
         return self.twice(self.take())

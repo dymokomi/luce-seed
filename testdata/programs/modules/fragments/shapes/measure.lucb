@@ -7,5 +7,5 @@ extend Rect:
         return self.area() * units.scale
 
     ## The line `luce.line` is written on: 11 of this fragment, not of the assembled module.
-    pub func here() -> u32:
+    pub static func here() -> u32:
         return luce.line

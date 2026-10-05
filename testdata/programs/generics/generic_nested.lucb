@@ -3,7 +3,7 @@ import memory
 pub struct Vec[T]:
     var items: T[]
     var length: usize
-    pub func create(capacity: usize) -> Vec[T]!:
+    pub static func create(capacity: usize) -> Vec[T]!:
         return Vec(items = try new T[capacity] ---, length = 0)
     pub func push(item: T) -> !:
         if self.length == self.items.length:

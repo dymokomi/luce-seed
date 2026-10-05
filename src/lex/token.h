@@ -68,6 +68,7 @@ enum class TokenKind : uint16_t {
     KwReturn,
     KwSelf,
     KwSpawn,
+    KwStatic,
     KwStruct,
     KwTest,
     KwTrue,

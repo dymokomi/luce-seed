@@ -460,7 +460,7 @@ TEST(parse_keyword_is_not_a_field_name) {
 }
 
 TEST(parse_former_keywords_are_names) {
-    Parsed p("func f(static: i64, goto: i64) -> i64:\n    let alloc = static + goto\n    _ = alloc\n    return alloc\n"
+    Parsed p("func f(mutating: i64, goto: i64) -> i64:\n    let alloc = mutating + goto\n    _ = alloc\n    return alloc\n"
              "local var mutating: i64\n"
              "export func exported() -> i64:\n    return 1\n");
     CHECK(p.diagnostics.empty());

@@ -1,7 +1,7 @@
 struct Lexer:
     var levels: u32[32]
     var depth: usize
-    func over() -> Lexer:
+    static func over() -> Lexer:
         var lexer = Lexer(depth = 0)
         lexer.levels[0] = 0
         return lexer

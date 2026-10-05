@@ -9,7 +9,7 @@ pub struct Ring:
     var count: usize
     var allocator: Allocator
 
-    pub func create(capacity: usize) -> Ring!:
+    pub static func create(capacity: usize) -> Ring!:
         return Ring(items = try new u32[capacity], head = 0, count = 0, allocator = memory.allocator)
 
     pub func push(value: u32) -> !:
