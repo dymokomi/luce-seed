@@ -10,9 +10,11 @@
 #       even, as David Gay's dtoa rounds them. The text goes to a `Sink` piece by piece, so
 #       nothing is allocated and nothing bounds a field but the sink. The compiler reads a
 #       field's specification with `read` and `misfit` and refuses one that does not fit;
-#       the program lays the field out with `lay_integer`, `lay_float` or `lay_text`. The port of Luce's
-#       numerals (luce src/support/numerals.lucb), whose layout it keeps. It comes after
-#       `float_text` and before `core`, and needs nothing else.
+#       the program lays the field out with `lay_integer`, `lay_float` or `lay_text`. It is
+#       the one implementation: Luce lays out its fields and rounds `math.round` with it too,
+#       wording a misfit in its own terms from `misfit_of` (luce src/support/number_text.lucb),
+#       and the seed carries a copy of this file. It comes after `float_text` and before
+#       `core`, and needs nothing else.
 #
 #==============================================================================================
 
@@ -144,44 +146,114 @@ pub func read(text: str) -> Reading:
         spec.kind = b[at]
     return Reading(spec = spec, problem = "")
 
-## What is wrong with `spec` for a value of `category`: empty when it fits (§5.5).
-pub func misfit(spec: Spec, category: Category) -> str:
+## Why a specification does not fit a value of its category, for its caller to word.
+pub enum Misfit:
+    ## It fits.
+    fits
+    ## An integer with `e`, `f`, `g`, `%` or their upper cases.
+    float_type_of_integer
+    ## An integer with a type letter of no number.
+    integer_type
+    ## An integer with a precision.
+    integer_precision
+    ## An integer with `z`.
+    integer_z
+    ## A `c` with a sign.
+    scalar_sign
+    ## A `c` with `#`.
+    scalar_alternate
+    ## `,` with `b`, `o`, `x` or `X`.
+    comma_grouping
+    ## A `c` with `_`.
+    scalar_grouping
+    ## A float with a type letter of no float.
+    float_type
+    ## Text with a type letter other than `s`.
+    text_type
+    ## Text with a sign.
+    text_sign
+    ## Text with `z`.
+    text_z
+    ## Text with `#`.
+    text_alternate
+    ## Text aligned with `=`.
+    text_after_sign
+    ## Text with grouping.
+    text_grouping
+
+## Why `spec` does not fit a value of `category`, or `fits` (§5.5).
+pub func misfit_of(spec: Spec, category: Category) -> Misfit:
     let k = spec.kind
     match category:
         .integer:
             if k == 'e' or k == 'E' or k == 'f' or k == 'F' or k == 'g' or k == 'G' or k == '%':
-                return "its type letter formats a float; convert the integer with `f64(...)` first"
+                return Misfit.float_type_of_integer
             if k != 0 and k != 'd' and k != 'b' and k != 'o' and k != 'x' and k != 'X' and k != 'c':
-                return "an integer is formatted with `d`, `b`, `o`, `x`, `X` or `c`"
+                return Misfit.integer_type
             if spec.precision >= 0:
-                return "an integer takes no precision"
+                return Misfit.integer_precision
             if spec.no_negative_zero:
-                return "`z` belongs to a float"
+                return Misfit.integer_z
             if k == 'c' and spec.sign != 0:
-                return "`c` takes no sign"
+                return Misfit.scalar_sign
             if k == 'c' and spec.alternate:
-                return "`c` takes no `#`"
+                return Misfit.scalar_alternate
             if spec.grouping == ',' and k != 0 and k != 'd':
-                return "`,` groups decimal digits; `_` groups `b`, `o`, `x` and `X`"
+                return Misfit.comma_grouping
             if spec.grouping == '_' and k == 'c':
-                return "`c` takes no grouping"
+                return Misfit.scalar_grouping
         .floating:
             if k != 0 and k != 'e' and k != 'E' and k != 'f' and k != 'F' and k != 'g' and k != 'G' and k != '%':
-                return "a float is formatted with `e`, `E`, `f`, `F`, `g`, `G` or `%`"
+                return Misfit.float_type
         .text:
             if k != 0 and k != 's':
-                return "text is formatted with `s` or no type"
+                return Misfit.text_type
             if spec.sign != 0:
-                return "a sign belongs to a number"
+                return Misfit.text_sign
             if spec.no_negative_zero:
-                return "`z` belongs to a float"
+                return Misfit.text_z
             if spec.alternate:
-                return "`#` belongs to a number"
+                return Misfit.text_alternate
             if spec.align == '=':
-                return "`=` aligns a number after its sign"
+                return Misfit.text_after_sign
             if spec.grouping != 0:
-                return "grouping belongs to a number"
-    return ""
+                return Misfit.text_grouping
+    return Misfit.fits
+
+## What is wrong with `spec` for a value of `category`, in Base's terms: empty when it
+## fits (§5.5).
+pub func misfit(spec: Spec, category: Category) -> str:
+    match misfit_of(spec, category):
+        .fits:
+            return ""
+        .float_type_of_integer:
+            return "its type letter formats a float; convert the integer with `f64(...)` first"
+        .integer_type:
+            return "an integer is formatted with `d`, `b`, `o`, `x`, `X` or `c`"
+        .integer_precision:
+            return "an integer takes no precision"
+        .integer_z, .text_z:
+            return "`z` belongs to a float"
+        .scalar_sign:
+            return "`c` takes no sign"
+        .scalar_alternate:
+            return "`c` takes no `#`"
+        .comma_grouping:
+            return "`,` groups decimal digits; `_` groups `b`, `o`, `x` and `X`"
+        .scalar_grouping:
+            return "`c` takes no grouping"
+        .float_type:
+            return "a float is formatted with `e`, `E`, `f`, `F`, `g`, `G` or `%`"
+        .text_type:
+            return "text is formatted with `s` or no type"
+        .text_sign:
+            return "a sign belongs to a number"
+        .text_alternate:
+            return "`#` belongs to a number"
+        .text_after_sign:
+            return "`=` aligns a number after its sign"
+        .text_grouping:
+            return "grouping belongs to a number"
 
 ## The fill and alignment a field uses: the written ones, else the defaults, a number to
 ## the right and text to the left, and `0` before the width filling with zeros after the
@@ -262,13 +334,17 @@ func larger(a: i64, b: i64) -> i64:
 ## Digits, a virtual `0` outside `[0, count)`: an integer's in its base, or the exact
 ## decimal digits of a float's magnitude, `0.d1d2d3... × 10^point`, at most 767 significant
 ## digits for any finite f64 and no trailing zero.
-struct Decimal:
-    var digits: u8[800]
-    var count: usize
-    var point: i64
+pub struct Decimal:
+    ## The digits, as ASCII; the first `count` are meaningful.
+    pub var digits: u8[800]
+    ## How many digits there are; 0 is zero.
+    pub var count: usize
+    ## Where the point stands: before `digits[point]`, a negative `point` that many zeros
+    ## earlier.
+    pub var point: i64
 
     ## The digit at virtual index `i`.
-    func at(i: i64) -> u8:
+    pub func at(i: i64) -> u8:
         return self.digits[(usize)i] if i >= 0 and i < (i64)self.count else '0'
 
 ## The digits of `magnitude` in `base` (2, 8, 10 or 16), lower case.
@@ -418,6 +494,13 @@ func round_to(d: Decimal*, keep: i64):
     if d.count == 1 and d.digits[0] == '0':
         d.count = 0
 
+## The exact decimal digits of finite |value| rounded half to even to `places` after the
+## point (before it, for a negative `places`), as dtoa's mode 3 makes them for Python's
+## `round(x, places)`: no trailing zero, zero as `0` at point 1, and no digit at all, at
+## point `-places`, when the rounding leaves nothing.
+pub func decimal_places(value: f64, places: i64) -> Decimal:
+    return digits_of(value, 3, places)
+
 ## dtoa's mode 2 (`n` significant digits) or mode 3 (`n` digits after the point, any sign)
 ## of a finite |value|: rounded half to even, no trailing zero, zero as `0` at point 1, and
 ## nothing left at point `-n` when mode 3 rounds it all away.
@@ -533,7 +616,7 @@ func add_rest(n: Number*, bytes: const u8[]):
 pub func lay_integer(sink: Sink, negative: bool, magnitude: u64, specification: str) -> bool:
     let spec = settled(specification, true)
     if spec.kind == 'c':
-        if negative or magnitude > 0x10FFFF or (magnitude >= 0xD800 and magnitude <= 0xDFFF):
+        if not is_scalar(negative, magnitude):
             trap("a `c` field's number names no Unicode scalar")
         var n = number(integer_digits(0, 10))
         n.first = n.point
@@ -557,8 +640,14 @@ pub func lay_integer(sink: Sink, negative: bool, magnitude: u64, specification: 
         n.prefix = prefix
     return lay_number(sink, &n, spec, spec.kind == 'X')
 
+## Whether the integer of `negative` and `magnitude` names a Unicode scalar, as a `c`
+## field's number must: from 0 to U+10FFFF, not a surrogate. A caller that must not trap
+## asks before laying a `c` field out.
+pub func is_scalar(negative: bool, magnitude: u64) -> bool:
+    return not negative and magnitude <= 0x10FFFF and (magnitude < 0xD800 or magnitude > 0xDFFF)
+
 ## The UTF-8 of scalar `value` in `buffer`, which holds four bytes.
-func encode_scalar(value: u32, buffer: u8[]) -> const u8[]:
+pub func encode_scalar(value: u32, buffer: u8[]) -> const u8[]:
     if value < 0x80:
         buffer[0] = (u8)value
         return buffer[..<1]
