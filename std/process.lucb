@@ -4,6 +4,7 @@
 import c
 import host_process
 import interop
+import io
 
 ## What a program `run` waited for left behind.
 pub struct Completed:
@@ -21,3 +22,12 @@ pub func run(program: c.str, arguments: const c.str[], directory: c.str = "", en
     let inherited = environment == none and *(const u8*)directory == 0
     let (code, output, error_output) = try host_process.run(program, arguments) if inherited else try host_process.run(program, arguments, directory, environment)
     return interop.Owned[Completed](Completed(exit_code = code, output = output, error_output = error_output))
+
+## Run `program` with `arguments`, wait for it, and answer its exit status. luce-std's
+## `call` lets the child write to this process's streams as it goes; the seed's host
+## operation captures, so what the child wrote is passed on once it ends.
+pub func call(program: c.str, arguments: const c.str[], directory: c.str = "", environment: const c.str[]? = none) -> i32!:
+    let done = try run(program, arguments, directory, environment)
+    _ = try io.stdout().write(done.value.output.bytes)
+    _ = try io.stderr().write(done.value.error_output.bytes)
+    return done.value.exit_code
