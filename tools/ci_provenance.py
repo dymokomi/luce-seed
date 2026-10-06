@@ -26,7 +26,6 @@ for path in paths:
         repos.append(dict(path=str(path.resolve()), revision=command(["git", "rev-parse", "HEAD"], path),
                           changes=command(["git", "status", "--porcelain"], path),
                           version=(path / "VERSION").read_text().strip()))
-pins = {str(p): p.read_text().strip() for p in (Path("bootstrap/SEED"), Path("bootstrap/BASE")) if p.exists()}
 print(json.dumps(dict(host=host, os=platform.platform(), cc=command(["cc", "--version"]),
                      python=platform.python_version(), cmake=command(["cmake", "--version"]),
-                     pins=pins, repositories=repos), indent=2))
+                     repositories=repos), indent=2))
