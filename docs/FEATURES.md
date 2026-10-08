@@ -121,6 +121,7 @@ not land in this tree).
 | 8.3 | Unicode `for character in text` | out of seed | `str` is a byte view; iterate `text.bytes` |
 | 5.4 | span `first` / `last` / `indexed` | out of seed | index and slice are enough |
 | 11.3 | `ErrorCode.package` | done | `agree_program_errorcode`, `check_errorcode_package_ok`; integer codes still accepted by `error` |
+| 11.3 | A caught failure's message stays in its handler; `error` copies its message | done | `check_handled_message_stays_in_its_handler`, `check_error_message_from_local_through_let`; luce-base's conformance `11_failure` |
 | 19 | MIR / QBE / native backend | out of seed | C plus host `cc` is the seed backend |
 | 24.4 | user `Arena` | done | `testdata/programs/arena.lucb` |
 | 24.13 | Builder as `Writer` | done | `agree_program_builder`, `testdata/programs/builder.lucb` |

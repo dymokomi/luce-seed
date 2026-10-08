@@ -81,6 +81,7 @@ set(LUCB_CORE_SOURCES
     src/check/stmt.cpp
     src/check/init.cpp
     src/check/generic.cpp
+    src/check/handled.cpp
     src/interp/interp.cpp
     src/interp/eval.cpp
     src/interp/punning.cpp

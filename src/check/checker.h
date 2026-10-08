@@ -29,6 +29,9 @@ struct Binding {
     Type* type = nullptr;
     bool mut = false;
     bool from_local = false;
+    // the depth of the `catch` handler whose failure's message the binding views, 0 for
+    // none: the view must not outlive that handler (base.md §11.3)
+    int handled = 0;
     Node* decl = nullptr;
     Node* import_src = nullptr;
     int depth = 0;
@@ -138,6 +141,12 @@ struct Checker {
     uint64_t effect_count = 0;
     bool in_catch = false;
     Type* catch_type = nullptr;
+    // the `catch` whose handler is being checked, and the depth of its failure's binding
+    Node* catch_node = nullptr;
+    int catch_depth = 0;
+    // `catch` expressions whose handlers recover a view of an enclosing handler's message,
+    // with that handler's depth: their value views it too (base.md §11.3)
+    vector<std::pair<Node*, int>> recovered_views;
     bool in_top_const = false;
     vector<uint32_t> package_codes;
     vector<string_view> loop_labels;
@@ -359,6 +368,14 @@ struct Checker {
     Type* check_member(Node* n, bool as_call);
     bool is_mut_place(Node* n);
     bool place_is_local(Node* n);
+    // check/handled.cpp: a caught failure's message stays in its handler (§11.3)
+    int handled_view(Node* n);
+    void set_handled(string_view name, int depth);
+    Binding* handled_root(Node* place);
+    void handled_recovered(Node* value, Type* want);
+    void handled_leaves(Node* value, Type* want, const char* leaving);
+    void handled_stored(Node* place, Node* value, Type* want);
+    void handled_kept(Node* method, Node* receiver, Node* argument, int index);
     bool imported_owner(Node* st);
     void check_stmt(Node* n);
     void check_deferred(Node* n);

@@ -15,6 +15,7 @@
 #include "interp/value.h"
 
 #include <deque>
+#include <list>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -43,7 +44,9 @@ struct Interp {
     Value recover_val;
     Node* current_fn = nullptr;
     Value ret;
-    string err_storage;
+    // the messages of the errors in flight, each `error`'s copy (base.md §11.3): a message
+    // lives until the handler that catches it finishes, whatever else is raised meanwhile
+    std::list<string> raised;
     Frame globals;
     // globals whose storage exists but whose initialiser has not run yet (load_globals)
     std::unordered_set<Node*> unbound_globals;

@@ -42,8 +42,8 @@ auto Checker::holds_view(const Type* t) -> bool {
     if (t == nullptr) {
         return false;
     }
-    if (is_ptr(t) || is_span(t) || t->kind == TypeKind::Str) {
-        return true;
+    if (is_ptr(t) || is_span(t) || t->kind == TypeKind::Str || t->kind == TypeKind::ErrorVal) {
+        return true; // an `Error` holds a `str`, its message
     }
     if (is_opt(t) || is_array(t)) {
         return holds_view(t->elem);

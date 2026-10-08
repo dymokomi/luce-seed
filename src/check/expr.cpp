@@ -1103,16 +1103,23 @@ auto Checker::check_catch(Node* n, Type* expected) -> Type* {
     }
     bool saved = in_catch;
     Type* saved_ct = catch_type;
+    Node* saved_node = catch_node;
+    const int saved_depth = catch_depth;
     in_catch = true;
     catch_type = result;
     push_scope();
+    catch_node = n;
+    catch_depth = depth;
     if (!n->text.empty()) {
         bind(n->text, ty_err, false, n);
+        set_handled(n->text, depth); // its message lives as long as the handler (§11.3)
     }
     check_stmt(n->body);
     pop_scope();
     in_catch = saved;
     catch_type = saved_ct;
+    catch_node = saved_node;
+    catch_depth = saved_depth;
     // a handler for a value recovers one or leaves; one for `unit` may fall through (§11.4)
     if (!type_eq(payload, t_unit()) && (n->flags & FlagDropped) == 0 && !terminates_handler(n->body)) {
         fail_n(n, "lucb.check.type",

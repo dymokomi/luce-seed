@@ -369,10 +369,7 @@ auto Checker::check_error(Node* n) -> Type* {
         if (!type_eq(msg, t_str())) {
             fail_n(n, "lucb.check.type", "`error` message must be `str`");
         }
-        if (is_local(message)) {
-            // §6.6: the message outlives the frame that raised the error
-            fail_n(message, "lucb.check.escape", "an error message must not name a local");
-        }
+        // a message viewing a local is fine: `error` copies it as it is raised (§11.3)
     }
     return t_never();
 }

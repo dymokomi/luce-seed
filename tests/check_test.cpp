@@ -1195,12 +1195,25 @@ TEST(check_module_assert_decided) {
                     "lucb.check.assert"));
 }
 
-// §11.3, §6.6: a message formatted on a local buffer does not outlive the function, even through a `let`
+// §11.3: `error` copies its message, so one formatted on a local buffer may be raised
 TEST(check_error_message_from_local_through_let) {
-    CHECK(check_has("let code = ErrorCode.package(1)\n"
-                    "func fail(n: i64) -> !:\n    var buffer: u8[64]\n    let text = try strings.format(buffer, f\"bad {n}\")\n    error(code, text)\n"
-                    "pub func answer() -> i64:\n    return 0\n",
+    CHECK(check_ok("let code = ErrorCode.package(1)\n"
+                   "func fail(n: i64) -> !:\n    var buffer: u8[64]\n    let text = try strings.format(buffer, f\"bad {n}\")\n    error(code, text)\n"
+                   "pub func answer() -> i64:\n    return 0\n"));
+}
+
+// §11.3: a caught failure's message lives until its handler finishes: it is not returned,
+// recovered or stored outside the handler uncopied, and may be raised again
+TEST(check_handled_message_stays_in_its_handler) {
+    const char* raises = "let code = ErrorCode.package(1)\nfunc g() -> i64!:\n    error(code, \"no\")\n"
+                         "func h() -> str!:\n    error(code, \"no\")\n";
+    CHECK(check_has((std::string(raises) + "func f() -> str:\n    _ = g() catch failure:\n        return failure.message\n    return \"\"\n").c_str(),
                     "lucb.check.escape"));
+    CHECK(check_has((std::string(raises) + "func f() -> str:\n    return h() catch failure:\n        recover failure.message\n").c_str(),
+                    "lucb.check.escape"));
+    CHECK(check_has((std::string(raises) + "var last: str = \"\"\nfunc f():\n    _ = g() catch failure:\n        last = failure.message\n        recover 0\n").c_str(),
+                    "lucb.check.escape"));
+    CHECK(check_ok((std::string(raises) + "func f() -> !:\n    _ = g() catch failure:\n        let m = failure.message\n        error(failure.code, m)\n").c_str()));
 }
 
 // §11.3: `error` needs a fallible function, in a handler too

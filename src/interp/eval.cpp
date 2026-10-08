@@ -965,6 +965,13 @@ auto Interp::run_catch_handler(Node* n, const Value& errv) -> void {
         frames.back().slots.pop_back();
     }
     in_catch = saved;
+    // the handler is finished with its message; one it raised in turn is a copy (§11.3)
+    for (auto it = raised.rbegin(); it != raised.rend(); ++it) {
+        if (it->data() == errv.err_msg.data()) {
+            raised.erase(std::next(it).base());
+            break;
+        }
+    }
     if (recovered) {
         returning = false;
         recovered = false;

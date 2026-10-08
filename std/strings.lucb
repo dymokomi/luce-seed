@@ -167,6 +167,18 @@ pub func copy(text: str) -> str!:
 
 ## ASCII case folding; other bytes pass through. NUL-terminated in the current
 ## allocator; `release` gives the text back.
+## As much of `text` as fits in `buffer`, copied there and cut at a character's start; the
+## result views `buffer`. A caught failure's message is kept past its handler so, or with
+## `copy` (base.md §11.3).
+pub func copy_into(buffer: u8[], text: str) -> str:
+    var n = text.length
+    if n > buffer.length:
+        n = buffer.length
+        while n > 0 and (text.bytes[n] & 0xC0) == 0x80:
+            n -= 1
+    memory.copy(buffer, text.bytes, n)
+    return (str)buffer[..<n]
+
 pub func to_upper(text: str) -> str!:
     let out = try terminated_buffer(text.length)
     var i: usize = 0

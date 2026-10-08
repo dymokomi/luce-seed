@@ -286,12 +286,12 @@ auto Checker::check_func_call(Node* n, Node* fn, Node* recv) -> Type* {
     if (recv != nullptr) {
         // method: args must match params
     }
-    (void)recv;
     if (nparams != nargs) {
         fail_n(n, "lucb.check.call", "wrong number of arguments");
     }
     Node* p = params;
     Node* a = args;
+    int index = 0;
     while (p != nullptr && a != nullptr) {
         if (!a->text.empty() && a->text != p->text) {
             fail_n(a, "lucb.check.call",
@@ -317,8 +317,10 @@ auto Checker::check_func_call(Node* n, Node* fn, Node* recv) -> Type* {
             }
         }
         a->resolved = p;
+        handled_kept(fn, recv, a, index);
         p = p->next;
         a = a->next;
+        index++;
     }
     Type* result = fn->ty;
     if (result == nullptr) {

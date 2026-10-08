@@ -177,6 +177,10 @@ auto Checker::check_stmt(Node* n) -> void {
         if (n->left != nullptr && is_local(n->left)) {
             set_from_local(n->text, true);
         }
+        // `let text = failure.message`: the name views the handled message too (§11.3)
+        if (n->left != nullptr) {
+            set_handled(n->text, handled_view(n->left));
+        }
         break;
     }
     case NodeKind::Assign: {
@@ -196,6 +200,7 @@ auto Checker::check_stmt(Node* n) -> void {
                 // §6.6: a local's address may not be stored in a global or through a pointer
                 fail_n(n->right, "lucb.check.escape", "this pointer or view must not be stored where it outlives the function");
             }
+            handled_stored(n->left, n->right, dest);
         } else {
             Type* rt = check_expr(n->right, dest);
             if (is_atomic(lt)) {
@@ -299,6 +304,9 @@ auto Checker::check_stmt(Node* n) -> void {
         }
         if (n->left != nullptr && is_local(n->left) && holds_view(return_type)) {
             fail_n(n, "lucb.check.escape", "this pointer or view must not escape the function");
+        }
+        if (n->left != nullptr) {
+            handled_leaves(n->left, return_type, "returned");
         }
         break;
     }
@@ -453,6 +461,7 @@ auto Checker::check_stmt(Node* n) -> void {
             fail_n(n, "lucb.check.type", "`recover` is only valid in a `catch` handler");
         }
         check_expr(n->left, catch_type != nullptr ? catch_type : return_type);
+        handled_recovered(n->left, catch_type != nullptr ? catch_type : return_type);
         break;
     case NodeKind::Match:
         check_match(n, nullptr);

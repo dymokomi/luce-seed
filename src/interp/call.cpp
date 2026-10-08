@@ -228,8 +228,8 @@ auto Interp::eval_call(Node* n) -> Value {
         ret.failed = true;
         ret.kind = TypeKind::Fallible;
         ret.err_code = static_cast<uint32_t>(code.u);
-        err_storage = msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg);
-        ret.err_msg = err_storage;
+        raised.push_back(msg.kind == TypeKind::Str ? decode_string(msg.str) : show(msg));
+        ret.err_msg = raised.back();
         returning = true;
         return v_unit();
     }
