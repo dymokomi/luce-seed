@@ -51,6 +51,11 @@ pub func create_directory(path: c.str, permissions: u32 = 493) -> !:
 pub func remove_tree(path: c.str) -> !:
     try host_files.remove_tree(path)
 
+## Mark the file at `path` as used now. The seed's compiler only builds the first stage, so
+## its build cache needs no record of use: nothing is done.
+pub func touch(path: c.str) -> !:
+    _ = path
+
 ## Move `source` to `destination`.
 pub func rename(source: c.str, destination: c.str, replace: bool = true) -> !:
     try host_files.rename(source, destination, replace)
