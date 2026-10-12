@@ -51,6 +51,30 @@ pub func create_directory(path: c.str, permissions: u32 = 493) -> !:
 pub func remove_tree(path: c.str) -> !:
     try host_files.remove_tree(path)
 
+## Remove the file at `path`.
+pub func remove_file(path: c.str) -> !:
+    try host_files.remove_tree(path)
+
+## A second name, `destination`, for the file at `source`. The seed has no host operation for
+## one: it fails, and luce-base's build cache copies instead (`copy_file`).
+pub func create_hard_link(source: c.str, destination: c.str) -> !:
+    _ = source
+    _ = destination
+    error(missing, "the seed makes no hard links")
+
+## Copy the file at `source` to `destination`, replacing it when `replace`, and answer the
+## bytes copied; `limit`, `permissions`, `synchronize` and `published` are luce-std's, unused.
+pub func copy_file(source: c.str, destination: c.str, limit: usize = ~(usize)0, replace: bool = false, permissions: u32 = 420, synchronize: bool = false, published: bool*? = none) -> usize!:
+    _ = limit
+    _ = permissions
+    _ = synchronize
+    _ = published
+    if not replace and host_files.exists(destination):
+        error(missing, "the destination exists")
+    let data = try host_files.read(source)
+    try host_files.write(destination, data)
+    return data.length
+
 ## Mark the file at `path` as used now. The seed's compiler only builds the first stage, so
 ## its build cache needs no record of use: nothing is done.
 pub func touch(path: c.str) -> !:
