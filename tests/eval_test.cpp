@@ -136,6 +136,17 @@ TEST(eval_nested_call) {
     CHECK_EQ(r.answer, 42);
 }
 
+TEST(eval_pointer_to_atomic_cast_reaches_the_atomic) {
+    // `((@u64)*)raw` is a cast to a pointer to an atomic, and its methods act on the atomic
+    // it points at, not on the pointer (§7.5, §15.1)
+    EvalResult r = run("func bump(raw: void*):\n    let count = ((@u64)*)raw\n    *count += 1\n"
+                       "    count.store(count.load(.relaxed) + 2, .relaxed)\n"
+                       "pub func answer() -> i64:\n    var hits: @u64 = 0\n    bump(&hits)\n"
+                       "    let n: i64 = 3\n    return (i64)hits.load(.relaxed) * 100 + ((n)) * 2 + ((n) * 2)\n");
+    CHECK(r.ok);
+    CHECK_EQ(r.answer, 312);
+}
+
 TEST(eval_print) {
     EvalResult r = run("pub func answer() -> i64:\n"
                        "    print(7)\n"

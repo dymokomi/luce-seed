@@ -824,7 +824,21 @@ auto Interp::eval_call(Node* n) -> Value {
         if (is_atomic(callee->left != nullptr ? callee->left->ty : nullptr) || is_atomic(ot)) {
             Type* at = is_atomic(callee->left->ty) ? callee->left->ty : ot;
             Type* elem = at->elem;
-            Value* slot = lvalue(callee->left);
+            Value* slot = nullptr;
+            if (is_atomic(callee->left->ty)) {
+                slot = lvalue(callee->left);
+            } else {
+                // `p.store(v)` through a pointer to an atomic: the atomic it points at (§15.1)
+                Value p = eval(callee->left);
+                if (trapped) {
+                    return v_unit();
+                }
+                if (p.ptr == nullptr) {
+                    fail("null pointer");
+                    return v_unit();
+                }
+                slot = p.ptr;
+            }
             if (slot == nullptr) {
                 fail("atomic needs an lvalue");
                 return v_unit();

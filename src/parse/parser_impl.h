@@ -18,6 +18,8 @@ namespace lucb {
 const int k_max_nest = 100;
 // a chain of calls or operators, one level per link, may be longer than nesting may be deep
 const int k_max_chain = 300;
+// how many parentheses deep a cast's type may nest, `(((@u64)*)*)p` being two
+const int k_max_type_parens = 8;
 
 inline int prec_of(TokenKind k) {
     switch (k) {
@@ -314,6 +316,8 @@ struct Parser {
     bool tuple_type_at(int at) const;
     bool is_generic_call_ahead() const;
     bool is_scalar_cast_ahead() const;
+    bool surely_type(Token name) const;
+    int cast_shape(int i, int depth, Token* name, int* stars) const;
     void sync_line();
     Node* parse_module();
     Node* parse_import();

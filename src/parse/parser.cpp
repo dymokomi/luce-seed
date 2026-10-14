@@ -271,40 +271,10 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
                operand == TokenKind::Amp || operand == TokenKind::Star || operand == TokenKind::KwSelf ||
                operand == TokenKind::KwTry;
     }
-    int i = pos + 1;
-    while (peek_kind(i) == TokenKind::KwConst || peek_kind(i) == TokenKind::KwVolatile) {
-        i++;
-    }
-    if (peek_kind(i) != TokenKind::Name) {
-        return false;
-    }
-    Token name = tok[i];
-    i++;
-    if (peek_kind(i) == TokenKind::Dot && peek_kind(i + 1) == TokenKind::Name) {
-        i += 2; // `c.int`, `module.Type`, `module.alias`
-    }
+    Token name{};
     int stars = 0;
-    while (true) {
-        if (peek_kind(i) == TokenKind::Star || peek_kind(i) == TokenKind::StarQuestion) {
-            stars++;
-            i++;
-            continue;
-        }
-        if (peek_kind(i) == TokenKind::Question || peek_kind(i) == TokenKind::Bang) {
-            i++;
-            continue;
-        }
-        if (peek_kind(i) == TokenKind::LBracket) {
-            int close = find_match(i, TokenKind::LBracket, TokenKind::RBracket);
-            if (close < 0) {
-                return false;
-            }
-            i = close + 1;
-            continue;
-        }
-        break;
-    }
-    if (peek_kind(i) != TokenKind::RParen) {
+    int i = cast_shape(pos + 1, 0, &name, &stars);
+    if (i < 0 || peek_kind(i) != TokenKind::RParen) {
         return false;
     }
     TokenKind operand = peek_kind(i + 1);
@@ -319,13 +289,75 @@ auto Parser::is_scalar_cast_ahead() const -> bool {
     }
     // a capitalised name is a type (§3.4): `(Counter)(void*)p` casts twice, as luce-base
     // reads it; a lowercase one before `(` is a value being called
-    bool type_word = !name.text.empty() && name.text[0] >= 'A' && name.text[0] <= 'Z';
-    if (stars == 0 && !is_scalar_type(name.text) && name.text != "c" && !type_word) {
+    if (stars == 0 && !surely_type(name)) {
         return false;
     }
     return operand == TokenKind::LParen || operand == TokenKind::Minus ||
            operand == TokenKind::MinusPercent || operand == TokenKind::Tilde ||
            operand == TokenKind::Star || operand == TokenKind::Amp;
+}
+
+// Whether a cast type's head `name` is a type whatever follows it: a scalar, a member of
+// `c`, a capitalised name, or a parenthesised type (an empty name).
+auto Parser::surely_type(Token name) const -> bool {
+    bool type_word = !name.text.empty() && name.text[0] >= 'A' && name.text[0] <= 'Z';
+    return name.text.empty() || is_scalar_type(name.text) || name.text == "c" || type_word;
+}
+
+// The type a cast's parentheses would hold, from token `i`, `depth` parentheses into it,
+// as luce-base's `cast_shape` reads it: the token just past it, or -1 when it cannot be a
+// type. `name` is its head, empty for a parenthesised one, and `stars` counts its pointer
+// suffixes.
+auto Parser::cast_shape(int i, int depth, Token* name, int* stars) const -> int {
+    if (peek_kind(i) == TokenKind::At) {
+        i++; // `@` covers the suffixes after it: `@u64*` is an atomic pointer (§15.1)
+    }
+    while (peek_kind(i) == TokenKind::KwConst || peek_kind(i) == TokenKind::KwVolatile) {
+        i++;
+    }
+    if (peek_kind(i) == TokenKind::LParen) {
+        // `((@u64)*)p`, `((c.str?)[3])p`, `(const (T*)*)p`: a parenthesised type, when what
+        // the parentheses hold is surely a type; `((x))` and `((n) * 2)` are grouped
+        // expressions
+        Token inner{};
+        int inner_stars = 0;
+        int end = depth < k_max_type_parens ? cast_shape(i + 1, depth + 1, &inner, &inner_stars) : -1;
+        if (end < 0 || peek_kind(end) != TokenKind::RParen || (inner_stars == 0 && !surely_type(inner))) {
+            return -1;
+        }
+        *name = Token{};
+        i = end + 1;
+    } else {
+        if (peek_kind(i) != TokenKind::Name) {
+            return -1;
+        }
+        *name = tok[i];
+        i++;
+        if (peek_kind(i) == TokenKind::Dot && peek_kind(i + 1) == TokenKind::Name) {
+            i += 2; // `c.int`, `module.Type`, `module.alias`
+        }
+    }
+    while (true) {
+        if (peek_kind(i) == TokenKind::Star || peek_kind(i) == TokenKind::StarQuestion) {
+            (*stars)++;
+            i++;
+            continue;
+        }
+        if (peek_kind(i) == TokenKind::Question || peek_kind(i) == TokenKind::Bang) {
+            i++;
+            continue;
+        }
+        if (peek_kind(i) == TokenKind::LBracket) {
+            int close = find_match(i, TokenKind::LBracket, TokenKind::RBracket);
+            if (close < 0) {
+                return -1;
+            }
+            i = close + 1;
+            continue;
+        }
+        break;
+    }
+    return i;
 }
 
 auto Parser::sync_line() -> void {
