@@ -122,11 +122,11 @@ TEST(lex_former_keywords_are_names) {
     CHECK(kinds_eq(lexed, {"name", "name", "name", "static", "name", "name", "newline", "eof"}));
 }
 
-TEST(lex_full_luce_words_stay_keywords) {
-    // So they cannot be identifiers; the parser refuses them with a tier diagnostic.
+TEST(lex_full_luce_words_are_names) {
+    // Not reserved (§3.6): the parser refuses them only where full Luce's constructs begin.
     Lexed lexed("class spawn weak\n");
     CHECK(lexed.diagnostics.empty());
-    CHECK(kinds_eq(lexed, {"class", "spawn", "name", "newline", "eof"}));
+    CHECK(kinds_eq(lexed, {"name", "name", "name", "newline", "eof"}));
 }
 
 TEST(lex_contextual_words_are_names) {

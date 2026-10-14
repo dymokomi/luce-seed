@@ -100,6 +100,12 @@ auto Parser::parse_free() -> Node* {
 
 auto Parser::parse_simple_stmt() -> Node* {
     Token start = cur();
+    if (at_name("spawn") && peek(1).kind == TokenKind::Name) {
+        // `spawn work()`: Base starts a thread through the `thread` module (§3.6)
+        fail("lucb.parse.tier", "this construct belongs to full Luce");
+        sync_line();
+        return nullptr;
+    }
     if (at(TokenKind::KwLet) || at(TokenKind::KwVar)) {
         return parse_binding();
     }
@@ -347,13 +353,18 @@ auto Parser::parse_for() -> Node* {
     Token start = take();
     Node* n = make(NodeKind::For, start.span);
     if (eat(TokenKind::LParen)) {
+        // `for (a, b, ...) in`: the first name is the loop's, the rest are chained on `left`
         if (at(TokenKind::Name)) {
             n->text = take().text;
         }
         expect(TokenKind::Comma, "lucb.parse.expect", "expected `,`");
-        if (at(TokenKind::Name)) {
-            n->left = make_tok(NodeKind::Name, take());
-        }
+        do {
+            if (!at(TokenKind::Name)) {
+                fail("lucb.parse.expect", "expected a name");
+                break;
+            }
+            append(&n->left, make_tok(NodeKind::Name, take()));
+        } while (eat(TokenKind::Comma));
         expect(TokenKind::RParen, "lucb.parse.expect", "expected `)`");
     } else {
         if (!at(TokenKind::Name) && !at(TokenKind::Underscore)) {

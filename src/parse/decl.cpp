@@ -146,6 +146,23 @@ auto Parser::parse_import() -> Node* {
     return n;
 }
 
+// The layout intrinsics `from memory import` brings anywhere in the module, before parsing,
+// since an import may follow the declarations that use it (§16.1).
+auto Parser::scan_layout_imports() -> void {
+    for (int i = 0; i + 2 < n; i++) {
+        if (tok[i].kind != TokenKind::KwFrom || tok[i + 1].kind != TokenKind::Name || tok[i + 1].text != "memory" ||
+            tok[i + 2].kind != TokenKind::KwImport) {
+            continue;
+        }
+        for (int j = i + 3; j < n && tok[j].kind == TokenKind::Name; j += 2) {
+            layout_imports |= layout_bit(tok[j].text);
+            if (j + 1 >= n || tok[j + 1].kind != TokenKind::Comma) {
+                break;
+            }
+        }
+    }
+}
+
 auto Parser::parse_module_path() -> string_view {
     if (!at(TokenKind::Name)) {
         fail("lucb.parse.expect", "expected a module path");
@@ -235,7 +252,7 @@ auto Parser::parse_attributes(Node** attrs) -> uint32_t {
 }
 
 auto Parser::parse_top() -> Node* {
-    if (at(TokenKind::KwClass) || at(TokenKind::KwSpawn) ||
+    if (at_name("class") || at_name("spawn") ||
         (at_name("weak") && !weak_is_attribute())) {
         fail("lucb.parse.tier", "this construct belongs to full Luce");
         take();

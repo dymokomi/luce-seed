@@ -191,7 +191,7 @@ auto Parser::is_array_suffix_ahead() const -> bool {
     }
     if (k == TokenKind::Name) {
         string_view t = peek(1).text;
-        if (at_type_builtin(1) || (t == "memory" && peek(2).kind == TokenKind::Dot && at_type_builtin(3))) {
+        if (at_type_builtin(1, false) || (t == "memory" && peek(2).kind == TokenKind::Dot && at_type_builtin(3, true))) {
             return true; // `T[memory.size_of(U)]`
         }
         if (is_type_path_ident(t)) {
@@ -349,6 +349,7 @@ ParseResult parse(const Source& source, const vector<Token>& tokens, Arena& aren
     p.pos = 0;
     p.arena = &arena;
     p.diag = &diagnostics;
+    p.scan_layout_imports();
     result.module = p.parse_module();
     if (result.module != nullptr && (!source.directives().empty() || !source.segments().empty())) {
         // the text's own directives and, for an assembled module, each fragment's start,

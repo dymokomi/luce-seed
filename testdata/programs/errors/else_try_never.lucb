@@ -1,0 +1,15 @@
+## `opt else try f()` where `f` never returns a value: the fallback ends the statement, by
+## failing, and the binding takes the payload otherwise (§11.1).
+func fail(message: str) -> never!:
+    error(1, message)
+
+func pick(value: i64?) -> i64!:
+    let x = value else try fail("absent")
+    return x
+
+pub func answer() -> i64:
+    let found = pick(38) catch failure:
+        return 0
+    let missing = pick(none) catch failure:
+        recover 2
+    return found + missing

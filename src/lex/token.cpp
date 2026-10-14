@@ -27,7 +27,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"asm", TokenKind::KwAsm},
     {"break", TokenKind::KwBreak},
     {"catch", TokenKind::KwCatch},
-    {"class", TokenKind::KwClass},
     {"const", TokenKind::KwConst},
     {"continue", TokenKind::KwContinue},
     {"defer", TokenKind::KwDefer},
@@ -55,7 +54,6 @@ constexpr KeywordEntry k_keywords[] = {
     {"recover", TokenKind::KwRecover},
     {"return", TokenKind::KwReturn},
     {"self", TokenKind::KwSelf},
-    {"spawn", TokenKind::KwSpawn},
     {"static", TokenKind::KwStatic},
     {"struct", TokenKind::KwStruct},
     {"test", TokenKind::KwTest},
@@ -137,8 +135,6 @@ const char* token_kind_name(TokenKind kind) {
         return "break";
     case TokenKind::KwCatch:
         return "catch";
-    case TokenKind::KwClass:
-        return "class";
     case TokenKind::KwConst:
         return "const";
     case TokenKind::KwContinue:
@@ -193,8 +189,6 @@ const char* token_kind_name(TokenKind kind) {
         return "return";
     case TokenKind::KwSelf:
         return "self";
-    case TokenKind::KwSpawn:
-        return "spawn";
     case TokenKind::KwStatic:
         return "static";
     case TokenKind::KwStruct:

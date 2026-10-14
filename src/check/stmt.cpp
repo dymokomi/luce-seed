@@ -56,6 +56,39 @@ auto Checker::desugar_iterable_for(Node* n) -> void {
     n->body = start;
 }
 
+// `for (a, b, c) in items: body` as `for t in items: let (a, b, c) = t; body`, a hidden name
+// for the element, so every sequence a single name walks may yield tuples.
+auto Checker::desugar_tuple_for(Node* n) -> void {
+    string_view hidden = keep("__tuple" + std::to_string(++hidden_count));
+    Node* first = arena->make<Node>();
+    first->kind = NodeKind::Name;
+    first->span = n->span;
+    first->text = n->text;
+    first->next = n->left;
+    Node* element = arena->make<Node>();
+    element->kind = NodeKind::Name;
+    element->span = n->span;
+    element->text = hidden;
+    Node* unpack = arena->make<Node>();
+    unpack->kind = NodeKind::Let;
+    unpack->span = n->span;
+    unpack->body = first;
+    unpack->left = element;
+    if (n->body != nullptr && n->body->kind == NodeKind::Block) {
+        unpack->next = n->body->body;
+        n->body->body = unpack;
+    } else {
+        Node* block = arena->make<Node>();
+        block->kind = NodeKind::Block;
+        block->span = n->span;
+        unpack->next = n->body;
+        block->body = unpack;
+        n->body = block;
+    }
+    n->text = hidden;
+    n->left = nullptr;
+}
+
 // The call `receiver.method()` as a fresh tree at `span`.
 auto Checker::syn_call(Node* receiver, const char* method, Span span) -> Node* {
     Node* member = arena->make<Node>();
@@ -311,16 +344,17 @@ auto Checker::check_stmt(Node* n) -> void {
         break;
     }
     case NodeKind::For: {
-        // `for (i, x) in items.indexed()` walks the sequence itself with its index (§5.4)
+        // `for (i, x) in items.indexed()` walks the sequence itself with its index (§5.4);
+        // any other tuple of names destructures each element (§8.3)
         if (n->left != nullptr) {
             Node* call = n->right;
             Node* callee = call != nullptr && call->kind == NodeKind::Call ? call->left : nullptr;
             if (callee != nullptr && callee->kind == NodeKind::Member && callee->text == "indexed" &&
-                call->body == nullptr) {
+                call->body == nullptr && n->left->next == nullptr) {
                 n->right = callee->left;
                 n->flags |= FlagIndexed;
             } else {
-                fail_n(n, "lucb.check.type", "a tuple of names needs `.indexed()`");
+                desugar_tuple_for(n);
             }
         }
         Type* it =

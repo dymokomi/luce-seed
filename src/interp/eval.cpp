@@ -427,13 +427,17 @@ auto Interp::eval_uncast(Node* n) -> Value {
             return v;
         }
         if (n->op == TokenKind::BytesLit) {
-            // `b"..."`: static bytes, an array of `u8` (§4.4)
+            // `b"..."`: static bytes, an array of `u8`, or a view of them as `const u8[]` (§4.4)
             string d = decode_string_literal(n->text);
             vector<Value> elems;
             for (size_t i = 0; i < d.size(); i++) {
                 elems.push_back(v_int(n->ty != nullptr ? n->ty->elem : nullptr, static_cast<unsigned char>(d[i])));
             }
-            return make_array(n->ty, std::move(elems));
+            Value bytes = make_array(n->ty, std::move(elems));
+            if (n->ty != nullptr && is_span(n->ty)) {
+                bytes.kind = TypeKind::Span;
+            }
+            return bytes;
         }
         if (n->op == TokenKind::StringLit) {
             auto it = literal_text.find(n);

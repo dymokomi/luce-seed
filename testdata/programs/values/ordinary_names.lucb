@@ -1,0 +1,20 @@
+## Names the language does not reserve (§3.5, §3.6): `size_of` names a function unless
+## `from memory import` brings memory's, `hash` names a field, a function or a binding,
+## and full Luce's `class` and `spawn` are ordinary names outside their constructs.
+import memory
+
+struct Entry:
+    var hash: u64
+    var class: u8
+
+func size_of(e: Entry) -> i64:
+    return i64(e.class)
+
+func hash(seed: u64) -> u64:
+    return seed *% 3
+
+pub func answer() -> i64:
+    let class: u8 = 4
+    let spawn = hash(2)
+    let e = Entry(hash = spawn, class = class)
+    return size_of(e) + i64(e.hash) + i64(memory.size_of(Entry)) + 14

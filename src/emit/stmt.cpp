@@ -963,7 +963,9 @@ auto Emitter::emit_match_expr(Node* n) -> string {
     int saved_indent = indent;
     indent = 0;
     Type* rt = n->ty;
-    line(c_type(rt) + " " + rv + ";");
+    // the checker proves some arm assigns the result; GCC at -O2 cannot see that through a
+    // switch over an enum's tag, and would find it maybe-uninitialised
+    line(c_type(rt) + " " + rv + " = {0};");
     emit_match(n, rv);
     line(rv + ";");
     string body;

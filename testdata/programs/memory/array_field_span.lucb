@@ -1,0 +1,20 @@
+## An array field converts to a span where one is expected, read-only or mutable, through
+## the value or a pointer to it (§5.4).
+struct Holder:
+    var bytes: u8[4]
+
+func total(values: const u8[]) -> i64:
+    var sum: i64 = 0
+    for v in values:
+        sum += i64(v)
+    return sum
+
+func fill(values: u8[]) -> unit:
+    values[0] = 10
+
+pub func answer() -> i64:
+    var h = Holder(bytes = [1, 2, 3, 4])
+    fill(h.bytes)
+    let p = &h
+    fill(p.bytes)
+    return total(h.bytes) + total(p.bytes) + 2

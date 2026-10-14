@@ -14,7 +14,7 @@ not land in this tree).
 | 3.3 | Comments and `##` documentation | done | `lex_test` comments |
 | 3.4 | Naming (formatter/linter) | out of seed | later, in `luce-base` |
 | 3.5 | Scope, no shadowing | partial | `check_no_shadow`; modules later |
-| 3.6 | Reserved words; `class`/`spawn`/`weak` refused | done | `lex_test` keywords, `parse_class_belongs_to_full_luce`, `parse_spawn_belongs_to_full_luce`, `parse_weak_belongs_to_full_luce` |
+| 3.6 | Reserved words; `class`/`spawn`/`weak` refused where full Luce's constructs begin, names elsewhere | done | `lex_test` keywords, `parse_class_belongs_to_full_luce`, `parse_spawn_belongs_to_full_luce`, `parse_weak_belongs_to_full_luce`, `parse_full_luce_words_as_names`, `values/ordinary_names` |
 | 4.1 | `true` `false` `none` | done | `lex_test` keywords |
 | 4.2 | Integer literals | done | `lex_test` numbers |
 | 4.3 | Float literals | done | `lex_test` numbers |
@@ -29,6 +29,7 @@ not land in this tree).
 | 13.1 | `T: Hashable` | done | `agree_hashable_intern`, `check_hashable_bound_ok`, `testdata/programs/map.lucb` |
 | 8 | Control flow syntax | done | if/while/for/match/defer/labels in `parse_test`; match expressions `agree_match_expr` |
 | 8.3 | `for` over arrays and spans | done | `agree_for_span` |
+| 8.3 | `for (a, b, ...)` over tuples, `for (i, x)` over `.indexed()` | done | `control/for_tuples` |
 | 8.3 | `for` over ranges | done | `agree_for_range` |
 | 3.6 | `alloc`, `goto`, `mutating` are names; `static` is reserved; `local` and `export` words in one place each | done | `lex_former_keywords_are_names`, `parse_former_keywords_are_names` |
 | 8.9 | `asm` raw lines | done | `lex_asm_body_is_raw`, `parse_asm` |

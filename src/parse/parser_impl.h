@@ -156,6 +156,7 @@ struct Parser {
     DiagnosticBag* diag = nullptr;
     int nest = 0;
     ListTails tails;
+    unsigned layout_imports = 0; // the `layout_bit`s of the names `from memory import` brings
 
     void append(Node** list, Node* item) {
         tails.append(list, item);
@@ -210,10 +211,18 @@ struct Parser {
         return cur().kind == TokenKind::Name && cur().text == s;
     }
 
-    // `size_of(`, `align_of(` or `offset_of(` `ahead` tokens on: memory's intrinsics (§6.4)
-    bool at_type_builtin(int ahead) const {
+    // The bit of `size_of`, `align_of` or `offset_of` in `layout_imports`, 0 for another name.
+    static unsigned layout_bit(string_view name) {
+        return name == "size_of" ? 1u : name == "align_of" ? 2u : name == "offset_of" ? 4u : 0u;
+    }
+
+    // `size_of(`, `align_of(` or `offset_of(` `ahead` tokens on: memory's intrinsics (§6.4).
+    // Bare, the name is the intrinsic only where `from memory import` brought it (§3.5);
+    // otherwise it is an ordinary name a module may declare.
+    bool at_type_builtin(int ahead, bool qualified) const {
         Token t = peek(ahead);
-        return t.kind == TokenKind::Name && (t.text == "size_of" || t.text == "align_of" || t.text == "offset_of") &&
+        unsigned bit = t.kind == TokenKind::Name ? layout_bit(t.text) : 0u;
+        return bit != 0 && (qualified || (layout_imports & bit) != 0) &&
                peek(ahead + 1).kind == TokenKind::LParen;
     }
 
@@ -309,6 +318,7 @@ struct Parser {
     Node* parse_module();
     Node* parse_import();
     string_view parse_module_path();
+    void scan_layout_imports();
     uint32_t parse_attributes(Node** attrs);
     bool weak_is_attribute();
     Node* parse_top();

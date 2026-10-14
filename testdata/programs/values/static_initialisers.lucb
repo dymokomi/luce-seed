@@ -1,0 +1,19 @@
+## Top-level initialisers are constants C takes at file scope (§6.4): a negated or
+## complemented literal, a byte literal as `const u8[]` static data (§4.4), and arrays and
+## spans of byte literals and tuples, whose elements are static too.
+let data_factor: i64 = -8
+let wrapped: u8 = -%1
+let mask: u16 = ~0x00FF
+let magic: const u8[] = b"\x89PNG"
+let nops: const u8[3][] = [b"\x90", b"\x66\x90", b"\x0F\x1F\x00"]
+let rows: const (i64, i64)[] = [(1, 2), (3, 4)]
+
+pub func answer() -> i64:
+    var total: i64 = data_factor + i64(wrapped) + i64(mask >> 8)
+    total += i64(magic.length) + i64(magic[1])
+    for row in nops:
+        total += i64(row.length)
+    total += i64(nops[2][1])
+    total += rows[1].0 * rows[1].1
+    let local_bytes: const u8[] = b"\x00\x01"
+    return total + i64(local_bytes.length) - 597

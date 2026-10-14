@@ -231,6 +231,7 @@ struct Checker {
     bool all_inferred(Type* t, Node* generic, const vector<Type*>& inf);
     void apply_bounds(Node* g, Type* t);
     void bind_generic_params(Node* gen);
+    void desugar_tuple_for(Node* n);
     void desugar_iterable_for(Node* n);
     Type* display_iface();
     Type* extern_result(Node* fn);

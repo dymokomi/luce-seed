@@ -550,6 +550,14 @@ TEST(parse_weak_attribute_is_base) {
 TEST(parse_spawn_belongs_to_full_luce) {
     Parsed p("spawn func f() -> i64:\n    return 0\n");
     CHECK(p.has("lucb.parse.tier"));
+    Parsed q("func f() -> unit:\n    spawn work()\n");
+    CHECK(q.has("lucb.parse.tier"));
+}
+
+TEST(parse_full_luce_words_as_names) {
+    // `class` and `spawn` are not reserved (§3.6): elsewhere they are ordinary names
+    Parsed p("func f(class: i64) -> i64:\n    let spawn = class + 1\n    return spawn\n");
+    CHECK(p.diagnostics.empty());
 }
 
 TEST(parse_import_beside_declarations) {

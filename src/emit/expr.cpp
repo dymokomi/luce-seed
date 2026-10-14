@@ -183,8 +183,8 @@ auto Emitter::is_never_expr(Node* n) -> bool {
     if (n == nullptr) {
         return false;
     }
-    if (n->ty != nullptr && n->ty->kind == TypeKind::Never) {
-        return true;
+    if (never_valued(n)) {
+        return true; // `never`, or `try` of a `never!` call
     }
     if (n->kind == NodeKind::Return || n->kind == NodeKind::Break ||
         n->kind == NodeKind::Continue) {
@@ -568,8 +568,12 @@ auto Emitter::emit_literal(Node* n) -> string {
         return "((lb_str){" + c_escape(d) + ", " + buf + "})";
     }
     if (n->op == TokenKind::BytesLit) {
-        // `b"..."`: an array of `u8`, spelled byte by byte
         string d = decode_lit(n->text);
+        if (is_span(n->ty)) {
+            // `b"..."` as `const u8[]`: a view of static data, a C string's bytes (§4.4)
+            return "((lb_cspan){(void*)" + c_escape(d) + ", " + std::to_string(d.size()) + "})";
+        }
+        // `b"..."` where `u8[N]` is expected: that array, spelled byte by byte
         string s = "((" + c_type(n->ty) + "){{";
         for (size_t i = 0; i < d.size(); i++) {
             char buf[16];
@@ -650,13 +654,18 @@ auto Emitter::emit_unary(Node* n) -> string {
 // `~x`, `-x`, and `-%x` on one scalar of type `t`.
 auto Emitter::emit_unary_scalar(Type* t, TokenKind op, const string& x) -> string {
     if (op == TokenKind::Tilde) {
-        if (t != nullptr && is_unsigned_int(t)) {
+        if (t != nullptr && is_unsigned_int(t) && !at_file_scope) {
             return down_cast(t, "lb_not_u(" + word_cast(t, x) + ", " + bits_lit(t) + ")");
         }
         return down_cast(t, "~(" + x + ")");
     }
     if (is_float(t)) {
         return "(-(" + x + "))";
+    }
+    if (at_file_scope && (op == TokenKind::Minus || op == TokenKind::MinusPercent)) {
+        // a file-scope initialiser is a constant expression the checker has already
+        // evaluated without overflow (§6.4); C wants the plain operator there, as for `~`
+        return down_cast(t, "-(" + x + ")");
     }
     if (op == TokenKind::MinusPercent) {
         const char* h = is_signed_int(t) ? "lb_negw_s" : "lb_negw_u";
@@ -1212,13 +1221,15 @@ auto Emitter::emit_member(Node* n) -> string {
     if (raw != nullptr && raw->kind == TypeKind::Tuple && !n->text.empty() && n->text[0] >= '0' && n->text[0] <= '9') {
         return "(" + base + acc + "a" + string(n->text) + ")";
     }
-    if (n->left != nullptr && n->left->kind == NodeKind::Self) {
-        return "self->" + c_field(n->text);
+    string field = n->left != nullptr && n->left->kind == NodeKind::Self ? "self->" + c_field(n->text)
+                   : ptr                                                  ? "(" + base + ")->" + c_field(n->text)
+                                                                          : base + "." + c_field(n->text);
+    if (is_span(n->ty) && n->resolved != nullptr && n->resolved->kind == NodeKind::Field &&
+        is_array(n->resolved->ty)) {
+        // an array field where a span is expected views the field in place (§5.4)
+        return "((" + c_type(n->ty) + "){" + field + ".d, " + std::to_string(n->resolved->ty->length) + "ULL})";
     }
-    if (ptr) {
-        return "(" + base + ")->" + c_field(n->text);
-    }
-    return base + "." + c_field(n->text);
+    return field;
 }
 
 auto Emitter::emit_index(Node* n, bool one_past) -> string {
@@ -1287,6 +1298,14 @@ auto Emitter::emit_array_lit(Node* n) -> string {
         const string span_ty = n->ty->is_const ? "lb_cspan" : "lb_span";
         if (count == 0) {
             return "((" + span_ty + "){(void*)8, 0})";
+        }
+        if (at_file_scope) {
+            // a file-scope compound literal is static, and its address a constant
+            string s = "((" + span_ty + "){(void*)(" + c_type(n->ty->elem) + "[]){";
+            for (Node* e = n->body; e != nullptr; e = e->next) {
+                s += emit_expr(e) + (e->next != nullptr ? ", " : "");
+            }
+            return s + "}, " + std::to_string(count) + "})";
         }
         int id = tmp();
         string name = "_lb_ad" + std::to_string(id);

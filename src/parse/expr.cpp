@@ -501,8 +501,8 @@ auto Parser::parse_type_builtin() -> Node* {
 
 auto Parser::parse_primary() -> Node* {
     Token start = cur();
-    if (at_type_builtin(0) ||
-        (at_name("memory") && peek(1).kind == TokenKind::Dot && at_type_builtin(2))) {
+    if (at_type_builtin(0, false) ||
+        (at_name("memory") && peek(1).kind == TokenKind::Dot && at_type_builtin(2, true))) {
         return parse_type_builtin();
     }
     if (at(TokenKind::FormatStart)) {

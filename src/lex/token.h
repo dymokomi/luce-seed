@@ -33,13 +33,13 @@ enum class TokenKind : uint16_t {
     DocComment,
     Underscore,
 
-    // Keywords, base.md §3.6, plus class/spawn/weak so they cannot be names.
+    // Keywords, base.md §3.6. Full Luce's `class` and `spawn` are names the parser refuses
+    // where they would begin full Luce's constructs, as it does `weak` (§3.6).
     KwAnd,
     KwAs,
     KwAsm,
     KwBreak,
     KwCatch,
-    KwClass,
     KwConst,
     KwContinue,
     KwDefer,
@@ -67,7 +67,6 @@ enum class TokenKind : uint16_t {
     KwRecover,
     KwReturn,
     KwSelf,
-    KwSpawn,
     KwStatic,
     KwStruct,
     KwTest,

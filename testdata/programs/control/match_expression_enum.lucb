@@ -1,0 +1,30 @@
+# release: true
+## A `match` expression over an enum's every case assigns its result on each path; the C the
+## host compiler optimises takes no exception to it (§7.8).
+enum Fix:
+    absolute64
+    absolute32
+    image32
+    relative32
+
+func relocation_type(fix: Fix) -> u16:
+    return match fix:
+        .absolute64 => 1
+        .absolute32 => 2
+        .image32 => 3
+        .relative32 => 4
+
+enum Shape:
+    dot
+    line(length: i64)
+
+func extent(s: Shape) -> i64:
+    return match s:
+        .dot => 0
+        .line(length) => length
+
+pub func answer() -> i64:
+    var total: i64 = 0
+    for fix in [Fix.absolute64, Fix.absolute32, Fix.image32, Fix.relative32]:
+        total += i64(relocation_type(fix))
+    return total + extent(Shape.line(length = 30)) + extent(Shape.dot)
