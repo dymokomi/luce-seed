@@ -80,6 +80,33 @@ static uint64_t mix64(uint64_t h, uint64_t x) {
     return h;
 }
 
+// Element `i` of an array or span value, wherever it keeps them: in storage (`ptr`), inline
+// (`fields`), or, for a byte span over text, in `bytes`, decoded into `scratch`.
+static const Value* element_of(const Value& v, const string& bytes, size_t i, Type* elem, Value& scratch) {
+    if (v.ptr != nullptr) {
+        return v.ptr + i;
+    }
+    if (i < v.fields.size()) {
+        return &v.fields[i];
+    }
+    if (i < bytes.size()) {
+        scratch = v_int(elem, static_cast<unsigned char>(bytes[i]));
+        return &scratch;
+    }
+    return nullptr;
+}
+
+// The length of an array or span value: a span's own, an array's from its type.
+static size_t length_of(const Value& v, Type* t) {
+    if (v.kind == TypeKind::Span) {
+        return v.length;
+    }
+    if (v.type != nullptr && v.type->kind == TypeKind::Array) {
+        return static_cast<size_t>(v.type->length);
+    }
+    return t->kind == TypeKind::Array ? static_cast<size_t>(t->length) : v.length;
+}
+
 // Equality component by component (§7.4): optionals by presence then payload,
 // structs, tuples, and arrays by their parts, payload enums by tag then payload.
 auto Interp::values_equal(const Value& a, const Value& b, Type* t) -> bool {
@@ -133,12 +160,22 @@ auto Interp::values_equal(const Value& a, const Value& b, Type* t) -> bool {
         }
         return true;
     }
-    if (k == TypeKind::Array && t != nullptr) {
-        // an array value keeps its elements in storage (`ptr`) or inline (`fields`)
-        const size_t n = static_cast<size_t>(t->length);
+    if ((k == TypeKind::Array || k == TypeKind::Span) && t != nullptr) {
+        // arrays and spans compare as Python compares lists: the same length and equal
+        // elements, each by its own `==`, and an array beside a span compares as one
+        const size_t n = length_of(a, t);
+        const size_t m = length_of(b, t);
+        if (n != m) {
+            return false;
+        }
+        // a byte span over text keeps the text (`str`); its elements are the decoded bytes
+        const string a_bytes = a.ptr == nullptr && !a.str.empty() ? decode_string(a.str) : string();
+        const string b_bytes = b.ptr == nullptr && !b.str.empty() ? decode_string(b.str) : string();
         for (size_t i = 0; i < n; i++) {
-            const Value* x = a.ptr != nullptr ? a.ptr + i : (i < a.fields.size() ? &a.fields[i] : nullptr);
-            const Value* y = b.ptr != nullptr ? b.ptr + i : (i < b.fields.size() ? &b.fields[i] : nullptr);
+            Value from_a;
+            Value from_b;
+            const Value* x = element_of(a, a_bytes, i, t->elem, from_a);
+            const Value* y = element_of(b, b_bytes, i, t->elem, from_b);
             if (x == nullptr || y == nullptr || !values_equal(*x, *y, t->elem)) {
                 return false;
             }

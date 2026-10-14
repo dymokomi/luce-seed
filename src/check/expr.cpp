@@ -553,6 +553,19 @@ auto Checker::check_index(Node* n) -> Type* {
             fail_n(n, "lucb.check.type", "cannot index `void*`");
             return t_error();
         }
+        // `p[i]` on a pointer to an array or span would step over whole arrays or spans past
+        // the one `p` addresses, where `(*p)[i]` is the element that was meant (§7.7); a
+        // generic's `T*` walks whole `T`s whatever `T` is, so an instantiation keeps its walk
+        if (is_array(base->elem) && inst_depth == 0) {
+            fail_n(n, "lucb.check.type",
+                   "`p[i]` on a pointer to an array steps over whole arrays: write `(*p)[i]` for an "
+                   "element, or `*(p + i)` for the array `i` places on");
+            return t_error();
+        }
+        if (is_span(base->elem) && inst_depth == 0) {
+            fail_n(n, "lucb.check.type", "`p[i]` on a pointer to a span steps over whole spans: write `(*p)[i]` for an element");
+            return t_error();
+        }
         return base->elem;
     }
     if (is_array(base) || is_span(base)) {
@@ -591,6 +604,12 @@ auto Checker::check_slice(Node* n) -> Type* {
         if (is_local(n->left)) {
             mark_local(n);
         }
+    } else if (is_ptr(base)) {
+        // a slice is of an array or span, never of the pointer to one (§7.6)
+        fail_n(n, "lucb.check.type",
+               "a pointer is not sliced: write `(*p)[start..<end]` to slice the array or span it points "
+               "to, or `T[](p, count)` for `count` elements from it");
+        return t_error();
     } else {
         fail_n(n, "lucb.check.type", "cannot slice this type");
         return t_error();
@@ -874,7 +893,11 @@ auto Checker::check_binary(Node* n, Type* expected) -> Type* {
             }
             return t_bool();
         }
-        if (!type_eq(L, R)) {
+        // a span beside an array, or spans of other qualifiers, compare by their elements (§7.4)
+        const bool sequences = L != nullptr && R != nullptr && (is_span(L) || is_array(L)) &&
+                               (is_span(R) || is_array(R)) && (is_span(L) || is_span(R)) &&
+                               L->elem != nullptr && R->elem != nullptr && type_eq(L->elem, R->elem);
+        if (!type_eq(L, R) && !sequences) {
             fail_n(n, "lucb.check.type", "operands of `==` must have the same type");
         } else if (!has_equality(L)) {
             fail_n(n, "lucb.check.type", "these values have no equality (§7.4)");

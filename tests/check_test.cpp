@@ -1396,6 +1396,21 @@ TEST(an_else_fallback_is_the_payload_even_under_an_optional_context) {
     CHECK(check_ok("var o: i64?\npub func answer() -> i64:\n    o = (o else (434 | 3))\n    return o else 0\n"));
 }
 
+// §7.7: `p[i]` on a pointer to an array or span would step over whole ones, so it is refused
+// for `(*p)[i]` or `*(p + i)`, and a pointer is not sliced; a generic's `T*` walks whole
+// `T`s, an array `T` included. §7.4:
+// a span compares with an array or a span of another qualifier by its elements.
+TEST(a_pointer_to_an_array_or_span_is_not_indexed_or_sliced) {
+    CHECK(check_has("func first(p: const f64[3]*) -> f64:\n    return p[0][0]\npub func answer() -> i64:\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("struct C:\n    var row: i32[4]*\nfunc set(c: C):\n    c.row[1] = [0, 0, 0, 0]\npub func answer() -> i64:\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("func first(p: (const i64[])*) -> i64:\n    return p[0]\npub func answer() -> i64:\n    return 42\n", "lucb.check.type"));
+    CHECK(check_has("func head(p: const i64[4]*) -> const i64[]:\n    return p[..<2]\npub func answer() -> i64:\n    return 42\n", "lucb.check.type"));
+    CHECK(check_ok("func first(p: const f64[3]*) -> f64:\n    return (*p)[0] + (*(p + 1))[0]\npub func answer() -> i64:\n    return 42\n"));
+    CHECK(check_ok("func first(p: (const i64[])*, q: const i64[4]*) -> i64:\n    return (*p)[0] + (*q)[..<2][1]\npub func answer() -> i64:\n    return 42\n"));
+    CHECK(check_ok("func nth[T](items: T*, n: usize) -> T:\n    return items[n]\nvar rows: (i64[2])[2]\npub func answer() -> i64:\n    return nth(&rows[0], 1)[0] + 42\n"));
+    CHECK(check_ok("pub func answer() -> i64:\n    let a: u8[2] = [1, 2]\n    let s: const u8[] = a\n    return 42 if s == a and a == s else 0\n"));
+}
+
 TEST(a_cast_inside_an_index_followed_by_a_member_is_an_index) {
     CHECK(check_ok("struct P:\n    var x: i64\nvar ap: P[2]\nvar a0: i64\npub func answer() -> i64:\n    let q = ap[(usize)(a0 & 1)].x\n    let r = ap[(usize)a0].x\n    return q + r\n"));
     CHECK(check_ok("func twice(f: (func(i64) -> i64)) -> i64:\n    return f(2)\npub func answer() -> i64:\n    return twice((x) => x * 21)\n"));
