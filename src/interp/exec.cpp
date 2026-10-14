@@ -142,6 +142,11 @@ auto Interp::exec(Node* n) -> void {
     }
     case NodeKind::Assign: {
         Value* dst = lvalue(n->left);
+        // a compound assignment reads its place before the value (§7.1)
+        Value old;
+        if (dst != nullptr && !trapped && n->op != TokenKind::Eq) {
+            old = *dst;
+        }
         Value src = eval(n->right);
         if (dst == nullptr || trapped) {
             return;
@@ -201,7 +206,7 @@ auto Interp::exec(Node* n) -> void {
             op = op == TokenKind::Plus ? TokenKind::PlusPercent : TokenKind::MinusPercent;
             at = at->elem;
         }
-        Value r = arith(at, *dst, src, op);
+        Value r = arith(at, old, src, op);
         if (!trapped) {
             *dst = r;
         }

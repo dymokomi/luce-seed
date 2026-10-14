@@ -284,6 +284,13 @@ auto Interp::lvalue(Node* n) -> Value* {
             return v.ptr + static_cast<ptrdiff_t>(i);
         }
         Value* base = lvalue(n->left);
+        // the owner before the index (§7.1): a span's data and length are read now, so an
+        // index that moves the span leaves this element where it was
+        Value view;
+        if (base != nullptr && !trapped && base->kind == TypeKind::Span && base->ptr != nullptr) {
+            view = *base;
+            base = &view;
+        }
         Value idxv = eval(n->body);
         if (trapped) {
             return nullptr;

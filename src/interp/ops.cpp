@@ -604,6 +604,10 @@ auto Interp::eval_binary(Node* n) -> Value {
         return eval(n->right);
     }
     Value L = eval(n->left);
+    if (L.kind == TypeKind::Array && L.ptr != nullptr && !trapped) {
+        // an array is read where it lives: copied before the right operand can change it (§7.1)
+        L = copy_value(L);
+    }
     Value R = eval(n->right);
     if (trapped || returning) {
         return v_unit();
