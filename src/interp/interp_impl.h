@@ -99,6 +99,7 @@ struct Interp {
     Value eval_splat(Node* n);
     Value eval_vector_fold(Node* callee, Node* n);
     Value copy_value(const Value& v);
+    Value as_view(Value v, Type* t);
     Value zero_of(Type* t);
     Slot* find_slot(string_view name, Node* decl = nullptr);
     uint64_t enum_case_int(Node* en, Node* cse);

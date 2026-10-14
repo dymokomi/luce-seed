@@ -1,0 +1,68 @@
+## §5.4, §6.3, §6.4: a top-level span made from an array literal views storage that lives
+## as long as the program, as C's compound literal at file scope does, whatever its
+## elements: integers, floats, text, structs, spans of literals of their own, inside a
+## tuple or a struct. A `var` holding such a span takes another; a `local var`'s views
+## the same elements on every thread. (luce-base's conformance copy also makes one in a
+## `let` built through `init`, which this compiler's C cannot hold at file scope.)
+import thread
+
+struct Point:
+    var x: i64
+    var y: i64
+
+struct Table:
+    var name: str
+    var cells: const i32[]
+
+let rows: const i64[] = [10, 20, 30]
+let ratios: const f64[] = [0.5, -1.25, 3.0]
+let names: const str[] = ["ash", "birch", "cedar"]
+let points: const Point[] = [Point(x = 1, y = 2), Point(x = 3, y = 4)]
+let grid: const (const i64[])[] = [[1, 2, 3], [4], [5, 6]]
+let words: const (const u8[])[] = [b"a", b"bc", b"def"]
+let pair: (i64, const i64[]) = (7, [8, 9])
+let table = Table(name = "cells", cells = [1, 2, 3, 4])
+let zeros: const u32[] = [0, 0, 0]
+var current: const i64[] = [100, 200]
+local var per_thread: const i64[] = [7, 8]
+local var per_thread_grid: const (const i64[])[] = [[1], [2, 3]]
+
+func sum(values: const i64[]) -> i64:
+    var s: i64 = 0
+    for v in values:
+        s += v
+    return s
+
+## Reads the thread-locals, as the spawned thread does too.
+func report(who: str) -> i64:
+    let total = sum(per_thread) + sum(per_thread_grid[0]) + sum(per_thread_grid[1])
+    print(f"{who}: {per_thread[0]} {per_thread[1]} {per_thread_grid.length} {per_thread_grid[1][1]} = {total}")
+    return total
+
+func worker(context: void*?):
+    let raw = context else trap("no context")
+    let out = (i64*)raw
+    *out = report("thread")
+
+pub func main(arguments: str[]) -> i32:
+    print(f"{rows.length} {rows[0]} {rows[1]} {rows[2]} {sum(rows)}")
+    print(f"{ratios[0]} {ratios[1]} {ratios[2]}")
+    print(f"{names.length} {names[0]} {names[1]} {names[2]}")
+    print(f"{points[0].x} {points[0].y} {points[1].x} {points[1].y}")
+    print(f"{grid.length} {grid[0].length} {grid[1].length} {grid[2].length} {sum(grid[0])} {grid[1][0]} {grid[2][1]}")
+    print(f"{words[0].length} {words[1].length} {words[2].length} {words[2][2]}")
+    let (first, rest) = pair
+    print(f"{first} {rest.length} {rest[0]} {rest[1]}")
+    print(f"{table.name} {table.cells.length} {table.cells[3]}")
+    print(f"{zeros.length} {zeros[2]}")
+    print(f"{sum(current)}")
+    current = rows
+    print(f"{sum(current)}")
+    let mine = report("main")
+    var seen: i64 = 0
+    let t = thread.spawn(worker, &seen) catch failure:
+        return 1
+    t.join() catch failure:
+        return 1
+    print(f"same: {mine == seen}")
+    return 0

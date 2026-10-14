@@ -720,7 +720,7 @@ auto Parser::parse_type() -> Node* {
                 take(); // [
                 Node* t = make(NodeKind::Type, start.span);
                 if (eat(TokenKind::RBracket)) {
-                    t->flags = FlagSpan | (flags & FlagConst);
+                    t->flags = FlagSpan;
                 } else {
                     t->flags = FlagArray;
                     t->right = parse_expression();
@@ -728,11 +728,17 @@ auto Parser::parse_type() -> Node* {
                 }
                 suffixes.push_back(t);
             }
+            // `const` binds to the innermost type (§5.3): the first span from the inside
+            // takes it, through arrays, so `const u8[][]` is a span of `const u8[]`; a run of
+            // arrays alone leaves it to a pointer after them, `const f32[4]*`
             for (size_t k = suffixes.size(); k > 0; k--) {
                 suffixes[k - 1]->left = value;
                 value = suffixes[k - 1];
+                if ((value->flags & FlagSpan) != 0 && (flags & FlagConst) != 0) {
+                    value->flags |= FlagConst;
+                    flags &= ~(FlagConst | FlagVolatile);
+                }
             }
-            flags &= ~(FlagConst | FlagVolatile);
             continue;
         }
         bool nullable = at(TokenKind::StarQuestion);
@@ -749,7 +755,7 @@ auto Parser::parse_type() -> Node* {
             value = opt;
         }
     }
-    if (flags & (FlagConst | FlagVolatile)) {
+    if ((flags & (FlagConst | FlagVolatile)) != 0 && !suffixed) {
         fail("lucb.parse.type", "`const` and `volatile` qualify a pointee: write `const T*`");
     }
     if (eat(TokenKind::Question)) {

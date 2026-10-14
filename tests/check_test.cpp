@@ -113,6 +113,18 @@ TEST(check_type_mismatch) {
     CHECK(check_has("pub func answer() -> i64:\n    return true\n", "lucb.check.type"));
 }
 
+// `const` binds to the innermost type (§5.3): `const u8[][]` is a span with mutable elements,
+// each a `const u8[]`, which a literal cannot make (only a mutable array makes a `T[]`);
+// `const (const u8[])[]` reads both levels only; through arrays, `const u8[][4]` is a span of
+// read-only arrays and `const f32[4]*` points to one.
+TEST(check_const_binds_to_the_innermost_span) {
+    CHECK(check_has("let words: const u8[][] = [b\"a\", b\"bc\"]\npub func answer() -> i64:\n    return 40\n", "lucb.check.type"));
+    CHECK(check_ok("let words: const (const u8[])[] = [b\"a\", b\"bc\"]\npub func answer() -> i64:\n    return 38 + (i64)words[1].length\n"));
+    CHECK(check_ok("pub func answer() -> i64:\n    var rows: (const u8[])[2] = [b\"a\", b\"bc\"]\n    let view: const u8[][] = rows\n    return 40 + (i64)view.length\n"));
+    CHECK(check_has("pub func answer() -> i64:\n    var rows: u8[2][4] = ---\n    let view: const u8[][4] = rows\n    view[0][0] = 1\n    return 40\n", "lucb.check.mut"));
+    CHECK(check_has("pub func answer() -> i64:\n    var cell: f32[4] = ---\n    let p: const f32[4]* = &cell\n    (*p)[0] = 1.0\n    return 40\n", "lucb.check.mut"));
+}
+
 TEST(check_unknown_name) {
     CHECK(check_has("pub func answer() -> i64:\n    return missing\n", "lucb.check.name"));
 }

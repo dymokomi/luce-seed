@@ -33,6 +33,16 @@ auto Interp::make_array(Type* t, vector<Value> elems) -> Value {
     return v;
 }
 
+// An array element or tuple member `v` as member type `t`: an array where a span is wanted
+// is the span of it (§5.4), `[[1, 2], [3]]` as `(const i64[])[2]`.
+auto Interp::as_view(Value v, Type* t) -> Value {
+    if (t != nullptr && t->kind == TypeKind::Span && v.kind == TypeKind::Array) {
+        v.kind = TypeKind::Span;
+        v.type = t;
+    }
+    return v;
+}
+
 auto Interp::copy_value(const Value& v) -> Value {
     if (v.kind == TypeKind::Array || (v.type != nullptr && v.type->kind == TypeKind::Array)) {
         vector<Value> elems;
@@ -552,8 +562,10 @@ auto Interp::eval_uncast(Node* n) -> Value {
         Value v;
         v.kind = TypeKind::Tuple;
         v.type = n->ty;
-        for (Node* e = n->body; e != nullptr; e = e->next) {
-            v.fields.push_back(eval(e));
+        int i = 0;
+        for (Node* e = n->body; e != nullptr; e = e->next, i++) {
+            Type* member = n->ty != nullptr && i < n->ty->ntargs ? n->ty->args[i] : nullptr;
+            v.fields.push_back(as_view(eval(e), member));
         }
         return v;
     }
@@ -904,8 +916,9 @@ auto Interp::eval_slice(Node* n) -> Value {
 
 auto Interp::eval_array_lit(Node* n) -> Value {
     vector<Value> elems;
+    Type* et = n->ty != nullptr ? n->ty->elem : nullptr;
     for (Node* e = n->body; e != nullptr; e = e->next) {
-        elems.push_back(eval(e));
+        elems.push_back(as_view(eval(e), et));
         if (trapped || returning) {
             return v_unit();
         }
